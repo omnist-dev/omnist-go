@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Test with coverage
+        run: go test -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Enforce 100% line coverage
+        run: |
+          go tool cover -func=coverage.out
+          # Per-function check, not the aggregate "total" line: with zero
+          # statements (e.g. a const-only file) the total line reports a
+          # spurious 0.0% (0/0), which would wrongly fail this gate.
+          uncovered=$(go tool cover -func=coverage.out | grep -v '^total:' | grep -v '100.0%$' || true)
+          if [ -n "$uncovered" ]; then
+            echo "The following functions are not fully covered:"
+            echo "$uncovered"
+            exit 1
+          fi
+          echo "100% line coverage confirmed."
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Run conformance harness
+        run: |
+          if [ -d tools/conformance ]; then
+            go run ./tools/conformance
+          else
+            echo "conformance harness not yet built - skipping (tracked in workflow-playbook.md Sec4)"
+          fi
