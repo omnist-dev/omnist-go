@@ -97,7 +97,16 @@ type Record struct {
 
 // Schema is a graph of named records plus a distinguished root record name
 // (spec §3.3: `Schema = (root: Ref, env: Name -> Record)`).
+//
+// EnvOrder holds the declaration order of Env's keys. The schema algebra
+// (spec ch.6, e.g. §6.4's satisfiable_set and §6.5's prune) requires
+// deterministic, declaration-order iteration over env wherever output
+// ordering is observable — Go's map iteration is deliberately randomized,
+// so Env alone cannot satisfy that on its own. Any code that builds a new
+// Schema (the OSD parser, and later prune/normalize/extract) MUST keep
+// EnvOrder consistent with Env's keys — same set, declaration order.
 type Schema struct {
-	Root string
-	Env  map[string]*Record
+	Root     string
+	Env      map[string]*Record
+	EnvOrder []string
 }

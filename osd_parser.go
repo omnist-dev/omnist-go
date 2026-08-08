@@ -130,6 +130,7 @@ func (p *osdParser) parseSchema() (Schema, error) {
 		}
 	}
 
+	schema.EnvOrder = recordOrder
 	return schema, nil
 }
 
