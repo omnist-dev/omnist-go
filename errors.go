@@ -65,6 +65,19 @@ const (
 	CodeAlgebraInferNoSamples          Code = "algebra.infer-no-samples"
 	CodeAlgebraInferScalarRoot         Code = "algebra.infer-scalar-root"
 	CodeAlgebraInferConflictingScalars Code = "algebra.infer-conflicting-scalars"
+	// CodeAlgebraInferMixedShape is raised when a label is a node in some
+	// samples and a scalar in others (allow_any=false). The spec's §8.3.6
+	// taxonomy table does not list a dedicated code for this failure --
+	// only infer-no-samples, infer-scalar-root, and infer-conflicting-
+	// scalars are enumerated there, even though §6.10's infer_type
+	// pseudocode has two distinct hard-failure branches (mixed shape, and
+	// conflicting scalar kinds). This is the plainly-correct reading of
+	// that gap: mint a fourth algebra.infer-* code following the same
+	// naming convention, rather than overloading infer-conflicting-scalars
+	// (whose taxonomy description is specifically "disagree on a scalar
+	// kind") for a shape mismatch that isn't a scalar-kind disagreement at
+	// all.
+	CodeAlgebraInferMixedShape Code = "algebra.infer-mixed-shape"
 )
 
 // lint.* — schema diagnostics (spec §8.3.7).
