@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # The repo's top-level vendor/ directory holds the omnist-spec git
+  # submodule, not Go's vendor tree. Once go.mod carries a real external
+  # dependency, Go's automatic vendor-mode detection treats that directory
+  # as inconsistent Go vendoring and refuses to build. -mod=mod disables
+  # that auto-detection everywhere in this workflow.
+  GOFLAGS: -mod=mod
+
 jobs:
   test:
     runs-on: ubuntu-latest
