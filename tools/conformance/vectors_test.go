@@ -100,14 +100,18 @@ func TestDecodeCanonicalDocumentTemporalKinds(t *testing.T) {
 	}
 }
 
-func TestRunVectorSkipsMaterialize(t *testing.T) {
-	v := Vector{Name: "x", Operation: "materialize"}
+// TestRunVectorMaterializeBadInputFails confirms materialize is wired up
+// as a real driver (issue #35): a vector with no input.schema/document is
+// a driver-level decode failure, not the "not yet implemented" skip this
+// operation used to report before issue #35 implemented Materialize.
+func TestRunVectorMaterializeBadInputFails(t *testing.T) {
+	v := Vector{Name: "x", Operation: "materialize", Input: []byte(`{}`)}
 	res := RunVector(v)
-	if res.Status != StatusSkip {
-		t.Fatalf("want skip, got %v", res.Status)
+	if res.Status != StatusFail {
+		t.Fatalf("want fail, got %v (%s)", res.Status, res.Reason)
 	}
 	if res.Reason == "" {
-		t.Fatal("want a cited reason, per §8.5.5")
+		t.Fatal("want a reason describing the decode failure")
 	}
 }
 
