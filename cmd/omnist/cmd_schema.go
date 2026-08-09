@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // cmdSchema dispatches `omnist schema SUBCOMMAND ...` to one of the
@@ -65,7 +66,7 @@ func loadSchema(name, path string, stdin io.Reader, stderr io.Writer) (omnist.Sc
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return omnist.Schema{}, ExitUsage, false
 	}
-	schema, err := omnist.ReadOSD(text)
+	schema, err := osd.Read(text)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return omnist.Schema{}, ExitProblem, false
@@ -98,7 +99,7 @@ func schemaTransform(args []string, stdin io.Reader, stdout, stderr io.Writer, n
 		return code
 	}
 	result := transform(schema)
-	if err := writeOutput(*out, omnist.WriteOSD(result, false), stdout); err != nil {
+	if err := writeOutput(*out, osd.Write(result, false), stdout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitUsage
 	}
@@ -154,7 +155,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitUsage
 	}
-	if err := writeOutput(*out, omnist.WriteOSD(result, false), stdout); err != nil {
+	if err := writeOutput(*out, osd.Write(result, false), stdout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitUsage
 	}

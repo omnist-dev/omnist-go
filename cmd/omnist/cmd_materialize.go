@@ -6,6 +6,7 @@ import (
 	"io"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // cmdMaterialize implements `omnist materialize`: stage-1 read INPUT,
@@ -79,7 +80,7 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem
 	}
-	schema, err := omnist.ReadOSD(schemaText)
+	schema, err := osd.Read(schemaText)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem

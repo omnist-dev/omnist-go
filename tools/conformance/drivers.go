@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // This file holds one driver function per §8.5.3 operation, each parsing
@@ -110,7 +111,7 @@ func runParseSchema(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	_, serr := omnist.ReadOSD(in.Text)
+	_, serr := osd.Read(in.Text)
 	wantOK := expectOK(expect)
 	if serr != nil {
 		if wantOK {
@@ -149,7 +150,7 @@ func runValidate(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	schema, serr := omnist.ReadOSD(in.Schema)
+	schema, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input schema failed to parse: %v", serr)
 	}
@@ -195,7 +196,7 @@ func runMaterialize(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	schema, serr := omnist.ReadOSD(in.Schema)
+	schema, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input schema failed to parse: %v", serr)
 	}
@@ -338,11 +339,11 @@ func runCompatibleWith(v Vector) Result {
 	if err := json.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
-	a, aerr := omnist.ReadOSD(in.A)
+	a, aerr := osd.Read(in.A)
 	if aerr != nil {
 		return fail(v, "input.a failed to parse: %v", aerr)
 	}
-	b, berr := omnist.ReadOSD(in.B)
+	b, berr := osd.Read(in.B)
 	if berr != nil {
 		return fail(v, "input.b failed to parse: %v", berr)
 	}
@@ -355,11 +356,11 @@ func runEquivalent(v Vector) Result {
 	if err := json.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
-	a, aerr := omnist.ReadOSD(in.A)
+	a, aerr := osd.Read(in.A)
 	if aerr != nil {
 		return fail(v, "input.a failed to parse: %v", aerr)
 	}
-	b, berr := omnist.ReadOSD(in.B)
+	b, berr := osd.Read(in.B)
 	if berr != nil {
 		return fail(v, "input.b failed to parse: %v", berr)
 	}
@@ -397,11 +398,11 @@ func runNormalize(v Vector) Result {
 	if err := json.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
-	s, serr := omnist.ReadOSD(in.Schema)
+	s, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := omnist.WriteOSD(omnist.Normalize(s), false)
+	got := osd.Write(omnist.Normalize(s), false)
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -410,11 +411,11 @@ func runPrune(v Vector) Result {
 	if err := json.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
-	s, serr := omnist.ReadOSD(in.Schema)
+	s, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := omnist.WriteOSD(omnist.Prune(s), false)
+	got := osd.Write(omnist.Prune(s), false)
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -449,7 +450,7 @@ func runIsEmpty(v Vector) Result {
 	if err := json.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
-	s, serr := omnist.ReadOSD(in.Schema)
+	s, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
@@ -488,7 +489,7 @@ func runExtract(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	s, serr := omnist.ReadOSD(in.Schema)
+	s, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
@@ -524,7 +525,7 @@ func runExtract(v Vector) Result {
 	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
-	wantSchema, werr := omnist.ReadOSD(wantText)
+	wantSchema, werr := osd.Read(wantText)
 	if werr != nil {
 		return fail(v, "expect.schema failed to parse: %v", werr)
 	}
@@ -533,7 +534,7 @@ func runExtract(v Vector) Result {
 	// value rather than pinning canonical text directly, so the referee
 	// (not a byte comparison) is the right tool here.
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeExact) {
-		return fail(v, "schema mismatch (exact mode): got %q want %q", omnist.WriteOSD(result, false), wantText)
+		return fail(v, "schema mismatch (exact mode): got %q want %q", osd.Write(result, false), wantText)
 	}
 	return pass(v)
 }
@@ -598,7 +599,7 @@ func runInfer(v Vector) Result {
 	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
-	wantSchema, werr := omnist.ReadOSD(wantText)
+	wantSchema, werr := osd.Read(wantText)
 	if werr != nil {
 		return fail(v, "expect.schema failed to parse: %v", werr)
 	}
@@ -606,7 +607,7 @@ func runInfer(v Vector) Result {
 	// this is the operation the porting guide specifically calls out
 	// isomorphic mode for.
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeIsomorphic) {
-		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", omnist.WriteOSD(result, false), wantText)
+		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osd.Write(result, false), wantText)
 	}
 	return pass(v)
 }
@@ -657,12 +658,12 @@ func runInferWithReport(v Vector) Result {
 	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
-	wantSchema, werr := omnist.ReadOSD(wantText)
+	wantSchema, werr := osd.Read(wantText)
 	if werr != nil {
 		return fail(v, "expect.schema failed to parse: %v", werr)
 	}
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeIsomorphic) {
-		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", omnist.WriteOSD(result, false), wantText)
+		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osd.Write(result, false), wantText)
 	}
 	// fallbacks is always present on success (spec §8.5.3), compared as a
 	// set of (location, reason) -- reason is prose but the spec's own
@@ -706,7 +707,7 @@ func runLint(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	s, serr := omnist.ReadOSD(in.Schema)
+	s, serr := osd.Read(in.Schema)
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}

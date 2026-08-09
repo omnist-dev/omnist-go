@@ -1,9 +1,17 @@
-package omnist
+package omnist_test
+
+// External "omnist_test" package: extract_test.go only ever needed
+// exported API (Extract, Diagnostic, CodeAlgebraExtractInvalidatesRoot,
+// TypeRefKind) plus its own local keepSet/hasLabel helpers, so it moved
+// out to avoid the import cycle package osd would otherwise create (see
+// referee_test.go's comment for the full explanation).
 
 import (
 	"errors"
 	"strings"
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // orderSchemaOSD is the Root/Order/Address/LineItem schema from spec
@@ -33,7 +41,7 @@ func keepSet(labels ...string) map[string]bool {
 	return m
 }
 
-func hasLabel(rec *Record, label string) bool {
+func hasLabel(rec *omnist.Record, label string) bool {
 	for _, f := range rec.Fields {
 		if f.Label == label {
 			return true
@@ -49,9 +57,9 @@ func TestExtractSuccessDropsOptionalCoupon(t *testing.T) {
 	keep := keepSet("order", "id", "status", "total", "address", "street",
 		"city", "items", "sku", "qty", "price")
 
-	out, err := Extract(s, keep)
+	out, err := omnist.Extract(s, keep)
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success", err)
+		t.Fatalf("omnist.Extract() error = %v, want success", err)
 	}
 
 	order := out.Env["Order"]
@@ -82,16 +90,16 @@ func TestExtractFailureReportsFirstBadInDeclarationOrder(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order", "id", "status", "street", "city", "sku", "qty", "price")
 
-	_, err := Extract(s, keep)
+	_, err := omnist.Extract(s, keep)
 	if err == nil {
-		t.Fatalf("Extract() succeeded, want algebra.extract-invalidates-root error")
+		t.Fatalf("omnist.Extract() succeeded, want algebra.extract-invalidates-root error")
 	}
-	var d Diagnostic
+	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
-		t.Fatalf("error = %v (%T), want Diagnostic", err, err)
+		t.Fatalf("error = %v (%T), want omnist.Diagnostic", err, err)
 	}
-	if d.Code != CodeAlgebraExtractInvalidatesRoot {
-		t.Errorf("Code = %q, want %q", d.Code, CodeAlgebraExtractInvalidatesRoot)
+	if d.Code != omnist.CodeAlgebraExtractInvalidatesRoot {
+		t.Errorf("Code = %q, want %q", d.Code, omnist.CodeAlgebraExtractInvalidatesRoot)
 	}
 	if !strings.Contains(d.Message, `"total"`) {
 		t.Errorf("Message = %q, want it to name total (the first offender in declaration order)", d.Message)
@@ -114,16 +122,16 @@ func TestExtractFirstBadCrossRecordDeclarationOrderBeatsOrder(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order")
 
-	_, err := Extract(s, keep)
+	_, err := omnist.Extract(s, keep)
 	if err == nil {
-		t.Fatalf("Extract() succeeded, want algebra.extract-invalidates-root error")
+		t.Fatalf("omnist.Extract() succeeded, want algebra.extract-invalidates-root error")
 	}
-	var d Diagnostic
+	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
-		t.Fatalf("error = %v (%T), want Diagnostic", err, err)
+		t.Fatalf("error = %v (%T), want omnist.Diagnostic", err, err)
 	}
-	if d.Code != CodeAlgebraExtractInvalidatesRoot {
-		t.Errorf("Code = %q, want %q", d.Code, CodeAlgebraExtractInvalidatesRoot)
+	if d.Code != omnist.CodeAlgebraExtractInvalidatesRoot {
+		t.Errorf("Code = %q, want %q", d.Code, omnist.CodeAlgebraExtractInvalidatesRoot)
 	}
 	if !strings.Contains(d.Message, `"street"`) {
 		t.Errorf("Message = %q, want it to name street (Address is declared before Order)", d.Message)
@@ -144,9 +152,9 @@ func TestExtractMandatoryDeletionInvalidatesNotRelaxes(t *testing.T) {
 	// Drop "a", a mandatory field of Leaf; Leaf's own field is optional in
 	// Root so Root itself should survive, but Leaf must be genuinely gone
 	// from the output — never present with "a" downgraded to optional.
-	out, err := Extract(s, keepSet("leaf", "b"))
+	out, err := omnist.Extract(s, keepSet("leaf", "b"))
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success (Root.leaf is optional)", err)
+		t.Fatalf("omnist.Extract() error = %v, want success (Root.leaf is optional)", err)
 	}
 	if _, ok := out.Env["Leaf"]; ok {
 		t.Errorf("Leaf should be invalidated and absent, got env = %+v", out.Env)
@@ -168,16 +176,16 @@ func TestExtractPropagatesThroughMultipleHops(t *testing.T) {
 	`)
 	// Drop "v", invalidating Leaf directly; that must propagate Leaf -> Mid
 	// -> Top -> Root, three hops of mandatory-ref propagation.
-	_, err := Extract(s, keepSet("top", "mid", "leaf"))
+	_, err := omnist.Extract(s, keepSet("top", "mid", "leaf"))
 	if err == nil {
-		t.Fatalf("Extract() succeeded, want root invalidated via 3-hop propagation")
+		t.Fatalf("omnist.Extract() succeeded, want root invalidated via 3-hop propagation")
 	}
-	var d Diagnostic
+	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
-		t.Fatalf("error = %v (%T), want Diagnostic", err, err)
+		t.Fatalf("error = %v (%T), want omnist.Diagnostic", err, err)
 	}
-	if d.Code != CodeAlgebraExtractInvalidatesRoot {
-		t.Errorf("Code = %q, want %q", d.Code, CodeAlgebraExtractInvalidatesRoot)
+	if d.Code != omnist.CodeAlgebraExtractInvalidatesRoot {
+		t.Errorf("Code = %q, want %q", d.Code, omnist.CodeAlgebraExtractInvalidatesRoot)
 	}
 	if !strings.Contains(d.Message, `"v"`) || d.Path != "Leaf" {
 		t.Errorf("Message/Path = %q/%q, want the original offender v/Leaf, not a propagated one", d.Message, d.Path)
@@ -195,10 +203,10 @@ func TestExtractFirstBadIsDeclarationOrderNotAlphabeticalOrShortest(t *testing.T
 	// All three fields of R are dropped; "zeta" is declared first, so it
 	// must be the reported offender even though it's neither alphabetically
 	// first ("alpha") nor shortest ("beta"/"alpha" tie length before zeta).
-	_, err := Extract(s, keepSet("r"))
-	var d Diagnostic
+	_, err := omnist.Extract(s, keepSet("r"))
+	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
-		t.Fatalf("error = %v (%T), want Diagnostic", err, err)
+		t.Fatalf("error = %v (%T), want omnist.Diagnostic", err, err)
 	}
 	if !strings.Contains(d.Message, `"zeta"`) {
 		t.Errorf("Message = %q, want zeta (declared first in R)", d.Message)
@@ -224,9 +232,9 @@ func TestExtractDropsSurvivingFieldPointingAtInvalidatedRecord(t *testing.T) {
 	// is optional so filtering alone doesn't invalidate Root, and Root
 	// survives (via Root.sibling) but must lose the "doomed" field itself,
 	// not keep it dangling at a record no longer in env.
-	out, err := Extract(s, keepSet("doomed", "sibling", "x"))
+	out, err := omnist.Extract(s, keepSet("doomed", "sibling", "x"))
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success", err)
+		t.Fatalf("omnist.Extract() error = %v, want success", err)
 	}
 	if _, ok := out.Env["Doomed"]; ok {
 		t.Errorf("Doomed should be invalidated and absent, got env = %+v", out.Env)
@@ -254,9 +262,9 @@ func TestExtractSuccessRunsPruneAndNormalize(t *testing.T) {
 	// Unreachable is never referenced from Root; extract's intermediate
 	// schema (steps 1-4) would still contain it verbatim since nothing
 	// about the keep-set filtering touches it. Only prune removes it.
-	out, err := Extract(s, keepSet("a"))
+	out, err := omnist.Extract(s, keepSet("a"))
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success", err)
+		t.Fatalf("omnist.Extract() error = %v, want success", err)
 	}
 	if _, ok := out.Env["Unreachable"]; ok {
 		t.Errorf("Unreachable should have been pruned, got env = %+v", out.Env)
@@ -272,14 +280,14 @@ func TestExtractSuccessNormalizesStructurallyIdenticalRecords(t *testing.T) {
 	`)
 	// Dropping "extra" from B (optional, so no invalidation) leaves A and B
 	// structurally identical. Only normalize would merge them.
-	out, err := Extract(s, keepSet("a", "b", "v"))
+	out, err := omnist.Extract(s, keepSet("a", "b", "v"))
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success", err)
+		t.Fatalf("omnist.Extract() error = %v, want success", err)
 	}
 	aRef := out.Env["Root"].Fields
 	names := map[string]bool{}
 	for _, f := range aRef {
-		if f.Type.Kind == TypeRefKind {
+		if f.Type.Kind == omnist.TypeRefKind {
 			names[f.Type.RefName] = true
 		}
 	}
@@ -294,9 +302,9 @@ func TestExtractKeepEverythingSucceeds(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order", "id", "status", "total", "address", "street",
 		"city", "items", "sku", "qty", "price", "coupon")
-	out, err := Extract(s, keep)
+	out, err := omnist.Extract(s, keep)
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want success", err)
+		t.Fatalf("omnist.Extract() error = %v, want success", err)
 	}
 	if !hasLabel(out.Env["Order"], "coupon") {
 		t.Errorf("coupon should survive when kept, got fields = %+v", out.Env["Order"].Fields)

@@ -147,7 +147,7 @@ func writeOMLValue(b *strings.Builder, v Value) {
 // writeOMLScalar renders a Scalar's canonical text. For KindInteger, s.Int
 // is assumed non-nil: every Scalar of that kind reaching this function was
 // either built by NewIntegerScalar (which always copies a non-nil
-// *big.Int) or produced by ReadOML/ReadOSD, neither of which ever leaves
+// *big.Int) or produced by ReadOML/osd.Read, neither of which ever leaves
 // Int nil for KindInteger. This mirrors the same trusted-precondition
 // convention temporal.go's temporal decoders already use.
 func writeOMLScalar(b *strings.Builder, s Scalar) {

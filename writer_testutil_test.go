@@ -2,14 +2,18 @@ package omnist
 
 import "math"
 
-// This file holds structural-equality helpers shared by oml_writer_test.go
-// and osd_writer_test.go. Neither Document/Node nor Schema/Record exposes
-// a public Equal method (only Scalar does), so the round-trip property
-// tests — "ReadOML(WriteOML(d)) == d" — need their own deep-equality walk.
+// This file holds structural-equality helpers for oml_writer_test.go's
+// Document round-trip properties. Document/Node exposes no public Equal
+// method (only Scalar does), so the round-trip property tests —
+// "ReadOML(WriteOML(d)) == d" — need their own deep-equality walk.
 // reflect.DeepEqual is deliberately not used: it would treat two
 // KindNumber NaN scalars as unequal (NaN != NaN under ==, which is what
 // DeepEqual falls back to for float64), which is exactly the case the nan
 // round-trip test below needs to treat as equal.
+//
+// The Schema-shaped counterparts (typeEqual/fieldEqual/recordEqual/
+// schemaEqual) moved to osd/osd_testutil_test.go along with
+// osd_writer_test.go (issue #41) — they were only ever used there.
 
 func valueEqual(a, b Value) bool {
 	if a.IsNull != b.IsNull {
@@ -72,58 +76,4 @@ func docEqual(a, b Document) bool {
 		return nodeEqual(a.Node, b.Node)
 	}
 	return valueEqual(a.Value, b.Value)
-}
-
-func typeEqual(a, b Type) bool {
-	if a.Kind != b.Kind {
-		return false
-	}
-	switch a.Kind {
-	case TypeScalarKind:
-		return a.ScalarKind == b.ScalarKind && a.Nullable == b.Nullable
-	case TypeRefKind:
-		return a.RefName == b.RefName
-	default: // TypeAnyKind
-		return true
-	}
-}
-
-func fieldEqual(a, b Field) bool {
-	return a.Label == b.Label && typeEqual(a.Type, b.Type) && a.Cardinality == b.Cardinality
-}
-
-func recordEqual(a, b *Record) bool {
-	if a.Name != b.Name || len(a.Fields) != len(b.Fields) {
-		return false
-	}
-	for i := range a.Fields {
-		if !fieldEqual(a.Fields[i], b.Fields[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func schemaEqual(a, b Schema) bool {
-	if a.Root != b.Root {
-		return false
-	}
-	if len(a.EnvOrder) != len(b.EnvOrder) {
-		return false
-	}
-	for i := range a.EnvOrder {
-		if a.EnvOrder[i] != b.EnvOrder[i] {
-			return false
-		}
-	}
-	if len(a.Env) != len(b.Env) {
-		return false
-	}
-	for name, rec := range a.Env {
-		other, ok := b.Env[name]
-		if !ok || !recordEqual(rec, other) {
-			return false
-		}
-	}
-	return true
 }
