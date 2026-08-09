@@ -702,6 +702,24 @@ func TestCmdParseWriterError(t *testing.T) {
 	}
 }
 
+func TestCmdParseWriterSucceedsWithDiagnostics(t *testing.T) {
+	// Writing a date leaf as JSON succeeds but reports
+	// format.temporal-stringified (issue #49's ok:true+diagnostics
+	// channel) -- exercises cmdParse's new diags-printing branch and its
+	// ExitProblem-on-nonempty-diagnostics behavior, distinct from
+	// TestCmdParseWriterError's hard-failure branch.
+	code, stdout, stderr := runCLI(t, []string{"parse", "--from", "oml", "--to", "json", "-"}, `d: 2024-01-01`)
+	if code != ExitProblem {
+		t.Errorf("exit = %d, want %d, stderr=%q", code, ExitProblem, stderr)
+	}
+	if !strings.Contains(stderr, "format.temporal-stringified") {
+		t.Errorf("stderr = %q, want it to mention format.temporal-stringified", stderr)
+	}
+	if !strings.Contains(stdout, `"d": "2024-01-01"`) {
+		t.Errorf("stdout = %q, want the written text despite the diagnostic", stdout)
+	}
+}
+
 func TestCmdMaterializeMissingSchemaFlag(t *testing.T) {
 	code, _, _ := runCLI(t, []string{"materialize", "--from", "json", "-"}, `{}`)
 	if code != ExitUsage {
@@ -776,6 +794,26 @@ func TestCmdMaterializeWriterErrorMultipleRoots(t *testing.T) {
 	code, _, stderr := runCLI(t, []string{"materialize", "--from", "json", "--schema", schemaPath, "--to", "xml", "-"}, `{"name":"Ada","age":1}`)
 	if code != ExitProblem {
 		t.Errorf("exit = %d, want %d, stderr=%q", code, ExitProblem, stderr)
+	}
+}
+
+func TestCmdMaterializeWriterSucceedsWithDiagnostics(t *testing.T) {
+	// Mirrors TestCmdParseWriterSucceedsWithDiagnostics for cmdMaterialize's
+	// own writer(result) call: materializing a date field then writing it
+	// as JSON succeeds but reports format.temporal-stringified, exercising
+	// cmdMaterialize's writeDiags branch (distinct from
+	// TestCmdMaterializeWriterErrorMultipleRoots's hard-failure branch and
+	// from a materialize-diagnostics-only run).
+	schemaPath := writeTemp(t, "dateschema.osd", "record Root {\n  \"d\": date\n}\nroot Root\n")
+	code, stdout, stderr := runCLI(t, []string{"materialize", "--from", "json", "--schema", schemaPath, "--to", "json", "-"}, `{"d": "2024-01-01"}`)
+	if code != ExitProblem {
+		t.Errorf("exit = %d, want %d, stderr=%q", code, ExitProblem, stderr)
+	}
+	if !strings.Contains(stderr, "format.temporal-stringified") {
+		t.Errorf("stderr = %q, want it to mention format.temporal-stringified", stderr)
+	}
+	if !strings.Contains(stdout, `"d": "2024-01-01"`) {
+		t.Errorf("stdout = %q, want the written text despite the diagnostic", stdout)
 	}
 }
 

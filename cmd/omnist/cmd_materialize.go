@@ -95,19 +95,26 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		return ExitProblem
 	}
 
+	writeDiagCount := 0
 	if wantsOutput {
-		outText, werr := writer(result)
+		outText, writeDiags, werr := writer(result)
 		if werr != nil {
 			_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", werr)
 			return ExitProblem
 		}
+		// Same non-fatal-adjustment channel as cmdParse -- a writer can
+		// succeed while reporting one (issue #49, spec §8.5.3).
+		for _, d := range writeDiags {
+			_, _ = fmt.Fprintf(stderr, "omnist materialize: %s: %s: %s\n", d.Path, d.Code, d.Message)
+		}
+		writeDiagCount = len(writeDiags)
 		if werr := writeOutput(*out, outText, stdout); werr != nil {
 			_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", werr)
 			return ExitUsage
 		}
 	}
 
-	if len(diags) > 0 {
+	if len(diags) > 0 || writeDiagCount > 0 {
 		return ExitProblem
 	}
 	return ExitOK

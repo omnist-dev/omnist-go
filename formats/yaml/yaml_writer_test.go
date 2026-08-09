@@ -16,7 +16,7 @@ func TestWriteYAMLGroupingAndCountOne(t *testing.T) {
 		omnist.Edge{Label: "x", Target: omnist.ValueTarget(omnist.ScalarValue(omnist.NewStringScalar("X")))},
 		omnist.Edge{Label: "m", Target: omnist.ValueTarget(omnist.ScalarValue(omnist.NewStringScalar("B")))},
 	)
-	out, err := Write(omnist.NodeDocument(n))
+	out, _, err := Write(omnist.NodeDocument(n))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestWriteYAMLGroupingAndCountOne(t *testing.T) {
 
 func TestWriteYAMLSingleLabelIsBareValueNotList(t *testing.T) {
 	n := omnist.NewNode().AddValue("tag", omnist.ScalarValue(omnist.NewStringScalar("x")))
-	out, err := Write(omnist.NodeDocument(n))
+	out, _, err := Write(omnist.NodeDocument(n))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestWriteYAMLSingleLabelIsBareValueNotList(t *testing.T) {
 
 func TestWriteYAMLDateWrittenBareAndRoundTripsAsDate(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("d", omnist.ScalarValue(omnist.NewDateScalar(omnist.DateValue{Year: 2024, Month: 1, Day: 1}))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestWriteYAMLDateWrittenBareAndRoundTripsAsDate(t *testing.T) {
 func TestWriteYAMLDateTimeWrittenBareAndRoundTripsAsDateTime(t *testing.T) {
 	dt := omnist.DateTimeValue{Date: omnist.DateValue{Year: 2024, Month: 1, Day: 1}, Time: omnist.TimeValue{Hour: 12, Minute: 30}}
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("dt", omnist.ScalarValue(omnist.NewDateTimeScalar(dt))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,12 +104,23 @@ func TestWriteYAMLDateTimeWrittenBareAndRoundTripsAsDateTime(t *testing.T) {
 func TestWriteYAMLTimeForcedToQuotedStringOnWrite(t *testing.T) {
 	tv := omnist.TimeValue{Hour: 12, Minute: 0, Second: 0}
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(tv))))
-	out, err := Write(d)
+	out, diags, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out, `"12:00"`) {
 		t.Errorf("expected the time to be written quoted as \"12:00\", got %q", out)
+	}
+	// Issue #49: the forced-to-string adjustment is now reported alongside
+	// the successful write (spec §8.5.3).
+	if len(diags) != 1 {
+		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	}
+	if diags[0].Code != omnist.CodeFormatTemporalStringified {
+		t.Errorf("diagnostic code = %s, want %s", diags[0].Code, omnist.CodeFormatTemporalStringified)
+	}
+	if diags[0].Path != "$.t" {
+		t.Errorf("diagnostic path = %s, want $.t", diags[0].Path)
 	}
 	back, err := Read(out, omnist.DefaultLimits())
 	if err != nil {
@@ -134,7 +145,7 @@ func TestWriteYAMLTimeVariants(t *testing.T) {
 	}
 	for _, c := range cases {
 		d := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(c.t))))
-		out, err := Write(d)
+		out, _, err := Write(d)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -151,7 +162,7 @@ func TestWriteYAMLNaNInfinityRoundTrip(t *testing.T) {
 	cases := []float64{math.NaN(), math.Inf(1), math.Inf(-1)}
 	for _, f := range cases {
 		d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewNumberScalar(f))))
-		out, err := Write(d)
+		out, _, err := Write(d)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,7 +189,7 @@ func TestWriteYAMLNaNInfinityRoundTrip(t *testing.T) {
 
 func TestWriteYAMLNumberAlwaysDistinctFromInteger(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewNumberScalar(5.0))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +210,7 @@ func TestWriteYAMLStringThatWouldCollideWithResolutionStaysAString(t *testing.T)
 	cases := []string{"on", "yes", "no", "null", "true", "2024-01-01", "12:00:00", "5"}
 	for _, s := range cases {
 		d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar(s))))
-		out, err := Write(d)
+		out, _, err := Write(d)
 		if err != nil {
 			t.Fatalf("%q: %v", s, err)
 		}
@@ -216,7 +227,7 @@ func TestWriteYAMLStringThatWouldCollideWithResolutionStaysAString(t *testing.T)
 
 func TestWriteYAMLLabelThatWouldCollideWithResolutionStaysAString(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("on", omnist.ScalarValue(omnist.NewStringScalar("v"))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +244,7 @@ func TestWriteYAMLLabelThatWouldCollideWithResolutionStaysAString(t *testing.T) 
 
 func TestWriteYAMLNull(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.NullValue()))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +260,7 @@ func TestWriteYAMLNull(t *testing.T) {
 func TestWriteYAMLBoolean(t *testing.T) {
 	for _, b := range []bool{true, false} {
 		d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewBooleanScalar(b))))
-		out, err := Write(d)
+		out, _, err := Write(d)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -269,7 +280,7 @@ func TestWriteYAMLHugeInteger(t *testing.T) {
 		t.Fatal("test setup failed")
 	}
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewIntegerScalar(huge))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +295,7 @@ func TestWriteYAMLHugeInteger(t *testing.T) {
 
 func TestWriteYAMLBareValueDocument(t *testing.T) {
 	d := omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar("bare")))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +309,7 @@ func TestWriteYAMLBareValueDocument(t *testing.T) {
 }
 
 func TestWriteYAMLEmptyNode(t *testing.T) {
-	out, err := Write(omnist.NodeDocument(omnist.NewNode()))
+	out, _, err := Write(omnist.NodeDocument(omnist.NewNode()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +333,7 @@ func TestWriteYAMLEmptyNode(t *testing.T) {
 func TestWriteYAMLInvalidUTF8StringFails(t *testing.T) {
 	invalid := string([]byte{0xff, 0xfe})
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar(invalid))))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error writing a string with invalid UTF-8 bytes")
 	}
@@ -331,7 +342,7 @@ func TestWriteYAMLInvalidUTF8StringFails(t *testing.T) {
 func TestWriteYAMLNestedNode(t *testing.T) {
 	child := omnist.NewNode().AddValue("x", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1))))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("child", child))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}

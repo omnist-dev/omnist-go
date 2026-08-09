@@ -1,6 +1,7 @@
 package yaml
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -64,20 +65,22 @@ import (
 //     today — see the TODO below on why the collection itself isn't wired
 //     up yet, mirroring json_writer.go's identical TODO.
 //
-// The signature returns an error for the same reason WriteJSON's does: a
-// stringification is a reportable adjustment (spec §7.4), not always a
-// silent one, even though nothing below can currently fail (there is no
-// strict/lenient toggle for YAML's time sharp edge — it isn't optional the
-// way JSON's NaN/Infinity substitution is, so there is only one mode).
-// Full diagnostic-collection plumbing is a TODO, exactly as noted on
-// WriteJSON: spec §7.4 says only SHOULD, and no format.* adjustment-
-// reporting mechanism exists elsewhere in this repo yet to hook into.
-func Write(d omnist.Document) (string, error) {
+// The signature returns diagnostics alongside text and error, matching
+// every other writer in this package: a omnist.KindTime stringification is a
+// reportable adjustment (spec §7.4, §8.5.3 — write is the one operation
+// where ok:true and diagnostics coexist), collected here via
+// buildYAMLNode/buildYAMLTarget's diags accumulator and reported with
+// omnist.CodeFormatTemporalStringified. There is no strict/lenient toggle
+// for YAML's time sharp edge — it isn't optional the way JSON's
+// NaN/Infinity substitution is, so there is only one mode and the write
+// itself never fails because of it.
+func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	var root *yamllib.Node
+	var diags []omnist.Diagnostic
 	if d.IsNode {
-		root = buildYAMLNode(d.Node)
+		root = buildYAMLNode(d.Node, "$", &diags)
 	} else {
-		root = buildYAMLTargetScalar(d.Value)
+		root = buildYAMLTargetScalar(d.Value, "$", &diags)
 	}
 	out, err := yamllib.Marshal(root)
 	if err != nil {
@@ -97,9 +100,9 @@ func Write(d omnist.Document) (string, error) {
 		// library's own error is surfaced as-is rather than wrapped in
 		// a omnist.Diagnostic that would overstate precision this package
 		// doesn't actually have here.
-		return "", err
+		return "", nil, err
 	}
-	return string(out), nil
+	return string(out), diags, nil
 }
 
 // yamlGroup mirrors jsonGroup (json_writer.go): one label's worth of
@@ -129,7 +132,7 @@ func groupYAMLEdges(n *omnist.Node) []yamlGroup {
 // group as a bare value when it has exactly one child or as a sequence
 // otherwise (count-1 rule) — the same two rules writeJSONNode applies, on
 // yamllib.Node values instead of directly-written text.
-func buildYAMLNode(n *omnist.Node) *yamllib.Node {
+func buildYAMLNode(n *omnist.Node, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	groups := groupYAMLEdges(n)
 	m := &yamllib.Node{Kind: yamllib.MappingNode}
 	for _, g := range groups {
@@ -146,32 +149,33 @@ func buildYAMLNode(n *omnist.Node) *yamllib.Node {
 		// "safe" to leave bare — every label is safe when quoted, with
 		// no exceptions to enumerate or get wrong.
 		m.Content = append(m.Content, &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: g.label})
+		childPath := path + "." + g.label
 		if len(g.children) == 1 {
-			m.Content = append(m.Content, buildYAMLTarget(g.children[0]))
+			m.Content = append(m.Content, buildYAMLTarget(g.children[0], childPath, diags))
 			continue
 		}
 		seq := &yamllib.Node{Kind: yamllib.SequenceNode}
-		for _, t := range g.children {
-			seq.Content = append(seq.Content, buildYAMLTarget(t))
+		for i, t := range g.children {
+			seq.Content = append(seq.Content, buildYAMLTarget(t, fmt.Sprintf("%s[%d]", childPath, i), diags))
 		}
 		m.Content = append(m.Content, seq)
 	}
 	return m
 }
 
-func buildYAMLTarget(t omnist.Target) *yamllib.Node {
+func buildYAMLTarget(t omnist.Target, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	if node, ok := t.Node(); ok {
-		return buildYAMLNode(node)
+		return buildYAMLNode(node, path, diags)
 	}
 	v, _ := t.Value()
-	return buildYAMLTargetScalar(v)
+	return buildYAMLTargetScalar(v, path, diags)
 }
 
-func buildYAMLTargetScalar(v omnist.Value) *yamllib.Node {
+func buildYAMLTargetScalar(v omnist.Value, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	if v.IsNull {
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!null", Value: "null"}
 	}
-	return buildYAMLScalar(v.Scalar)
+	return buildYAMLScalar(v.Scalar, path, diags)
 }
 
 // buildYAMLScalar renders one leaf as a yamllib.Node, deciding bare-vs-quoted
@@ -198,7 +202,7 @@ func buildYAMLTargetScalar(v omnist.Value) *yamllib.Node {
 //     Write's doc comment).
 //   - omnist.KindTime is double-quoted (forced to string on read-back — see
 //     Write's doc comment for why this is the one unavoidable case).
-func buildYAMLScalar(s omnist.Scalar) *yamllib.Node {
+func buildYAMLScalar(s omnist.Scalar, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	switch s.Kind {
 	case omnist.KindString:
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: s.Str}
@@ -215,6 +219,12 @@ func buildYAMLScalar(s omnist.Scalar) *yamllib.Node {
 	case omnist.KindDate:
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!timestamp", Value: omnist.FormatISODate(s.Date)}
 	case omnist.KindTime:
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatTemporalStringified,
+			Message:  "YAML's core schema has no standalone time type, so a bare time-of-day leaf is quoted (forced to string on read-back) instead",
+			Severity: omnist.SeverityWarning,
+		})
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: omnist.FormatISOTime(s.Time)}
 	default: // omnist.KindDateTime
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!timestamp", Value: omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)}

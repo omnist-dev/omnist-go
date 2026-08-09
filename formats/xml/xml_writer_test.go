@@ -18,7 +18,7 @@ func TestWriteXMLPreservesInterleaving(t *testing.T) {
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B")))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", root))
 
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestWriteXMLRepeatedElementsNoWrapper(t *testing.T) {
 		AddValue("items", omnist.ScalarValue(omnist.NewStringScalar("b"))).
 		AddValue("items", omnist.ScalarValue(omnist.NewStringScalar("c")))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", root))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestWriteXMLRejectsMultipleTopLevelEdges(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().
 		AddValue("a", omnist.ScalarValue(omnist.NewStringScalar("1"))).
 		AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("2"))))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for multiple top-level edges")
 	}
@@ -77,7 +77,7 @@ func TestWriteXMLRejectsMultipleTopLevelEdges(t *testing.T) {
 
 func TestWriteXMLRejectsEmptyTopLevel(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode())
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for a omnist.Document with no top-level edges")
 	}
@@ -91,7 +91,7 @@ func TestWriteXMLRejectsEmptyTopLevel(t *testing.T) {
 
 func TestWriteXMLRejectsBareScalarRoot(t *testing.T) {
 	d := omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar("hi")))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for a bare scalar root")
 	}
@@ -109,7 +109,7 @@ func TestWriteXMLRoundTripsWorkedExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestWriteXMLRoundTripsSelfClosingLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestWriteXMLScalarKinds(t *testing.T) {
 		AddValue("bool", omnist.ScalarValue(omnist.NewBooleanScalar(true))).
 		AddValue("date", omnist.ScalarValue(omnist.NewDateScalar(omnist.DateValue{Year: 2024, Month: 1, Day: 15})))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", root))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestWriteXMLBooleanFalseAndTemporalKinds(t *testing.T) {
 			Time: omnist.TimeValue{Hour: 9, Minute: 0},
 		})))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", root))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestWriteXMLNaNInfinity(t *testing.T) {
 		AddValue("inf", omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(1)))).
 		AddValue("ninf", omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(-1))))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", root))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,13 +217,19 @@ func TestWriteXMLNaNInfinity(t *testing.T) {
 
 func TestWriteXMLNullLeafReportsAdjustment(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.NullValue()))
-	_, err := Write(d)
-	if err == nil {
-		t.Fatal("expected a omnist.Diagnostic reporting the null adjustment")
+	out, diags, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
 	}
-	diag, ok := err.(omnist.Diagnostic)
-	if !ok || diag.Code != omnist.CodeFormatNullUnrepresentable {
-		t.Fatalf("got %v (%T), want omnist.CodeFormatNullUnrepresentable", err, err)
+	if out != "<a></a>" {
+		t.Errorf("out = %q, want the null leaf written as an empty element", out)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	}
+	diag := diags[0]
+	if diag.Code != omnist.CodeFormatNullUnrepresentable {
+		t.Fatalf("got code %v, want omnist.CodeFormatNullUnrepresentable", diag.Code)
 	}
 	if diag.Severity != omnist.SeverityWarning {
 		t.Errorf("got severity %v, want omnist.SeverityWarning", diag.Severity)
@@ -237,7 +243,7 @@ func TestWriteXMLNullLeafReportsAdjustment(t *testing.T) {
 
 func TestWriteXMLRejectsInvalidLabel(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("1bad", omnist.ScalarValue(omnist.NewStringScalar("x"))))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for an invalid XML element name")
 	}
@@ -249,7 +255,7 @@ func TestWriteXMLRejectsInvalidLabel(t *testing.T) {
 
 func TestWriteXMLRejectsColonInLabel(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("ns:b", omnist.ScalarValue(omnist.NewStringScalar("x"))))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for a colon in a label")
 	}
@@ -259,7 +265,7 @@ func TestWriteXMLAcceptsNestedInvalidLabel(t *testing.T) {
 	// A nested (non-root) label must be validated too, not just the root.
 	inner := omnist.NewNode().AddValue("bad label", omnist.ScalarValue(omnist.NewStringScalar("x")))
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", inner))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error for an invalid nested label")
 	}

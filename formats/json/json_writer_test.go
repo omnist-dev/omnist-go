@@ -16,7 +16,7 @@ func TestWriteJSONGroupingAndCountOne(t *testing.T) {
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
 		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))))
-	got, err := Write(doc)
+	got, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestWriteJSONGroupingAndCountOne(t *testing.T) {
 
 func TestWriteJSONSingleLabelIsBareValueNotList(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddValue("tag", omnist.ScalarValue(omnist.NewStringScalar("x"))))
-	got, err := Write(doc)
+	got, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -49,13 +49,33 @@ func TestWriteJSONTemporalStringified(t *testing.T) {
 			Date: omnist.DateValue{Year: 2024, Month: 1, Day: 2},
 			Time: omnist.TimeValue{Hour: 10, Minute: 30, Second: 5, Nanosecond: 250000000},
 		}))))
-	got, err := Write(doc)
+	got, diags, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
 	want := `{"d": "2024-01-02", "t": "10:30", "dt": "2024-01-02T10:30:05.25"}`
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+
+	// Issue #49: each of the three stringified temporal leaves is now
+	// reported as a format.temporal-stringified adjustment alongside the
+	// successful write (spec §8.5.3).
+	wantPaths := map[string]bool{"$.d": true, "$.t": true, "$.dt": true}
+	if len(diags) != len(wantPaths) {
+		t.Fatalf("diags = %v, want exactly one per temporal leaf (%v)", diags, wantPaths)
+	}
+	for _, d := range diags {
+		if d.Code != omnist.CodeFormatTemporalStringified {
+			t.Errorf("diagnostic code = %s, want %s", d.Code, omnist.CodeFormatTemporalStringified)
+		}
+		if !wantPaths[d.Path] {
+			t.Errorf("unexpected diagnostic path %q", d.Path)
+		}
+		delete(wantPaths, d.Path)
+	}
+	if len(wantPaths) != 0 {
+		t.Errorf("missing diagnostics for paths %v", wantPaths)
 	}
 
 	// A writer MUST stringify; the result is plain omnist.KindString on read back
@@ -92,7 +112,7 @@ func TestWriteJSONTimeVariants(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := omnist.ValueDocument(omnist.ScalarValue(omnist.NewTimeScalar(tc.tv)))
-			got, err := Write(doc)
+			got, _, err := Write(doc)
 			if err != nil {
 				t.Fatalf("WriteJSON failed: %v", err)
 			}
@@ -121,13 +141,24 @@ func TestWriteJSONNaNInfinitySubstitutesNull(t *testing.T) {
 				AddValue("before", omnist.ScalarValue(omnist.NewStringScalar("kept"))).
 				AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(tc.num))).
 				AddValue("after", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(7)))))
-			got, err := Write(doc)
+			got, diags, err := Write(doc)
 			if err != nil {
 				t.Fatalf("WriteJSON failed: %v", err)
 			}
 			want := `{"before": "kept", "n": null, "after": 7}`
 			if got != want {
 				t.Errorf("got %q, want %q (rest of the document must be otherwise unaffected)", got, want)
+			}
+			// Issue #49: the substitution is now reported alongside the
+			// successful write (spec §8.5.3).
+			if len(diags) != 1 {
+				t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+			}
+			if diags[0].Code != omnist.CodeFormatFloatSpecial {
+				t.Errorf("diagnostic code = %s, want %s", diags[0].Code, omnist.CodeFormatFloatSpecial)
+			}
+			if diags[0].Path != "$.n" {
+				t.Errorf("diagnostic path = %s, want $.n", diags[0].Path)
 			}
 		})
 	}
@@ -139,7 +170,7 @@ func TestWriteJSONStrictFailsOnNaNInfinity(t *testing.T) {
 	cases := []float64{math.NaN(), math.Inf(1), math.Inf(-1)}
 	for _, num := range cases {
 		doc := omnist.NodeDocument(omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(num))))
-		_, err := WriteStrict(doc)
+		_, _, err := WriteStrict(doc)
 		if err == nil {
 			t.Fatalf("WriteStrict(%v) succeeded, want an error", num)
 		}
@@ -163,7 +194,7 @@ func TestWriteJSONStrictFailsOnNaNInfinityInsideList(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().
 		AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(1))).
 		AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))))
-	_, err := WriteStrict(doc)
+	_, _, err := WriteStrict(doc)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -178,7 +209,7 @@ func TestWriteJSONStrictFailsOnNaNInfinityInsideList(t *testing.T) {
 
 func TestWriteJSONStrictSucceedsOnFiniteValues(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(3.5))))
-	got, err := WriteStrict(doc)
+	got, _, err := WriteStrict(doc)
 	if err != nil {
 		t.Fatalf("WriteJSONStrict failed: %v", err)
 	}
@@ -188,7 +219,7 @@ func TestWriteJSONStrictSucceedsOnFiniteValues(t *testing.T) {
 }
 
 func TestWriteJSONStrictFailsOnBareValueDocument(t *testing.T) {
-	_, err := WriteStrict(omnist.ValueDocument(omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))))
+	_, _, err := WriteStrict(omnist.ValueDocument(omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -202,7 +233,7 @@ func TestWriteJSONStrictFailsOnBareValueDocument(t *testing.T) {
 
 func TestWriteJSONNumberAlwaysDistinctFromInteger(t *testing.T) {
 	doc := omnist.ValueDocument(omnist.ScalarValue(omnist.NewNumberScalar(5)))
-	got, err := Write(doc)
+	got, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -223,7 +254,7 @@ func TestWriteJSONNumberAlwaysDistinctFromInteger(t *testing.T) {
 func TestWriteJSONStringEscaping(t *testing.T) {
 	s := "\"\\\n\r\t\x00\x01\x1f\bg\fh世"
 	doc := omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar(s)))
-	text, err := Write(doc)
+	text, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -260,7 +291,7 @@ func TestWriteJSONBareValueDocument(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Write(tc.doc)
+			got, _, err := Write(tc.doc)
 			if err != nil {
 				t.Fatalf("WriteJSON failed: %v", err)
 			}
@@ -272,7 +303,7 @@ func TestWriteJSONBareValueDocument(t *testing.T) {
 }
 
 func TestWriteJSONEmptyNode(t *testing.T) {
-	got, err := Write(omnist.NodeDocument(omnist.NewNode()))
+	got, _, err := Write(omnist.NodeDocument(omnist.NewNode()))
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -283,7 +314,7 @@ func TestWriteJSONEmptyNode(t *testing.T) {
 
 func TestWriteJSONNestedNode(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddNode("a", omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1))))))
-	got, err := Write(doc)
+	got, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}

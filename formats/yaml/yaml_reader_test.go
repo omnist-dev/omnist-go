@@ -661,7 +661,7 @@ func TestYAMLRoundTripProperty(t *testing.T) {
 		omnist.ValueDocument(omnist.NullValue()),
 	}
 	for i, d := range cases {
-		out, err := Write(d)
+		out, _, err := Write(d)
 		if err != nil {
 			t.Fatalf("case %d: WriteYAML: %v", i, err)
 		}

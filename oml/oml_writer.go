@@ -43,7 +43,27 @@ var omlQuotedLabelWords = map[string]bool{
 // reasonable, deterministic, self-consistent choice, documented here per
 // the issue's instruction to flag this as a judgment call rather than a
 // spec requirement.
-func Write(d omnist.Document, compact bool) string {
+// Write's return also carries a []omnist.Diagnostic, matching every other
+// codec's writer in this package after issue #49's ok:true+diagnostics
+// channel — but not an error. Every other writer added an error return
+// (or, for JSON/YAML, kept one already present) because at least one
+// leaf shape or document shape genuinely has no spelling in that format
+// (TOML's null, XML's multi-root, JSON's strict-mode NaN/Infinity). OML
+// has no such case: every omnist.Kind has a native, lossless OML
+// spelling (§4.2's grammar covers every scalar kind directly, including
+// null, NaN, and Infinity), so nothing here can ever fail and nothing
+// here ever needs to report an adjustment — the diagnostics slice is
+// always nil today. Adding an always-nil error return anyway, purely for
+// uniformity with the other five signatures, would be exactly the
+// "unused signature element" the issue calls out as a judgment call to
+// avoid: a caller (or a future maintainer) reading `(string, error)`
+// reasonably infers there's a failure mode to check for, and OML has
+// none. `(string, []omnist.Diagnostic)` is the honest middle ground:
+// callers that already loop over every writer's diagnostics (the CLI,
+// the conformance driver) can treat OML uniformly with the rest, without
+// this package claiming a failure mode or an adjustment mode it doesn't
+// have.
+func Write(d omnist.Document, compact bool) (string, []omnist.Diagnostic) {
 	var b strings.Builder
 	if d.IsNode {
 		if compact {
@@ -60,14 +80,14 @@ func Write(d omnist.Document, compact bool) string {
 				b.WriteByte('\n')
 			}
 		}
-		return b.String()
+		return b.String(), nil
 	}
 	writeOMLValue(&b, d.Value)
-	return b.String()
+	return b.String(), nil
 }
 
 // WriteCompact is a convenience wrapper for Write(d, true).
-func WriteCompact(d omnist.Document) string { return Write(d, true) }
+func WriteCompact(d omnist.Document) (string, []omnist.Diagnostic) { return Write(d, true) }
 
 const omlIndentUnit = "  "
 
