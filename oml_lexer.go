@@ -167,12 +167,9 @@ func (l *lexer) skipTrivia() (sawSep bool, sepLine, sepCol int) {
 }
 
 var (
-	reDateTime = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?([+-]\d{2}:\d{2})?`)
-	reDate     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}`)
-	reTime     = regexp.MustCompile(`^\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?([+-]\d{2}:\d{2})?`)
-	reNumber   = regexp.MustCompile(`^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)`)
-	reInteger  = regexp.MustCompile(`^-?\d+`)
-	reIdent    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*`)
+	reNumber  = regexp.MustCompile(`^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)`)
+	reInteger = regexp.MustCompile(`^-?\d+`)
+	reIdent   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*`)
 )
 
 // remainingString returns the source from the current position onward, as
@@ -213,21 +210,21 @@ func (l *lexer) next() (token, *ParseError) {
 	rest := l.remainingString()
 
 	// Rule 3: DATETIME.
-	if m := reDateTime.FindString(rest); m != "" {
+	if m := ISODateTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDateTime, text: m, dateTimeVal: parseDateTimeValue(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDateTime, text: m, dateTimeVal: ParseISODateTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 4: DATE (not followed by a valid DATETIME, already excluded above).
-	if m := reDate.FindString(rest); m != "" {
+	if m := ISODateRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDate, text: m, dateVal: parseDateValue(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDate, text: m, dateVal: ParseISODate(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 5: TIME.
-	if m := reTime.FindString(rest); m != "" {
+	if m := ISOTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokTime, text: m, timeVal: parseTimeValue(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokTime, text: m, timeVal: ParseISOTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 6: NUMBER (decimal or exponent form).
@@ -318,70 +315,6 @@ func matchReservedFloat(rest string) (matched string, val float64, ok bool) {
 		return "inf", math.Inf(1), true
 	}
 	return "", 0, false
-}
-
-// --- temporal value construction ---
-//
-// parseDateValue/parseTimeValue/parseDateTimeValue are only ever called on
-// text already matched by reDate/reTime/reDateTime, which fully pin the
-// digit layout these functions assume (down to field widths). Given that
-// precondition the Sscanf/index calls below cannot fail, so — unlike the
-// lexer's other decoders — these deliberately have no error return: an
-// error-returning version would carry a permanently-dead "malformed"
-// branch that no input could ever reach (regex guarantees the format),
-// which is worse for coverage and for readability than asserting the
-// precondition in this comment once, here.
-
-func parseDateValue(s string) DateValue {
-	var y, mo, d int
-	_, _ = fmt.Sscanf(s, "%4d-%2d-%2d", &y, &mo, &d)
-	return DateValue{Year: y, Month: mo, Day: d}
-}
-
-func parseTimeValue(s string) TimeValue {
-	rest := s
-	var hh, mm int
-	_, _ = fmt.Sscanf(rest, "%2d:%2d", &hh, &mm)
-	rest = rest[5:]
-	tv := TimeValue{Hour: hh, Minute: mm}
-	if strings.HasPrefix(rest, ":") {
-		var ss int
-		_, _ = fmt.Sscanf(rest[1:], "%2d", &ss)
-		tv.Second = ss
-		rest = rest[3:]
-		if strings.HasPrefix(rest, ".") {
-			end := 1
-			for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
-				end++
-			}
-			tv.Nanosecond = fracToNanos(rest[1:end])
-			rest = rest[end:]
-		}
-	}
-	if len(rest) == 6 && (rest[0] == '+' || rest[0] == '-') {
-		var oh, om int
-		_, _ = fmt.Sscanf(rest[1:], "%2d:%2d", &oh, &om)
-		sign := 1
-		if rest[0] == '-' {
-			sign = -1
-		}
-		tv.HasOffset = true
-		tv.OffsetSeconds = sign * (oh*3600 + om*60)
-	}
-	return tv
-}
-
-func parseDateTimeValue(s string) DateTimeValue {
-	idx := strings.IndexByte(s, 'T')
-	return DateTimeValue{Date: parseDateValue(s[:idx]), Time: parseTimeValue(s[idx+1:])}
-}
-
-// fracToNanos converts a fractional-second digit string (1-6 digits, as
-// matched by the grammar) to nanoseconds, right-padding to 9 digits.
-func fracToNanos(digits string) int {
-	padded := (digits + "000000000")[:9]
-	n, _ := strconv.Atoi(padded)
-	return n
 }
 
 // --- string scanning ---

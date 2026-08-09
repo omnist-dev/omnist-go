@@ -452,9 +452,9 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // constructs a *unstable.ParserError with a genuine, non-nil Highlight —
 // a real subslice of the input — so the type assertion below is
 // unchecked and Highlight is trusted to be non-nil, the same precondition
-// -trusting convention oml_lexer.go's parseDateValue/parseTimeValue
+// -trusting convention temporal.go's ParseISODate/ParseISOTime
 // already use in this package (see that file's comment above
-// parseDateValue) rather than carrying a defensive fallback branch no
+// ParseISODate) rather than carrying a defensive fallback branch no
 // input can reach.
 func (r *tomlReader) wrapParserError(err error) error {
 	pe := err.(*unstable.ParserError) //nolint:errorlint // see doc comment: the library's own error is always this concrete type
@@ -483,9 +483,9 @@ func (r *tomlReader) readScalar(v *unstable.Node) (Value, error) {
 	case unstable.Float:
 		return ScalarValue(NewNumberScalar(parseTOMLFloat(string(v.Data)))), nil
 	case unstable.LocalDate:
-		return ScalarValue(NewDateScalar(parseDateValue(string(v.Data)))), nil
+		return ScalarValue(NewDateScalar(ParseISODate(string(v.Data)))), nil
 	case unstable.LocalTime:
-		return ScalarValue(NewTimeScalar(parseTimeValue(string(v.Data)))), nil
+		return ScalarValue(NewTimeScalar(ParseISOTime(string(v.Data)))), nil
 	default: // unstable.LocalDateTime, unstable.DateTime
 		return ScalarValue(NewDateTimeScalar(parseTOMLDateTime(string(v.Data)))), nil
 	}
@@ -503,7 +503,7 @@ func (r *tomlReader) readScalar(v *unstable.Node) (Value, error) {
 // see ReadTOML's doc comment on the sign/radix-prefix combination the
 // parser itself rejects before this function ever sees the text), so
 // SetString cannot fail on well-formed input, so — mirroring
-// oml_lexer.go's parseDateValue/parseTimeValue convention of trusting a
+// temporal.go's ParseISODate/ParseISOTime convention of trusting a
 // checked precondition rather than carrying a permanently-dead error
 // branch (see that file's comment for the same reasoning applied to a
 // different precondition) — this has no error return at all.
@@ -547,22 +547,22 @@ func parseTOMLFloat(raw string) float64 {
 // text into a DateTimeValue. TOML's grammar allows 'T', 't', or a literal
 // space as the date/time separator (all three confirmed empirically to
 // reach Kind=LocalDateTime/DateTime, not rejected), and either 'Z'/'z' or
-// a +HH:MM/-HH:MM suffix for an offset — wider than oml_lexer.go's own
-// parseDateTimeValue (OML's grammar only allows 'T', matching reDateTime),
+// a +HH:MM/-HH:MM suffix for an offset — wider than temporal.go's own
+// ParseISODateTime (OML's grammar only allows 'T', matching ISODateTimeRegexp),
 // so this does not reuse it directly, though it does reuse
-// parseDateValue/parseTimeValue (document-model-neutral, format-agnostic
-// field parsers oml_lexer.go already defines) for the date and
+// ParseISODate/ParseISOTime (document-model-neutral, format-agnostic
+// field parsers temporal.go already defines) for the date and
 // (offset-less) time portions.
 func parseTOMLDateTime(s string) DateTimeValue {
 	datePart := s[:10]
 	timePart := s[11:]
 	var tv TimeValue
 	if n := len(timePart); n > 0 && (timePart[n-1] == 'Z' || timePart[n-1] == 'z') {
-		tv = parseTimeValue(timePart[:n-1])
+		tv = ParseISOTime(timePart[:n-1])
 		tv.HasOffset = true
 		tv.OffsetSeconds = 0
 	} else {
-		tv = parseTimeValue(timePart)
+		tv = ParseISOTime(timePart)
 	}
-	return DateTimeValue{Date: parseDateValue(datePart), Time: tv}
+	return DateTimeValue{Date: ParseISODate(datePart), Time: tv}
 }

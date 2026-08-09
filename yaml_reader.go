@@ -481,7 +481,7 @@ func resolveYAMLScalar(n *yaml.Node) Value {
 		return ScalarValue(NewDateTimeScalar(parseYAMLDateTime(s)))
 	}
 	if reYAMLDate.MatchString(s) {
-		return ScalarValue(NewDateScalar(parseDateValue(s)))
+		return ScalarValue(NewDateScalar(ParseISODate(s)))
 	}
 	return ScalarValue(NewStringScalar(s))
 }
@@ -530,15 +530,15 @@ func parseYAMLInt(s string) (*big.Int, bool) {
 // parseYAMLDateTime converts a scalar's text into a DateTimeValue. Its
 // only caller (resolveYAMLScalar) checks reYAMLDateTime.MatchString(s)
 // first and only calls this on success, so FindStringSubmatch here is
-// guaranteed non-nil — mirroring oml_lexer.go's parseDateValue/
-// parseTimeValue precondition convention (see that file's comment above
-// parseDateValue), this does not carry a permanently-dead "no match"
+// guaranteed non-nil — mirroring temporal.go's ParseISODate/
+// ParseISOTime precondition convention (see that file's comment above
+// ParseISODate), this does not carry a permanently-dead "no match"
 // branch for a case the precondition already excludes.
 //
-// Unlike OML's reDateTime (which oml_lexer.go's parseDateTimeValue
+// Unlike OML's ISODateTimeRegexp (which temporal.go's ParseISODateTime
 // assumes), YAML's timestamp type additionally allows a lowercase 't' or a
 // literal space as the date/time separator and a bare 'Z' for UTC, so this
-// does not reuse oml_lexer.go's parseDateTimeValue directly (its
+// does not reuse temporal.go's ParseISODateTime directly (its
 // Sscanf-based implementation is pinned to the OML lexer's own narrower
 // regex) and instead extracts fields from reYAMLDateTime's own capture
 // groups.
@@ -578,4 +578,3 @@ func parseYAMLDateTime(s string) DateTimeValue {
 		Time: tv,
 	}
 }
-

@@ -3,7 +3,6 @@ package omnist
 import (
 	"math"
 	"math/big"
-	"regexp"
 )
 
 // This file implements materialize(document, schema) per spec §7.1 (the
@@ -147,8 +146,8 @@ func materializeScalar(target Target, r resolved, path Path, result *[]Diagnosti
 //     source integer "looks whole" — §7.2's easy-to-miss detail that the
 //     table's "Yes" does not itself spell out the target representation.
 //   - date/time/datetime targets: accepted only if the source is a string
-//     matching that exact kind's spelling per matchesTemporalKind (reused
-//     from oml_lexer.go's own lexical regexes — see that function's doc
+//     matching that exact kind's spelling per MatchesISOKind (reused
+//     from temporal.go's own lexical regexes — see that function's doc
 //     comment for why reuse rather than a new parser is correct here).
 //   - anything else: undefined (rejected).
 func tryUpgrade(s Scalar, targetKind ScalarKind) (Scalar, bool) {
@@ -168,20 +167,20 @@ func tryUpgrade(s Scalar, targetKind ScalarKind) (Scalar, bool) {
 		f, _ := new(big.Float).SetInt(s.Int).Float64()
 		return NewNumberScalar(f), true
 	case KindDate:
-		if s.Kind != KindString || !matchesTemporalKind(s.Str, temporalDate) {
+		if s.Kind != KindString || !MatchesISOKind(s.Str, TemporalDate) {
 			return Scalar{}, false
 		}
-		return NewDateScalar(parseDateValue(s.Str)), true
+		return NewDateScalar(ParseISODate(s.Str)), true
 	case KindTime:
-		if s.Kind != KindString || !matchesTemporalKind(s.Str, temporalTime) {
+		if s.Kind != KindString || !MatchesISOKind(s.Str, TemporalTime) {
 			return Scalar{}, false
 		}
-		return NewTimeScalar(parseTimeValue(s.Str)), true
+		return NewTimeScalar(ParseISOTime(s.Str)), true
 	case KindDateTime:
-		if s.Kind != KindString || !matchesTemporalKind(s.Str, temporalDateTime) {
+		if s.Kind != KindString || !MatchesISOKind(s.Str, TemporalDateTime) {
 			return Scalar{}, false
 		}
-		return NewDateTimeScalar(parseDateTimeValue(s.Str)), true
+		return NewDateTimeScalar(ParseISODateTime(s.Str)), true
 	default:
 		// KindString, KindBoolean: no cross-kind upgrade path exists for
 		// either (boolean per the rule above; string is never produced by
@@ -207,50 +206,4 @@ func integerFromExactFloat(f float64) (Scalar, bool) {
 	}
 	bi, _ := bf.Int(nil)
 	return NewIntegerScalar(bi), true
-}
-
-// temporalKind selects which of oml_lexer.go's three fully-anchored
-// temporal regexes matchesTemporalKind checks against.
-type temporalKind int
-
-const (
-	temporalDate temporalKind = iota
-	temporalTime
-	temporalDateTime
-)
-
-// matchesTemporalKind reports whether s is *exactly* (start to end) the
-// spelling reDate/reTime/reDateTime (oml_lexer.go) accept for kind — the
-// "exact spelling matches_kind() accepts for that specific kind, not
-// merely parseable by a looser library function" rule from §7.2's
-// try_upgrade notes. oml_lexer.go's own use of these regexes is via
-// FindString on a remaining-input tail (correct for a lexer scanning
-// forward through a longer document), which only pins the *start* of a
-// match, not the end — reusing them here needs a full-string check, so
-// this wraps FindString with an explicit "the match is the whole string"
-// comparison rather than introducing new regexes with different anchoring
-// (which is exactly the kind of drift the issue warns against: "reuse the
-// EXACT same format-matching logic rather than writing a new, possibly
-// looser or stricter parser").
-//
-// This is deliberately the OML lexer's spelling (§4's grammar), not
-// toml_reader.go's parseTOMLDateTime (which documents itself as *wider*
-// than oml_lexer.go's format: TOML allows a lowercase or space date/time
-// separator and a bare 'Z'/'z' offset). materialize's source strings
-// arrive from JSON/YAML/arbitrary Document construction, not specifically
-// from a TOML read, and §7.2's rule is a single canonical spelling per
-// kind — the OML lexer's spelling is that spelling, since OML is the
-// format whose native literal syntax the temporal scalar kinds were
-// designed around (§2.2.1/§4).
-func matchesTemporalKind(s string, kind temporalKind) bool {
-	var re *regexp.Regexp
-	switch kind {
-	case temporalDate:
-		re = reDate
-	case temporalTime:
-		re = reTime
-	case temporalDateTime:
-		re = reDateTime
-	}
-	return re.FindString(s) == s
 }
