@@ -1,23 +1,26 @@
-package omnist_test
+package algebra_test
 
-// External "omnist_test" package: these algebra.go tests only ever needed
+// External "algebra_test" package: these algebra.go tests only ever needed
 // mustParseOSD plus exported API (SatisfiableSet/IsEmpty/Prune/Schema/
 // Record/Field/RefType/DefaultCardinality), so they moved out; TestLe
 // (the one case needing unexported `le`) stayed behind in algebra_test.go.
-// See referee_test.go's comment for why this split exists.
+// See algebra_external_test_helpers_test.go's comment for why this split
+// is kept even though algebra (unlike root omnist) has no import-cycle
+// reason to require it.
 
 import (
 	"sort"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // --- satisfiable_set / is_empty (§6.4) ---
 
 func TestSatisfiableSetMandatorySelfCycleUnsatisfiable(t *testing.T) {
 	s := mustParseOSD(t, `record Node { "child": Node } root Node`)
-	sat := omnist.SatisfiableSet(s)
+	sat := algebra.SatisfiableSet(s)
 	if sat["Node"] {
 		t.Fatalf("Node should be unsatisfiable, got sat = %+v", sat)
 	}
@@ -25,7 +28,7 @@ func TestSatisfiableSetMandatorySelfCycleUnsatisfiable(t *testing.T) {
 
 func TestSatisfiableSetOptionalCycleSatisfiable(t *testing.T) {
 	s := mustParseOSD(t, `record Node { "child" [0,1]: Node } root Node`)
-	sat := omnist.SatisfiableSet(s)
+	sat := algebra.SatisfiableSet(s)
 	if !sat["Node"] {
 		t.Fatalf("Node should be satisfiable, got sat = %+v", sat)
 	}
@@ -33,7 +36,7 @@ func TestSatisfiableSetOptionalCycleSatisfiable(t *testing.T) {
 
 func TestSatisfiableSetAnyFieldSatisfiable(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a": string, "b": any } root R`)
-	sat := omnist.SatisfiableSet(s)
+	sat := algebra.SatisfiableSet(s)
 	if !sat["R"] {
 		t.Fatalf("R (all scalar/any mandatory fields) should be satisfiable, got sat = %+v", sat)
 	}
@@ -48,7 +51,7 @@ func TestSatisfiableSetTransitive(t *testing.T) {
 		record Root { "m": Mid }
 		root Root
 	`)
-	sat := omnist.SatisfiableSet(s)
+	sat := algebra.SatisfiableSet(s)
 	for _, name := range []string{"Leaf", "Mid", "Root"} {
 		if !sat[name] {
 			t.Errorf("%s should be satisfiable, got sat = %+v", name, sat)
@@ -62,7 +65,7 @@ func TestSatisfiableSetUnsatisfiableBlocksDependents(t *testing.T) {
 		record Holder { "n": Node }
 		root Holder
 	`)
-	sat := omnist.SatisfiableSet(s)
+	sat := algebra.SatisfiableSet(s)
 	if sat["Node"] {
 		t.Errorf("Node should be unsatisfiable")
 	}
@@ -73,14 +76,14 @@ func TestSatisfiableSetUnsatisfiableBlocksDependents(t *testing.T) {
 
 func TestIsEmptyTrueWhenRootUnsatisfiable(t *testing.T) {
 	s := mustParseOSD(t, `record Node { "child": Node } root Node`)
-	if !omnist.IsEmpty(s) {
+	if !algebra.IsEmpty(s) {
 		t.Fatalf("expected IsEmpty true for unsatisfiable root")
 	}
 }
 
 func TestIsEmptyFalseWhenRootSatisfiable(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a": string } root R`)
-	if omnist.IsEmpty(s) {
+	if algebra.IsEmpty(s) {
 		t.Fatalf("expected IsEmpty false for satisfiable root")
 	}
 }
@@ -101,7 +104,7 @@ func TestSatisfiableSetDeterministicAcrossRuns(t *testing.T) {
 	`)
 	var first []string
 	for i := 0; i < 25; i++ {
-		sat := omnist.SatisfiableSet(s)
+		sat := algebra.SatisfiableSet(s)
 		var names []string
 		for name, ok := range sat {
 			if ok {
@@ -132,7 +135,7 @@ func TestPruneRemovesUnreachableRecords(t *testing.T) {
 		record Unreachable { "x": string }
 		root R
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	if _, ok := p.Env["Unreachable"]; ok {
 		t.Fatalf("Unreachable should have been removed, env = %+v", p.Env)
 	}
@@ -143,7 +146,7 @@ func TestPruneRemovesUnreachableRecords(t *testing.T) {
 
 func TestPruneRemovesMaxZeroFields(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a" [0,0]: string, "b": string } root R`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	rec := p.Env["R"]
 	if len(rec.Fields) != 1 || rec.Fields[0].Label != "b" {
 		t.Fatalf("expected only field b to survive, got %+v", rec.Fields)
@@ -156,7 +159,7 @@ func TestPruneRemovesOptionalUnsatisfiableFields(t *testing.T) {
 		record R { "n" [0,1]: Node, "v": string }
 		root R
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	rec := p.Env["R"]
 	if len(rec.Fields) != 1 || rec.Fields[0].Label != "v" {
 		t.Fatalf("expected only field v to survive, got %+v", rec.Fields)
@@ -169,7 +172,7 @@ func TestPruneRemovesRecordsLeftUnreachableAfterFieldPruning(t *testing.T) {
 		record R { "n" [0,1]: Node, "v": string }
 		root R
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	if _, ok := p.Env["Node"]; ok {
 		t.Fatalf("Node should have been dropped once R's only reference to it was pruned, env = %+v", p.Env)
 	}
@@ -180,7 +183,7 @@ func TestPruneRootUnsatisfiableKeepsRootFieldsUntouched(t *testing.T) {
 		record Node { "child": Node, "extra" [0,0]: string }
 		root Node
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	rec := p.Env["Node"]
 	// The root is unsatisfiable, so field pruning (including the max==0
 	// removal that would normally strip "extra") MUST NOT apply to it.
@@ -200,7 +203,7 @@ func TestPruneRootUnsatisfiableReachabilityFollowsEveryRootField(t *testing.T) {
 		record OnlyViaBadField { "v": string }
 		root Node
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	if _, ok := p.Env["OnlyViaBadField"]; !ok {
 		t.Fatalf("OnlyViaBadField must be kept: reachability at an unsatisfiable root follows every field, env = %+v", p.Env)
 	}
@@ -215,7 +218,7 @@ func TestPruneDeterministicOrderAcrossRuns(t *testing.T) {
 	`)
 	var first []string
 	for i := 0; i < 25; i++ {
-		p := omnist.Prune(s)
+		p := algebra.Prune(s)
 		if first == nil {
 			first = append([]string(nil), p.EnvOrder...)
 			continue
@@ -239,7 +242,7 @@ func TestPruneEnvOrderMatchesDeclarationOrderFiltered(t *testing.T) {
 		record D { "v": string }
 		root A
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	want := []string{"A", "B", "D"}
 	if len(p.EnvOrder) != len(want) {
 		t.Fatalf("EnvOrder = %v, want %v", p.EnvOrder, want)
@@ -253,7 +256,7 @@ func TestPruneEnvOrderMatchesDeclarationOrderFiltered(t *testing.T) {
 
 func TestPruneUnboundedMaxFieldSurvives(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a" [0,]: string } root R`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	rec := p.Env["R"]
 	if len(rec.Fields) != 1 {
 		t.Fatalf("unbounded-max field must survive prune, got %+v", rec.Fields)
@@ -274,7 +277,7 @@ func TestPruneReachabilityDanglingRefStopsWithoutPanic(t *testing.T) {
 		},
 		EnvOrder: []string{"R"},
 	}
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	if _, ok := p.Env["R"]; !ok {
 		t.Fatalf("R should remain, env = %+v", p.Env)
 	}
@@ -289,7 +292,7 @@ func TestPruneKeepsSatisfiableOptionalRefField(t *testing.T) {
 		record R { "n" [0,1]: Leaf }
 		root R
 	`)
-	p := omnist.Prune(s)
+	p := algebra.Prune(s)
 	rec := p.Env["R"]
 	if len(rec.Fields) != 1 || rec.Fields[0].Label != "n" {
 		t.Fatalf("optional field to a satisfiable record must survive, got %+v", rec.Fields)

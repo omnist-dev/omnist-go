@@ -421,20 +421,20 @@ func TestCardinalityMessageBoundedAndUnbounded(t *testing.T) {
 	}
 }
 
-// TestResolveTypeDefaultCase exercises resolveType's defensive default
+// TestResolveTypeDefaultCase exercises ResolveType's defensive default
 // branch, which only guards against a future TypeKind constant added
-// without updating resolveType — schema.go's exported Type struct makes
+// without updating ResolveType — schema.go's exported Type struct makes
 // this reachable from outside the package too, so it is not truly dead
 // code, just never hit by any legally-constructed Type today.
 func TestResolveTypeDefaultCase(t *testing.T) {
-	got := resolveType(personSchema(), Type{Kind: TypeKind(99)})
-	if got.kind != resolvedAny {
-		t.Fatalf("resolveType(unknown kind) = %+v, want resolvedAny", got)
+	got := ResolveType(personSchema(), Type{Kind: TypeKind(99)})
+	if got.Kind != ResolvedAny {
+		t.Fatalf("ResolveType(unknown kind) = %+v, want ResolvedAny", got)
 	}
 }
 
 // TestValidateUnresolvableRef covers a Ref type whose name is absent from
-// Env — see resolved's doc comment: that's a schema.* well-formedness
+// Env — see Resolved's doc comment: that's a schema.* well-formedness
 // concern from issue #5, not something validate re-checks, but validate
 // must still behave sanely (treat it as a closed record with no fields)
 // rather than panicking. Exercises conformRecord's and findField's nil-rec

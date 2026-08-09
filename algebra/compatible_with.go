@@ -1,4 +1,6 @@
-package omnist
+package algebra
+
+import "github.com/omnist-dev/omnist-go"
 
 // This file implements §6.6's compatible_with (and its scalar_sub and
 // record_sub helpers) and §6.7's equivalent — port-order step 6. It builds
@@ -10,14 +12,14 @@ package omnist
 // nothing else. Nullable-narrowing (a nullable, b not) is checked first and
 // blocks regardless of kind; nullable-widening (a not nullable, b nullable)
 // is fine and falls through to the kind check.
-func scalarSub(a, b Type) bool {
+func scalarSub(a, b omnist.Type) bool {
 	if a.Nullable && !b.Nullable {
 		return false
 	}
 	if a.ScalarKind == b.ScalarKind {
 		return true
 	}
-	return a.ScalarKind == KindInteger && b.ScalarKind == KindNumber
+	return a.ScalarKind == omnist.KindInteger && b.ScalarKind == omnist.KindNumber
 }
 
 // subKey is the coinductive memo key for sub: the identity of the two
@@ -46,8 +48,8 @@ func scalarSub(a, b Type) bool {
 // therefore typed directly in terms of *Record rather than a more general
 // "resolved type" identity.
 type subKey struct {
-	da *Record
-	db *Record
+	da *omnist.Record
+	db *omnist.Record
 }
 
 // CompatibleWith implements §6.6's `compatible_with(A, B)`: true when every
@@ -55,46 +57,46 @@ type subKey struct {
 // once up front (reusing SatisfiableSet from issue #9) and threaded through
 // so an A-side record known unsatisfiable is treated as vacuously
 // compatible with anything, without needing callers to prune first.
-func CompatibleWith(a, b Schema) bool {
+func CompatibleWith(a, b omnist.Schema) bool {
 	satA := SatisfiableSet(a)
 	memo := make(map[subKey]bool)
-	return sub(a, RefType(a.Root), b, RefType(b.Root), satA, memo)
+	return sub(a, omnist.RefType(a.Root), b, omnist.RefType(b.Root), satA, memo)
 }
 
 // sub implements §6.6's `sub(SA, ta, SB, tb, sat_a, memo)`.
-func sub(sa Schema, ta Type, sb Schema, tb Type, satA map[string]bool, memo map[subKey]bool) bool {
-	if ta.Kind == TypeRefKind && !satA[ta.RefName] {
+func sub(sa omnist.Schema, ta omnist.Type, sb omnist.Schema, tb omnist.Type, satA map[string]bool, memo map[subKey]bool) bool {
+	if ta.Kind == omnist.TypeRefKind && !satA[ta.RefName] {
 		return true // vacuous: A emits nothing here
 	}
-	// resolveType and the resolved/resolvedKind types are validate.go's
-	// (issue #7), implementing the same §6.2 S.resolve(t) notation this
-	// spec section uses; reused here rather than duplicated.
-	da := resolveType(sa, ta)
-	db := resolveType(sb, tb)
+	// omnist.ResolveType and the omnist.Resolved/omnist.ResolvedKind types
+	// are validate.go's (issue #7), implementing the same §6.2 S.resolve(t)
+	// notation this spec section uses; reused here rather than duplicated.
+	da := omnist.ResolveType(sa, ta)
+	db := omnist.ResolveType(sb, tb)
 
 	// Only Record/Record pairs recurse and need memoization (see subKey's
 	// doc comment); Scalar and Any resolved types have no *Record to key
 	// on and are decided directly below without consulting memo.
-	if da.kind == resolvedRecord && db.kind == resolvedRecord {
-		key := subKey{da: da.record, db: db.record}
+	if da.Kind == omnist.ResolvedRecord && db.Kind == omnist.ResolvedRecord {
+		key := subKey{da: da.Record, db: db.Record}
 		if v, ok := memo[key]; ok {
 			return v
 		}
 		memo[key] = true // coinductive assumption
-		result := recordSub(sa, da.record, sb, db.record, satA, memo)
+		result := recordSub(sa, da.Record, sb, db.Record, satA, memo)
 		memo[key] = result
 		return result
 	}
 
 	switch {
-	case db.kind == resolvedAny:
+	case db.Kind == omnist.ResolvedAny:
 		return true // any absorbs all
-	case da.kind == resolvedAny:
+	case da.Kind == omnist.ResolvedAny:
 		return false // only any holds any
-	case da.kind == resolvedScalar && db.kind == resolvedScalar:
+	case da.Kind == omnist.ResolvedScalar && db.Kind == omnist.ResolvedScalar:
 		return scalarSub(
-			ScalarType(da.scalarKind, da.nullable),
-			ScalarType(db.scalarKind, db.nullable),
+			omnist.ScalarType(da.ScalarKind, da.Nullable),
+			omnist.ScalarType(db.ScalarKind, db.Nullable),
 		)
 	default:
 		return false // value versus object
@@ -103,23 +105,23 @@ func sub(sa Schema, ta Type, sb Schema, tb Type, satA map[string]bool, memo map[
 
 // fieldByLabel implements §6.2's `R.field(label)`: the field with that
 // label, or none.
-func fieldByLabel(r *Record, label string) (Field, bool) {
+func fieldByLabel(r *omnist.Record, label string) (omnist.Field, bool) {
 	for _, f := range r.Fields {
 		if f.Label == label {
 			return f, true
 		}
 	}
-	return Field{}, false
+	return omnist.Field{}, false
 }
 
 // recordSub implements §6.6's `record_sub(SA, a, SB, b, sat_a, memo)`.
-func recordSub(sa Schema, a *Record, sb Schema, b *Record, satA map[string]bool, memo map[subKey]bool) bool {
+func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.Record, satA map[string]bool, memo map[subKey]bool) bool {
 	// 1. Every label A may emit must be allowed by B.
 	for _, fa := range a.Fields {
 		if !fa.Cardinality.Unbounded && fa.Cardinality.Max == 0 {
 			continue // A never emits it
 		}
-		if fa.Cardinality.Min == 0 && fa.Type.Kind == TypeRefKind && !satA[fa.Type.RefName] {
+		if fa.Cardinality.Min == 0 && fa.Type.Kind == omnist.TypeRefKind && !satA[fa.Type.RefName] {
 			continue // A never emits it either
 		}
 		fb, ok := fieldByLabel(b, fa.Label)
@@ -153,6 +155,6 @@ func recordSub(sa Schema, a *Record, sb Schema, b *Record, satA map[string]bool,
 // stronger than equivalence, so substituting one would reject equivalent
 // schemas that merely differ in record naming, declaration order, or
 // unreachable records.
-func Equivalent(a, b Schema) bool {
+func Equivalent(a, b omnist.Schema) bool {
 	return CompatibleWith(a, b) && CompatibleWith(b, a)
 }

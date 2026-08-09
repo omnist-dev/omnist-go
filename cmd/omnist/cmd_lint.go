@@ -6,6 +6,7 @@ import (
 	"io"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // cmdLint implements `omnist lint`: read one SCHEMA and print each
@@ -37,7 +38,7 @@ func cmdLint(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	findings := omnist.Lint(schema)
+	findings := algebra.Lint(schema)
 	problem := false
 	for _, f := range findings {
 		_, _ = fmt.Fprintf(stdout, "%s: %s: %s: %s\n", f.Location, f.Severity, f.Code, f.Message)

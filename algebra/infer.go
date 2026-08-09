@@ -1,10 +1,12 @@
-package omnist
+package algebra
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/omnist-dev/omnist-go"
 )
 
 // This file implements §6.10's infer(samples) (port-order step 10): drafting
@@ -50,57 +52,57 @@ type AnyFallback struct {
 // with allow_any=false is CodeAlgebraInferMixedShape (see errors.go for why
 // that fourth code exists despite not appearing in the spec's taxonomy
 // table).
-func InferWithReport(samples []Document, rootName string, allowAny bool) (Schema, []AnyFallback, error) {
+func InferWithReport(samples []omnist.Document, rootName string, allowAny bool) (omnist.Schema, []AnyFallback, error) {
 	if len(samples) == 0 {
-		return Schema{}, nil, Diagnostic{
+		return omnist.Schema{}, nil, omnist.Diagnostic{
 			// $ is the whole-schema fallback per spec §8.4: infer-no-samples
 			// fails before any schema exists, so there is no more specific
 			// Document/Schema path to name.
 			Path:     "$",
-			Code:     CodeAlgebraInferNoSamples,
+			Code:     omnist.CodeAlgebraInferNoSamples,
 			Message:  "cannot infer a schema from zero samples",
-			Severity: SeverityError,
+			Severity: omnist.SeverityError,
 		}
 	}
 	if rootName == "" {
 		rootName = "Root"
 	}
 
-	nodes := make([]*Node, len(samples))
+	nodes := make([]*omnist.Node, len(samples))
 	for i, s := range samples {
 		if !s.IsNode {
-			return Schema{}, nil, Diagnostic{
+			return omnist.Schema{}, nil, omnist.Diagnostic{
 				// $ is the whole-schema fallback per spec §8.4: like
 				// infer-no-samples above, this fails before any schema
 				// exists (it's about the shape of the input samples, not a
 				// schema), so "samples[N]" (a non-Document/Schema-shaped
 				// path) is wrong regardless of which sample failed.
 				Path:     "$",
-				Code:     CodeAlgebraInferScalarRoot,
+				Code:     omnist.CodeAlgebraInferScalarRoot,
 				Message:  "infer expects object (record) samples at the root",
-				Severity: SeverityError,
+				Severity: omnist.SeverityError,
 			}
 		}
 		nodes[i] = s.Node
 	}
 
-	env := map[string]*Record{}
+	env := map[string]*omnist.Record{}
 	envOrder := []string{}
 	used := map[string]bool{}
 	fallbacks := []AnyFallback{}
 
 	if err := inferRecord(nodes, rootName, env, &envOrder, used, allowAny, &fallbacks); err != nil {
-		return Schema{}, nil, err
+		return omnist.Schema{}, nil, err
 	}
 
-	return Schema{Root: rootName, Env: env, EnvOrder: envOrder}, fallbacks, nil
+	return omnist.Schema{Root: rootName, Env: env, EnvOrder: envOrder}, fallbacks, nil
 }
 
 // Infer implements §6.10's infer(samples, root_name, allow_any): the plain
 // convenience wrapper around InferWithReport that discards the fallback
 // list. A caller who needs to know what allow_any opened MUST call
 // InferWithReport directly.
-func Infer(samples []Document, rootName string, allowAny bool) (Schema, error) {
+func Infer(samples []omnist.Document, rootName string, allowAny bool) (omnist.Schema, error) {
 	s, _, err := InferWithReport(samples, rootName, allowAny)
 	return s, err
 }
@@ -117,9 +119,9 @@ func Infer(samples []Document, rootName string, allowAny bool) (Schema, error) {
 // sample the walk happens to reach first; a single combined pass would make
 // the result depend on iteration order.
 func inferRecord(
-	nodes []*Node,
+	nodes []*omnist.Node,
 	name string,
-	env map[string]*Record,
+	env map[string]*omnist.Record,
 	envOrder *[]string,
 	used map[string]bool,
 	allowAny bool,
@@ -139,10 +141,10 @@ func inferRecord(
 		}
 	}
 
-	children := make(map[string][]Target, len(order))
+	children := make(map[string][]omnist.Target, len(order))
 	perSampleCounts := make(map[string][]int, len(order))
 	for _, label := range order {
-		children[label] = []Target{}
+		children[label] = []omnist.Target{}
 		perSampleCounts[label] = []int{}
 	}
 
@@ -158,7 +160,7 @@ func inferRecord(
 		}
 	}
 
-	fields := make([]Field, 0, len(order))
+	fields := make([]omnist.Field, 0, len(order))
 	for _, label := range order {
 		counts := perSampleCounts[label]
 		maxCount := counts[0]
@@ -172,24 +174,24 @@ func inferRecord(
 			}
 		}
 
-		var card Cardinality
+		var card omnist.Cardinality
 		if maxCount > 1 {
 			// Array: permissive by design -- min is always 0, never the
 			// observed minimum count. See the rule this file's package
 			// comment quotes from §6.10.
-			card = Cardinality{Min: 0, Unbounded: true}
+			card = omnist.Cardinality{Min: 0, Unbounded: true}
 		} else {
-			card = Cardinality{Min: uint64(minCount), Max: 1}
+			card = omnist.Cardinality{Min: uint64(minCount), Max: 1}
 		}
 
 		typ, err := inferType(children[label], label, name, env, envOrder, used, allowAny, fallbacks)
 		if err != nil {
 			return err
 		}
-		fields = append(fields, Field{Label: label, Type: typ, Cardinality: card})
+		fields = append(fields, omnist.Field{Label: label, Type: typ, Cardinality: card})
 	}
 
-	env[name] = &Record{Name: name, Fields: fields}
+	env[name] = &omnist.Record{Name: name, Fields: fields}
 	*envOrder = append(*envOrder, name)
 	return nil
 }
@@ -201,14 +203,14 @@ func inferRecord(
 // null tracked separately as nullability, and the one integer/number
 // subtype collapse applied); some but not all is the mixed-shape case.
 func inferType(
-	targets []Target,
+	targets []omnist.Target,
 	label, recordName string,
-	env map[string]*Record,
+	env map[string]*omnist.Record,
 	envOrder *[]string,
 	used map[string]bool,
 	allowAny bool,
 	fallbacks *[]AnyFallback,
-) (Type, error) {
+) (omnist.Type, error) {
 	nodeCount := 0
 	for _, t := range targets {
 		if t.IsNode() {
@@ -220,15 +222,15 @@ func inferType(
 	case nodeCount == len(targets):
 		// All nodes: recurse into a nested named record.
 		recName := uniqueNameFrom(label, used)
-		childNodes := make([]*Node, len(targets))
+		childNodes := make([]*omnist.Node, len(targets))
 		for i, t := range targets {
 			n, _ := t.Node()
 			childNodes[i] = n
 		}
 		if err := inferRecord(childNodes, recName, env, envOrder, used, allowAny, fallbacks); err != nil {
-			return Type{}, err
+			return omnist.Type{}, err
 		}
-		return RefType(recName), nil
+		return omnist.RefType(recName), nil
 
 	case nodeCount > 0:
 		// Some but not all nodes: mixes objects and values.
@@ -237,18 +239,18 @@ func inferType(
 				Location: recordName + "." + label,
 				Reason:   "mixes objects and values",
 			})
-			return AnyType(), nil
+			return omnist.AnyType(), nil
 		}
-		return Type{}, Diagnostic{
+		return omnist.Type{}, omnist.Diagnostic{
 			Path:     recordName + "." + label,
-			Code:     CodeAlgebraInferMixedShape,
+			Code:     omnist.CodeAlgebraInferMixedShape,
 			Message:  fmt.Sprintf("label %q mixes objects and values; cannot infer one type", label),
-			Severity: SeverityError,
+			Severity: omnist.SeverityError,
 		}
 
 	default:
 		// No nodes: every occurrence is a value (scalar or null).
-		kindsSeen := map[ScalarKind]bool{}
+		kindsSeen := map[omnist.ScalarKind]bool{}
 		sawNull := false
 		for _, t := range targets {
 			v, _ := t.Value()
@@ -260,14 +262,14 @@ func inferType(
 		}
 		// The one subtyping relation (§6.3): integer mixed with number
 		// collapses to number.
-		if kindsSeen[KindNumber] {
-			delete(kindsSeen, KindInteger)
+		if kindsSeen[omnist.KindNumber] {
+			delete(kindsSeen, omnist.KindInteger)
 		}
 
 		if len(kindsSeen) == 0 {
 			// No non-null sample: default to a nullable string, per the
 			// pseudocode's fallback.
-			return ScalarType(KindString, sawNull), nil
+			return omnist.ScalarType(omnist.KindString, sawNull), nil
 		}
 
 		if len(kindsSeen) > 1 {
@@ -282,21 +284,21 @@ func inferType(
 					Location: recordName + "." + label,
 					Reason:   reason,
 				})
-				return AnyType(), nil
+				return omnist.AnyType(), nil
 			}
-			return Type{}, Diagnostic{
+			return omnist.Type{}, omnist.Diagnostic{
 				Path:     recordName + "." + label,
-				Code:     CodeAlgebraInferConflictingScalars,
+				Code:     omnist.CodeAlgebraInferConflictingScalars,
 				Message:  fmt.Sprintf("label %q has values of more than one scalar kind", label),
-				Severity: SeverityError,
+				Severity: omnist.SeverityError,
 			}
 		}
 
-		var only ScalarKind
+		var only omnist.ScalarKind
 		for k := range kindsSeen {
 			only = k
 		}
-		return ScalarType(only, sawNull), nil
+		return omnist.ScalarType(only, sawNull), nil
 	}
 }
 
@@ -317,7 +319,7 @@ func inferType(
 func uniqueNameFrom(label string, used map[string]bool) string {
 	base := sanitizeIdentifier(label)
 	if base == "" {
-		base = "Field"
+		base = "omnist.Field"
 	}
 	if !used[base] {
 		return base

@@ -1,35 +1,37 @@
-package omnist
+package algebra
 
 import (
 	"math/big"
 	"testing"
+
+	"github.com/omnist-dev/omnist-go"
 )
 
 // --- helpers -----------------------------------------------------------
 
-func strDoc(fields ...Edge) Document {
-	n := NewNode()
+func strDoc(fields ...omnist.Edge) omnist.Document {
+	n := omnist.NewNode()
 	n.Edges = append(n.Edges, fields...)
-	return NodeDocument(n)
+	return omnist.NodeDocument(n)
 }
 
-func strEdge(label, s string) Edge {
-	return Edge{Label: label, Target: ValueTarget(ScalarValue(NewStringScalar(s)))}
+func strEdge(label, s string) omnist.Edge {
+	return omnist.Edge{Label: label, Target: omnist.ValueTarget(omnist.ScalarValue(omnist.NewStringScalar(s)))}
 }
 
-func intEdge(label string, i int64) Edge {
-	return Edge{Label: label, Target: ValueTarget(ScalarValue(NewIntegerScalar(big.NewInt(i))))}
+func intEdge(label string, i int64) omnist.Edge {
+	return omnist.Edge{Label: label, Target: omnist.ValueTarget(omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(i))))}
 }
 
-func nullEdge(label string) Edge {
-	return Edge{Label: label, Target: ValueTarget(NullValue())}
+func nullEdge(label string) omnist.Edge {
+	return omnist.Edge{Label: label, Target: omnist.ValueTarget(omnist.NullValue())}
 }
 
-func nodeEdge(label string, n *Node) Edge {
-	return Edge{Label: label, Target: NodeTarget(n)}
+func nodeEdge(label string, n *omnist.Node) omnist.Edge {
+	return omnist.Edge{Label: label, Target: omnist.NodeTarget(n)}
 }
 
-func mustField(t *testing.T, s Schema, recName, label string) Field {
+func mustField(t *testing.T, s omnist.Schema, recName, label string) omnist.Field {
 	t.Helper()
 	rec, ok := s.Env[recName]
 	if !ok {
@@ -41,13 +43,13 @@ func mustField(t *testing.T, s Schema, recName, label string) Field {
 		}
 	}
 	t.Fatalf("field %q not found in record %q (fields=%+v)", label, recName, rec.Fields)
-	return Field{}
+	return omnist.Field{}
 }
 
 // --- worked example, §6.10 ----------------------------------------------
 
 func TestInferWorkedExampleDefaultFails(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(intEdge("id", 7)),
 		strDoc(strEdge("id", "seven")),
 	}
@@ -55,17 +57,17 @@ func TestInferWorkedExampleDefaultFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected infer to fail on conflicting scalar kinds")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected a Diagnostic, got %T: %v", err, err)
+		t.Fatalf("expected a omnist.Diagnostic, got %T: %v", err, err)
 	}
-	if diag.Code != CodeAlgebraInferConflictingScalars {
-		t.Fatalf("expected CodeAlgebraInferConflictingScalars, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferConflictingScalars {
+		t.Fatalf("expected omnist.CodeAlgebraInferConflictingScalars, got %s", diag.Code)
 	}
 }
 
 func TestInferWorkedExampleAllowAnySucceedsWithReport(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(intEdge("id", 7)),
 		strDoc(strEdge("id", "seven")),
 	}
@@ -74,7 +76,7 @@ func TestInferWorkedExampleAllowAnySucceedsWithReport(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "id")
-	if f.Type.Kind != TypeAnyKind {
+	if f.Type.Kind != omnist.TypeAnyKind {
 		t.Fatalf("expected id field to be any, got %+v", f.Type)
 	}
 	if len(fallbacks) != 1 {
@@ -87,7 +89,7 @@ func TestInferWorkedExampleAllowAnySucceedsWithReport(t *testing.T) {
 }
 
 func TestInferPlainWrapperAllowAnyDiscardsReport(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(intEdge("id", 7)),
 		strDoc(strEdge("id", "seven")),
 	}
@@ -96,7 +98,7 @@ func TestInferPlainWrapperAllowAnyDiscardsReport(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "id")
-	if f.Type.Kind != TypeAnyKind {
+	if f.Type.Kind != omnist.TypeAnyKind {
 		t.Fatalf("expected id field to be any, got %+v", f.Type)
 	}
 	// No way to retrieve fallbacks from Infer's return signature -- this
@@ -109,7 +111,7 @@ func TestInferPlainWrapperAllowAnyDiscardsReport(t *testing.T) {
 func TestInferRepeatedLabelBecomesUnboundedMinZero(t *testing.T) {
 	// Every sample has >=2 occurrences of "tag" -- min must still be 0,
 	// not the observed minimum count (2).
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(strEdge("tag", "a"), strEdge("tag", "b")),
 		strDoc(strEdge("tag", "x"), strEdge("tag", "y"), strEdge("tag", "z")),
 	}
@@ -129,11 +131,11 @@ func TestInferRepeatedLabelBecomesUnboundedMinZero(t *testing.T) {
 // --- two-pass order independence ------------------------------------------
 
 func TestInferMissingLabelOrderIndependence(t *testing.T) {
-	forward := []Document{
+	forward := []omnist.Document{
 		strDoc(strEdge("a", "1")),
 		strDoc(strEdge("a", "1"), strEdge("b", "2")),
 	}
-	reverse := []Document{
+	reverse := []omnist.Document{
 		strDoc(strEdge("a", "1"), strEdge("b", "2")),
 		strDoc(strEdge("a", "1")),
 	}
@@ -171,16 +173,16 @@ func TestInferMissingLabelOrderIndependence(t *testing.T) {
 // --- integer/number collapse ----------------------------------------------
 
 func TestInferIntegerNumberCollapse(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(intEdge("n", 3)),
-		strDoc(Edge{Label: "n", Target: ValueTarget(ScalarValue(NewNumberScalar(3.5)))}),
+		strDoc(omnist.Edge{Label: "n", Target: omnist.ValueTarget(omnist.ScalarValue(omnist.NewNumberScalar(3.5)))}),
 	}
 	schema, err := Infer(samples, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "n")
-	if f.Type.Kind != TypeScalarKind || f.Type.ScalarKind != KindNumber {
+	if f.Type.Kind != omnist.TypeScalarKind || f.Type.ScalarKind != omnist.KindNumber {
 		t.Fatalf("expected number scalar, got %+v", f.Type)
 	}
 	if f.Type.Nullable {
@@ -191,7 +193,7 @@ func TestInferIntegerNumberCollapse(t *testing.T) {
 // --- null handling ----------------------------------------------------
 
 func TestInferNullableScalar(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(strEdge("name", "alice")),
 		strDoc(nullEdge("name")),
 	}
@@ -200,7 +202,7 @@ func TestInferNullableScalar(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "name")
-	if f.Type.Kind != TypeScalarKind || f.Type.ScalarKind != KindString {
+	if f.Type.Kind != omnist.TypeScalarKind || f.Type.ScalarKind != omnist.KindString {
 		t.Fatalf("expected string scalar, got %+v", f.Type)
 	}
 	if !f.Type.Nullable {
@@ -209,7 +211,7 @@ func TestInferNullableScalar(t *testing.T) {
 }
 
 func TestInferAllNullDefaultsToNullableString(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(nullEdge("x")),
 		strDoc(nullEdge("x")),
 	}
@@ -218,7 +220,7 @@ func TestInferAllNullDefaultsToNullableString(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "x")
-	if f.Type.Kind != TypeScalarKind || f.Type.ScalarKind != KindString || !f.Type.Nullable {
+	if f.Type.Kind != omnist.TypeScalarKind || f.Type.ScalarKind != omnist.KindString || !f.Type.Nullable {
 		t.Fatalf("expected nullable string, got %+v", f.Type)
 	}
 }
@@ -226,26 +228,26 @@ func TestInferAllNullDefaultsToNullableString(t *testing.T) {
 // --- mixed objects and values -----------------------------------------
 
 func TestInferMixedShapeFailsByDefault(t *testing.T) {
-	samples := []Document{
-		strDoc(nodeEdge("thing", NewNode().AddValue("inner", ScalarValue(NewStringScalar("v"))))),
+	samples := []omnist.Document{
+		strDoc(nodeEdge("thing", omnist.NewNode().AddValue("inner", omnist.ScalarValue(omnist.NewStringScalar("v"))))),
 		strDoc(strEdge("thing", "scalar")),
 	}
 	_, err := Infer(samples, "", false)
 	if err == nil {
 		t.Fatal("expected mixed-shape failure")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected Diagnostic, got %T", err)
+		t.Fatalf("expected omnist.Diagnostic, got %T", err)
 	}
-	if diag.Code != CodeAlgebraInferMixedShape {
-		t.Fatalf("expected CodeAlgebraInferMixedShape, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferMixedShape {
+		t.Fatalf("expected omnist.CodeAlgebraInferMixedShape, got %s", diag.Code)
 	}
 }
 
 func TestInferMixedShapeAllowAnyOpensWithReason(t *testing.T) {
-	samples := []Document{
-		strDoc(nodeEdge("thing", NewNode().AddValue("inner", ScalarValue(NewStringScalar("v"))))),
+	samples := []omnist.Document{
+		strDoc(nodeEdge("thing", omnist.NewNode().AddValue("inner", omnist.ScalarValue(omnist.NewStringScalar("v"))))),
 		strDoc(strEdge("thing", "scalar")),
 	}
 	schema, fallbacks, err := InferWithReport(samples, "", true)
@@ -253,7 +255,7 @@ func TestInferMixedShapeAllowAnyOpensWithReason(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	f := mustField(t, schema, "Root", "thing")
-	if f.Type.Kind != TypeAnyKind {
+	if f.Type.Kind != omnist.TypeAnyKind {
 		t.Fatalf("expected any, got %+v", f.Type)
 	}
 	want := AnyFallback{Location: "Root.thing", Reason: "mixes objects and values"}
@@ -275,10 +277,10 @@ func TestInferNestedRecordsAndNameCollisionsMadeUnique(t *testing.T) {
 	// the tree, both node-valued: top-level "address" and
 	// "office.address". Both would naturally generate the base name
 	// "Address" -- confirm they're disambiguated.
-	office := NewNode().AddNode("address", NewNode().AddValue("city", ScalarValue(NewStringScalar("nyc"))))
-	samples := []Document{
+	office := omnist.NewNode().AddNode("address", omnist.NewNode().AddValue("city", omnist.ScalarValue(omnist.NewStringScalar("nyc"))))
+	samples := []omnist.Document{
 		strDoc(
-			nodeEdge("address", NewNode().AddValue("city", ScalarValue(NewStringScalar("sf")))),
+			nodeEdge("address", omnist.NewNode().AddValue("city", omnist.ScalarValue(omnist.NewStringScalar("sf")))),
 			nodeEdge("office", office),
 		),
 	}
@@ -322,10 +324,10 @@ func TestInferDoesNotNormalizeDuplicateRecordsSurvive(t *testing.T) {
 	// structurally identical (same single scalar field "v"). infer must
 	// generate two SEPARATE records (A, B), not merge them the way
 	// Normalize would.
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(
-			nodeEdge("a", NewNode().AddValue("v", ScalarValue(NewStringScalar("x")))),
-			nodeEdge("b", NewNode().AddValue("v", ScalarValue(NewStringScalar("y")))),
+			nodeEdge("a", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("x")))),
+			nodeEdge("b", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("y")))),
 		),
 	}
 	schema, err := Infer(samples, "", false)
@@ -360,12 +362,12 @@ func TestInferZeroSamplesErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for zero samples")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected Diagnostic, got %T", err)
+		t.Fatalf("expected omnist.Diagnostic, got %T", err)
 	}
-	if diag.Code != CodeAlgebraInferNoSamples {
-		t.Fatalf("expected CodeAlgebraInferNoSamples, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferNoSamples {
+		t.Fatalf("expected omnist.CodeAlgebraInferNoSamples, got %s", diag.Code)
 	}
 	// issue #33: algebra.infer-no-samples is a document.*-family code, so
 	// per spec §8.4 its path MUST be "$" (the pre-schema/whole-schema
@@ -376,17 +378,17 @@ func TestInferZeroSamplesErrors(t *testing.T) {
 }
 
 func TestInferScalarRootErrors(t *testing.T) {
-	samples := []Document{ValueDocument(ScalarValue(NewStringScalar("bare")))}
+	samples := []omnist.Document{omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar("bare")))}
 	_, err := Infer(samples, "", false)
 	if err == nil {
 		t.Fatal("expected error for scalar-rooted sample")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected Diagnostic, got %T", err)
+		t.Fatalf("expected omnist.Diagnostic, got %T", err)
 	}
-	if diag.Code != CodeAlgebraInferScalarRoot {
-		t.Fatalf("expected CodeAlgebraInferScalarRoot, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferScalarRoot {
+		t.Fatalf("expected omnist.CodeAlgebraInferScalarRoot, got %s", diag.Code)
 	}
 	// issue #33: algebra.infer-scalar-root's path is "$" per spec §8.4,
 	// not "samples[N]" — see TestInferZeroSamplesErrors for the same rule
@@ -397,20 +399,20 @@ func TestInferScalarRootErrors(t *testing.T) {
 }
 
 func TestInferScalarRootAmongMultipleSamplesErrors(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(strEdge("a", "1")),
-		ValueDocument(ScalarValue(NewStringScalar("bare"))),
+		omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar("bare"))),
 	}
 	_, err := Infer(samples, "", false)
 	if err == nil {
 		t.Fatal("expected error for scalar-rooted sample")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected Diagnostic, got %T", err)
+		t.Fatalf("expected omnist.Diagnostic, got %T", err)
 	}
-	if diag.Code != CodeAlgebraInferScalarRoot {
-		t.Fatalf("expected CodeAlgebraInferScalarRoot, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferScalarRoot {
+		t.Fatalf("expected omnist.CodeAlgebraInferScalarRoot, got %s", diag.Code)
 	}
 	// issue #33: algebra.infer-scalar-root's path is "$" per spec §8.4,
 	// not "samples[N]" — see TestInferZeroSamplesErrors for the same rule
@@ -423,7 +425,7 @@ func TestInferScalarRootAmongMultipleSamplesErrors(t *testing.T) {
 // --- root name default + custom -----------------------------------------
 
 func TestInferDefaultRootName(t *testing.T) {
-	samples := []Document{strDoc(strEdge("a", "1"))}
+	samples := []omnist.Document{strDoc(strEdge("a", "1"))}
 	schema, err := Infer(samples, "", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -434,7 +436,7 @@ func TestInferDefaultRootName(t *testing.T) {
 }
 
 func TestInferCustomRootName(t *testing.T) {
-	samples := []Document{strDoc(strEdge("a", "1"))}
+	samples := []omnist.Document{strDoc(strEdge("a", "1"))}
 	schema, err := Infer(samples, "Custom", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -447,7 +449,7 @@ func TestInferCustomRootName(t *testing.T) {
 // --- required vs optional (non-array) ------------------------------------
 
 func TestInferRequiredWhenPresentInEverySample(t *testing.T) {
-	samples := []Document{
+	samples := []omnist.Document{
 		strDoc(strEdge("a", "1")),
 		strDoc(strEdge("a", "2")),
 	}
@@ -468,28 +470,28 @@ func TestInferErrorPropagatesFromNestedRecord(t *testing.T) {
 	// at the root -- confirms inferType's recursive inferRecord error path
 	// (not just inferRecord's own top-level field loop) surfaces the
 	// error to the caller.
-	samples := []Document{
-		strDoc(nodeEdge("child", NewNode().AddValue("v", ScalarValue(NewIntegerScalar(big.NewInt(1)))))),
-		strDoc(nodeEdge("child", NewNode().AddValue("v", ScalarValue(NewStringScalar("s"))))),
+	samples := []omnist.Document{
+		strDoc(nodeEdge("child", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))))),
+		strDoc(nodeEdge("child", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("s"))))),
 	}
 	_, err := Infer(samples, "", false)
 	if err == nil {
 		t.Fatal("expected error to propagate from nested record")
 	}
-	diag, ok := err.(Diagnostic)
+	diag, ok := err.(omnist.Diagnostic)
 	if !ok {
-		t.Fatalf("expected Diagnostic, got %T", err)
+		t.Fatalf("expected omnist.Diagnostic, got %T", err)
 	}
-	if diag.Code != CodeAlgebraInferConflictingScalars {
-		t.Fatalf("expected CodeAlgebraInferConflictingScalars, got %s", diag.Code)
+	if diag.Code != omnist.CodeAlgebraInferConflictingScalars {
+		t.Fatalf("expected omnist.CodeAlgebraInferConflictingScalars, got %s", diag.Code)
 	}
 }
 
 // --- sanitizeIdentifier edge cases (for 100% coverage of uniqueNameFrom) --
 
 func TestInferLabelSanitizedToValidRecordName(t *testing.T) {
-	samples := []Document{
-		strDoc(nodeEdge("9-strange label!", NewNode().AddValue("v", ScalarValue(NewStringScalar("x"))))),
+	samples := []omnist.Document{
+		strDoc(nodeEdge("9-strange label!", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("x"))))),
 	}
 	schema, err := Infer(samples, "", false)
 	if err != nil {
@@ -511,8 +513,8 @@ func TestInferLabelSanitizedToValidRecordName(t *testing.T) {
 func TestInferEmptyLabelFallsBackToFieldName(t *testing.T) {
 	// A label with nothing identifier-shaped in it (here, the empty
 	// string) sanitizes to "" and must fall back to the "Field" base name.
-	samples := []Document{
-		strDoc(nodeEdge("", NewNode().AddValue("v", ScalarValue(NewStringScalar("x"))))),
+	samples := []omnist.Document{
+		strDoc(nodeEdge("", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("x"))))),
 	}
 	schema, err := Infer(samples, "", false)
 	if err != nil {
@@ -523,7 +525,7 @@ func TestInferEmptyLabelFallsBackToFieldName(t *testing.T) {
 		t.Fatalf("expected 1 field, got %+v", rootRec.Fields)
 	}
 	refName := rootRec.Fields[0].Type.RefName
-	if refName != "Field" {
-		t.Fatalf("expected generated name 'Field', got %q", refName)
+	if refName != "omnist.Field" {
+		t.Fatalf("expected generated name 'omnist.Field', got %q", refName)
 	}
 }

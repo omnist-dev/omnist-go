@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
@@ -22,15 +23,15 @@ func cmdSchema(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printSchemaUsage(stdout)
 		return ExitOK
 	case "normalize":
-		return schemaTransform(args[1:], stdin, stdout, stderr, "omnist schema normalize", omnist.Normalize)
+		return schemaTransform(args[1:], stdin, stdout, stderr, "omnist schema normalize", algebra.Normalize)
 	case "prune":
-		return schemaTransform(args[1:], stdin, stdout, stderr, "omnist schema prune", omnist.Prune)
+		return schemaTransform(args[1:], stdin, stdout, stderr, "omnist schema prune", algebra.Prune)
 	case "extract":
 		return cmdSchemaExtract(args[1:], stdin, stdout, stderr)
 	case "compatible-with":
-		return schemaBoolean(args[1:], stdin, stdout, stderr, "omnist schema compatible-with", omnist.CompatibleWith)
+		return schemaBoolean(args[1:], stdin, stdout, stderr, "omnist schema compatible-with", algebra.CompatibleWith)
 	case "equivalent":
-		return schemaBoolean(args[1:], stdin, stdout, stderr, "omnist schema equivalent", omnist.Equivalent)
+		return schemaBoolean(args[1:], stdin, stdout, stderr, "omnist schema equivalent", algebra.Equivalent)
 	case "is-empty":
 		return cmdSchemaIsEmpty(args[1:], stdin, stdout, stderr)
 	default:
@@ -150,7 +151,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	// have (or an ill-formed request in general) -- that's the caller's
 	// flag input being wrong, so it's a usage error (ExitUsage), not an
 	// "operation ran and reported a problem" (ExitProblem).
-	result, err := omnist.Extract(schema, keepMap)
+	result, err := algebra.Extract(schema, keepMap)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitUsage
@@ -212,6 +213,6 @@ func cmdSchemaIsEmpty(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	if !ok {
 		return code
 	}
-	_, _ = fmt.Fprintln(stdout, omnist.IsEmpty(schema))
+	_, _ = fmt.Fprintln(stdout, algebra.IsEmpty(schema))
 	return ExitOK
 }

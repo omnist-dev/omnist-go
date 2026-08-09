@@ -6,6 +6,7 @@ import (
 	"io"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
@@ -60,7 +61,7 @@ func cmdInfer(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		samples = append(samples, doc)
 	}
 
-	schema, fallbacks, err := omnist.InferWithReport(samples, "", *allowAny)
+	schema, fallbacks, err := algebra.InferWithReport(samples, "", *allowAny)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitProblem

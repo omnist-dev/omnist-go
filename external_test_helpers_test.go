@@ -29,15 +29,6 @@ import (
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
-func mustParseOSD(t *testing.T, src string) omnist.Schema {
-	t.Helper()
-	s, err := osd.Read(src)
-	if err != nil {
-		t.Fatalf("osd.Read(%q) unexpected error: %v", src, err)
-	}
-	return s
-}
-
 func mustOSD(t *testing.T, text string) omnist.Schema {
 	t.Helper()
 	s, err := osd.Read(text)

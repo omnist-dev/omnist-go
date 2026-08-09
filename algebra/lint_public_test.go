@@ -1,6 +1,7 @@
-package omnist_test
+package algebra_test
 
-// External "omnist_test" package: see referee_test.go's comment for why.
+// External "algebra_test" package: see
+// algebra_external_test_helpers_test.go's comment for why.
 // TestReachablePlainSkipsUnresolvedRef (the one lint.go test needing
 // unexported access) stayed behind in lint_test.go.
 
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // --- reachablePlain / unsatisfiable-record, unreachable-record (§6.11) ---
@@ -22,7 +24,7 @@ func TestLintUnsatisfiableRecordReachableNotRoot(t *testing.T) {
 		record Bad { "self": Bad }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	found := false
 	for _, f := range findings {
 		if f.Code == omnist.CodeLintUnsatisfiableRecord && f.Location == "Bad" {
@@ -43,7 +45,7 @@ func TestLintUnreachableAndUnsatisfiableNotDoubleReported(t *testing.T) {
 		record Orphan { "self": Orphan }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	sawUnsat := false
 	sawUnreach := false
 	for _, f := range findings {
@@ -71,7 +73,7 @@ func TestLintUnreachableRecordNeverReferenced(t *testing.T) {
 		record Dangling { "a": string }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	found := false
 	for _, f := range findings {
 		if f.Code == omnist.CodeLintUnreachableRecord && f.Location == "Dangling" {
@@ -99,14 +101,14 @@ func TestLintPlainWalkDiffersFromPruneOptionalField(t *testing.T) {
 	`)
 
 	// Confirm Prune actually drops Bad (proving the two walks differ).
-	pruned := omnist.Prune(s)
+	pruned := algebra.Prune(s)
 	if _, stillThere := pruned.Env["Bad"]; stillThere {
 		t.Fatalf("test setup invalid: Prune should have dropped Bad, env = %+v", pruned.Env)
 	}
 
 	// lint's plain walk must still count Bad as reached (reach), so it
 	// must NOT appear as unreachable-record.
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	for _, f := range findings {
 		if f.Code == omnist.CodeLintUnreachableRecord && f.Location == "Bad" {
 			t.Fatalf("Bad reached via optional+unsatisfiable field should NOT be unreachable-record under lint's plain walk: %+v", findings)
@@ -134,7 +136,7 @@ func TestLintDuplicateRecordOneFindingPerBlock(t *testing.T) {
 		record B { "x": string }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	count := 0
 	var loc string
 	for _, f := range findings {
@@ -163,12 +165,12 @@ func TestLintDuplicateRecordFiresOnRawSchemaEvenIfUnreachable(t *testing.T) {
 		root Root
 	`)
 	// Confirm C really is unreachable (test setup sanity check).
-	normalized := omnist.Normalize(s)
+	normalized := algebra.Normalize(s)
 	if _, stillThere := normalized.Env["C"]; stillThere {
 		t.Fatalf("test setup invalid: Normalize should have dropped unreachable C")
 	}
 
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	found := false
 	for _, f := range findings {
 		if f.Code == omnist.CodeLintDuplicateRecord && f.Location == "A, C" {
@@ -188,7 +190,7 @@ func TestLintDuplicateRecordBlockOfThreeIsOneFinding(t *testing.T) {
 		record C { "x": string }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	count := 0
 	var loc string
 	for _, f := range findings {
@@ -213,7 +215,7 @@ func TestLintAnyFieldMultipleAcrossRecords(t *testing.T) {
 		record Child { "y": any }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	locs := map[string]bool{}
 	for _, f := range findings {
 		if f.Code == omnist.CodeLintAnyField {
@@ -237,7 +239,7 @@ func TestLintFindingsSortedByCodeThenLocation(t *testing.T) {
 		record Dangling { "y": string }
 		root Root
 	`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	if len(findings) < 2 {
 		t.Fatalf("expected multiple findings to exercise sort, got %+v", findings)
 	}
@@ -256,7 +258,7 @@ func TestLintFindingsSortedByCodeThenLocation(t *testing.T) {
 
 func TestLintZeroFindingsReturnsEmptySlice(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a": string } root R`)
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	if findings == nil {
 		t.Fatalf("expected a non-nil empty slice, got nil")
 	}
@@ -282,7 +284,7 @@ func TestLintDoesNotMutateInput(t *testing.T) {
 	copy(orderBefore, s.EnvOrder)
 	rootBefore := s.Root
 
-	_ = omnist.Lint(s)
+	_ = algebra.Lint(s)
 
 	if s.Root != rootBefore {
 		t.Fatalf("Lint mutated Root: got %q, want %q", s.Root, rootBefore)

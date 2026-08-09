@@ -32,18 +32,18 @@ func documentTarget(doc Document) Target {
 	return ValueTarget(doc.Value)
 }
 
-// resolvedKind identifies which of Type's three alternatives S.resolve(t)
+// ResolvedKind identifies which of Type's three alternatives S.resolve(t)
 // produced (spec §3.3's `Type = Scalar | Ref | Any`, via §6.2's
 // S.resolve notation).
-type resolvedKind int
+type ResolvedKind int
 
 const (
-	resolvedScalar resolvedKind = iota
-	resolvedRecord
-	resolvedAny
+	ResolvedScalar ResolvedKind = iota
+	ResolvedRecord
+	ResolvedAny
 )
 
-// resolved is S.resolve(t): a Type resolved through the schema's env to
+// Resolved is S.resolve(t): a Type resolved through the schema's env to
 // exactly one of a scalar declaration, a Record, or `any`. A Ref whose name
 // is absent from Env resolves to a nil Record; that indicates a
 // not-well-formed schema (spec §3.3 S-6 requires every reference to
@@ -51,28 +51,28 @@ const (
 // something validate re-checks — conformRecord treats a nil Record as
 // "no fields, closed", so any node there reports unexpected-field for every
 // edge rather than panicking.
-type resolved struct {
-	kind       resolvedKind
-	scalarKind ScalarKind
-	nullable   bool
-	record     *Record
+type Resolved struct {
+	Kind       ResolvedKind
+	ScalarKind ScalarKind
+	Nullable   bool
+	Record     *Record
 }
 
-// resolveType implements S.resolve(t) from the §3.6.1 pseudocode.
-func resolveType(s Schema, t Type) resolved {
+// ResolveType implements S.resolve(t) from the §3.6.1 pseudocode.
+func ResolveType(s Schema, t Type) Resolved {
 	switch t.Kind {
 	case TypeAnyKind:
-		return resolved{kind: resolvedAny}
+		return Resolved{Kind: ResolvedAny}
 	case TypeScalarKind:
-		return resolved{kind: resolvedScalar, scalarKind: t.ScalarKind, nullable: t.Nullable}
+		return Resolved{Kind: ResolvedScalar, ScalarKind: t.ScalarKind, Nullable: t.Nullable}
 	case TypeRefKind:
-		return resolved{kind: resolvedRecord, record: s.Env[t.RefName]}
+		return Resolved{Kind: ResolvedRecord, Record: s.Env[t.RefName]}
 	default:
 		// Type is a closed struct (schema.go) constructed only via
 		// ScalarType/RefType/AnyType, so every legal value hits one of the
 		// three cases above. This default only guards against a future
-		// TypeKind constant added without updating resolveType.
-		return resolved{kind: resolvedAny}
+		// TypeKind constant added without updating ResolveType.
+		return Resolved{Kind: ResolvedAny}
 	}
 }
 
@@ -80,37 +80,37 @@ func resolveType(s Schema, t Type) resolved {
 // and dispatches to the scalar or record check, or stops descent for `any`
 // (spec §3.7: "Descent stops. The subtree is accepted unchecked.").
 func conform(target Target, s Schema, t Type, path Path, checker *LimitChecker, result *[]Diagnostic) {
-	r := resolveType(s, t)
-	switch r.kind {
-	case resolvedAny:
+	r := ResolveType(s, t)
+	switch r.Kind {
+	case ResolvedAny:
 		return
-	case resolvedScalar:
+	case ResolvedScalar:
 		conformScalar(target, r, path, result)
-	case resolvedRecord:
-		conformRecord(target, s, r.record, path, checker, result)
+	case ResolvedRecord:
+		conformRecord(target, s, r.Record, path, checker, result)
 	}
 }
 
 // conformScalar is `conform_scalar(node, s, path, result)` from §3.6.1.
-func conformScalar(target Target, r resolved, path Path, result *[]Diagnostic) {
+func conformScalar(target Target, r Resolved, path Path, result *[]Diagnostic) {
 	if target.IsNode() {
 		addDiagnostic(result, path, CodeValidateShapeMismatch, "expected a scalar value, got an object")
 		return
 	}
 	v, _ := target.Value()
 	if v.IsNull {
-		if !r.nullable {
+		if !r.Nullable {
 			addDiagnostic(result, path, CodeValidateNullNotAllowed, "null not allowed here")
 		}
 		return // null is never checked against kind, matching kind or not.
 	}
-	if v.Scalar.Kind != r.scalarKind {
+	if v.Scalar.Kind != r.ScalarKind {
 		addDiagnostic(result, path, CodeValidateTypeMismatch, "value does not match declared kind")
 	}
 }
 
 // conformRecord is `conform_record(node, S, rec, path, result)` from
-// §3.6.1. rec may be nil (see resolved's doc comment); a nil record has no
+// §3.6.1. rec may be nil (see Resolved's doc comment); a nil record has no
 // fields, so every edge is unexpected and no field is ever satisfied.
 //
 // This is a thin wrapper around walkRecordShape, which holds the actual
@@ -207,7 +207,7 @@ func walkRecordShape(target Target, rec *Record, path Path, checker *LimitChecke
 }
 
 // findField looks up rec.field(label) from the pseudocode. rec may be nil
-// (see resolved's doc comment on conformRecord).
+// (see Resolved's doc comment on conformRecord).
 func findField(rec *Record, label string) *Field {
 	if rec == nil {
 		return nil

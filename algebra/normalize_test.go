@@ -1,6 +1,10 @@
-package omnist
+package algebra
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/omnist-dev/omnist-go"
+)
 
 // This file holds the normalize.go tests that need unexported access
 // (computeLocalSignature/computeRefineKey/appendEscapedLabel/appendUint),
@@ -25,14 +29,14 @@ import "testing"
 // unbounded field must have a different local signature than one with an
 // otherwise-identical bounded field, and two unbounded fields must match.
 func TestLocalSignatureUnboundedCardinality(t *testing.T) {
-	boundedRec := &Record{Name: "Bounded", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 1, Max: 5}},
+	boundedRec := &omnist.Record{Name: "Bounded", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 1, Max: 5}},
 	}}
-	unb1Rec := &Record{Name: "Unbounded1", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 1, Unbounded: true}},
+	unb1Rec := &omnist.Record{Name: "Unbounded1", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 1, Unbounded: true}},
 	}}
-	unb2Rec := &Record{Name: "Unbounded2", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 1, Unbounded: true}},
+	unb2Rec := &omnist.Record{Name: "Unbounded2", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 1, Unbounded: true}},
 	}}
 
 	bounded := computeLocalSignature(boundedRec)
@@ -50,11 +54,11 @@ func TestLocalSignatureUnboundedCardinality(t *testing.T) {
 // TestLocalSignatureOptionalFieldZeroMin covers the min==0 encoding
 // branch (appendUint's zero case) via an optional field.
 func TestLocalSignatureOptionalFieldZeroMin(t *testing.T) {
-	optionalRec := &Record{Name: "Optional", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 0, Max: 1}},
+	optionalRec := &omnist.Record{Name: "Optional", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Max: 1}},
 	}}
-	mandatoryRec := &Record{Name: "Mandatory", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 1, Max: 1}},
+	mandatoryRec := &omnist.Record{Name: "Mandatory", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 1, Max: 1}},
 	}}
 
 	opt := computeLocalSignature(optionalRec)
@@ -89,8 +93,8 @@ func TestAppendEscapedLabelEscapesControlBytes(t *testing.T) {
 // unbounded-cardinality-on-a-reference-field encoding branch, which
 // local_signature-level tests never reach since they use non-ref fields.
 func TestComputeRefineKeyUnboundedRefField(t *testing.T) {
-	holderRec := &Record{Name: "Holder", Fields: []Field{
-		{Label: "f", Type: RefType("Leaf"), Cardinality: Cardinality{Min: 1, Unbounded: true}},
+	holderRec := &omnist.Record{Name: "Holder", Fields: []omnist.Field{
+		{Label: "f", Type: omnist.RefType("Leaf"), Cardinality: omnist.Cardinality{Min: 1, Unbounded: true}},
 	}}
 	blockOf := map[string]int{"Leaf": 0}
 	key := computeRefineKey(holderRec, blockOf)
@@ -121,18 +125,18 @@ func TestAppendUintMultiDigit(t *testing.T) {
 // differ (and hence records land in different initial blocks) when field
 // counts differ, and are equal for structurally identical records.
 func TestLocalSignatureDistinguishesFieldCount(t *testing.T) {
-	oneRec := &Record{Name: "One", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+	oneRec := &omnist.Record{Name: "One", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 	}}
-	twoRec := &Record{Name: "Two", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
-		{Label: "y", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+	twoRec := &omnist.Record{Name: "Two", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+		{Label: "y", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 	}}
-	same1Rec := &Record{Name: "Same1", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+	same1Rec := &omnist.Record{Name: "Same1", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 	}}
-	same2Rec := &Record{Name: "Same2", Fields: []Field{
-		{Label: "x", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+	same2Rec := &omnist.Record{Name: "Same2", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 	}}
 
 	one := computeLocalSignature(oneRec)
@@ -153,11 +157,11 @@ func TestLocalSignatureDistinguishesFieldCount(t *testing.T) {
 // signatures (the is-scalar-or-not component), even though the reference
 // target itself is ignored by local_signature.
 func TestLocalSignatureRefVsScalarDiffers(t *testing.T) {
-	refHolderRec := &Record{Name: "RefHolder", Fields: []Field{
-		{Label: "f", Type: RefType("Leaf"), Cardinality: DefaultCardinality()},
+	refHolderRec := &omnist.Record{Name: "RefHolder", Fields: []omnist.Field{
+		{Label: "f", Type: omnist.RefType("Leaf"), Cardinality: omnist.DefaultCardinality()},
 	}}
-	scalarHolderRec := &Record{Name: "ScalarHolder", Fields: []Field{
-		{Label: "f", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+	scalarHolderRec := &omnist.Record{Name: "ScalarHolder", Fields: []omnist.Field{
+		{Label: "f", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 	}}
 
 	ref := computeLocalSignature(refHolderRec)
@@ -172,11 +176,11 @@ func TestLocalSignatureRefVsScalarDiffers(t *testing.T) {
 // signature — the target-blindness the spec calls for in step 2, refined
 // away only later by refine_key/fixpoint.
 func TestLocalSignatureIgnoresRefTarget(t *testing.T) {
-	holderARec := &Record{Name: "HolderA", Fields: []Field{
-		{Label: "f", Type: RefType("LeafA"), Cardinality: DefaultCardinality()},
+	holderARec := &omnist.Record{Name: "HolderA", Fields: []omnist.Field{
+		{Label: "f", Type: omnist.RefType("LeafA"), Cardinality: omnist.DefaultCardinality()},
 	}}
-	holderBRec := &Record{Name: "HolderB", Fields: []Field{
-		{Label: "f", Type: RefType("LeafB"), Cardinality: DefaultCardinality()},
+	holderBRec := &omnist.Record{Name: "HolderB", Fields: []omnist.Field{
+		{Label: "f", Type: omnist.RefType("LeafB"), Cardinality: omnist.DefaultCardinality()},
 	}}
 
 	a := computeLocalSignature(holderARec)

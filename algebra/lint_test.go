@@ -1,6 +1,10 @@
-package omnist
+package algebra
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/omnist-dev/omnist-go"
+)
 
 // --- reachablePlain directly (for 100% per-function coverage of the
 // "not in env" skip branch, which a well-formed schema never triggers
@@ -14,11 +18,11 @@ import "testing"
 // referee_test.go's comment for why that split exists.
 
 func TestReachablePlainSkipsUnresolvedRef(t *testing.T) {
-	s := Schema{
+	s := omnist.Schema{
 		Root: "Root",
-		Env: map[string]*Record{
-			"Root": {Name: "Root", Fields: []Field{
-				{Label: "dangling", Type: RefType("Ghost"), Cardinality: DefaultCardinality()},
+		Env: map[string]*omnist.Record{
+			"Root": {Name: "Root", Fields: []omnist.Field{
+				{Label: "dangling", Type: omnist.RefType("Ghost"), Cardinality: omnist.DefaultCardinality()},
 			}},
 		},
 		EnvOrder: []string{"Root"},

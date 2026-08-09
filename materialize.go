@@ -62,18 +62,18 @@ func targetToDocument(t Target) Document {
 // own sentence beyond "same as validate", since validate has nothing to
 // convert in the first place).
 func materialize(target Target, s Schema, t Type, path Path, checker *LimitChecker, result *[]Diagnostic) Target {
-	r := resolveType(s, t)
-	switch r.kind {
-	case resolvedScalar:
+	r := ResolveType(s, t)
+	switch r.Kind {
+	case ResolvedScalar:
 		return materializeScalar(target, r, path, result)
-	case resolvedRecord:
-		return materializeRecord(target, s, r.record, path, checker, result)
+	case ResolvedRecord:
+		return materializeRecord(target, s, r.Record, path, checker, result)
 	default:
-		// resolvedAny (spec §7.2's any-boundary rule: return target
+		// ResolvedAny (spec §7.2's any-boundary rule: return target
 		// completely unconverted), and — since materialize, unlike
 		// conform in validate.go, must return a Target on every path —
-		// the same fallback for resolvedKind's closed set. resolveType
-		// only ever produces resolvedAny/resolvedScalar/resolvedRecord,
+		// the same fallback for ResolvedKind's closed set. ResolveType
+		// only ever produces ResolvedAny/ResolvedScalar/ResolvedRecord,
 		// so this default is exercised exclusively by the any case in
 		// practice, matching conform's three-case switch one-for-one.
 		return target
@@ -101,19 +101,19 @@ func materializeRecord(target Target, s Schema, rec *Record, path Path, checker 
 // materializeScalar is `materialize_scalar(node, s, path, result)` from
 // §7.2.1: the leaf-level counterpart of validate.go's conformScalar, but
 // converting instead of merely checking.
-func materializeScalar(target Target, r resolved, path Path, result *[]Diagnostic) Target {
+func materializeScalar(target Target, r Resolved, path Path, result *[]Diagnostic) Target {
 	if target.IsNode() {
 		addDiagnostic(result, path, CodeValidateShapeMismatch, "expected a scalar value, got an object")
 		return target
 	}
 	v, _ := target.Value()
 	if v.IsNull {
-		if !r.nullable {
+		if !r.Nullable {
 			addDiagnostic(result, path, CodeValidateNullNotAllowed, "null not allowed here")
 		}
 		return target // null is never upgraded, matching kind or not.
 	}
-	upgraded, ok := tryUpgrade(v.Scalar, r.scalarKind)
+	upgraded, ok := tryUpgrade(v.Scalar, r.ScalarKind)
 	if !ok {
 		addDiagnostic(result, path, CodeMaterializeInexactConversion, "value cannot be upgraded to the declared kind without loss")
 		return target
