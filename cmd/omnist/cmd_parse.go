@@ -61,14 +61,25 @@ func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitProblem
 	}
-	outText, err := writer(doc)
+	outText, diags, err := writer(doc)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitProblem
 	}
+	// A writer can succeed while still reporting a non-fatal adjustment
+	// (issue #49, spec §8.5.3's write-only ok:true+diagnostics
+	// coexistence) -- print each one to stderr, mirroring cmdMaterialize's
+	// established diagnostic-printing convention, without treating it as
+	// a failure: the output was still produced and is still written below.
+	for _, d := range diags {
+		_, _ = fmt.Fprintf(stderr, "omnist parse: %s: %s: %s\n", d.Path, d.Code, d.Message)
+	}
 	if err := writeOutput(*out, outText, stdout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitUsage
+	}
+	if len(diags) > 0 {
+		return ExitProblem
 	}
 	return ExitOK
 }

@@ -14,7 +14,7 @@ func TestWriteTOMLGroupingAndCountOne(t *testing.T) {
 		AddValue("a", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))).
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestWriteTOMLGroupingAndCountOne(t *testing.T) {
 
 func TestWriteTOMLSingleLabelIsBareValueNotList(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestWriteTOMLRoundTripsWorkedExample(t *testing.T) {
 		AddNode("items", item2)
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("order", order))
 
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestWriteTOMLTemporalRoundTripAllThreeKinds(t *testing.T) {
 			Date: omnist.DateValue{Year: 2024, Month: 1, Day: 1},
 			Time: omnist.TimeValue{Hour: 12},
 		}))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestWriteTOMLOffsetDateTimeRoundTrips(t *testing.T) {
 		Date: omnist.DateValue{Year: 2024, Month: 1, Day: 1},
 		Time: omnist.TimeValue{Hour: 12, Minute: 0, Second: 0, HasOffset: true, OffsetSeconds: 5*3600 + 30*60},
 	}))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,16 +135,24 @@ func TestWriteTOMLOffsetDateTimeRoundTrips(t *testing.T) {
 
 // --- null: write-time adjustment, reported not invented ---
 
+// Since issue #49, a null leaf is a non-fatal write-time adjustment: the
+// write still succeeds (err == nil), the null is dropped from the
+// output, and the drop is reported via the returned []omnist.Diagnostic
+// rather than aborting the whole write (spec §8.5.3's write-only
+// ok:true+diagnostics coexistence).
 func TestWriteTOMLNullReportsAdjustment(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("coupon", omnist.NullValue()))
-	_, err := Write(d)
-	if err == nil {
-		t.Fatal("expected an error: TOML has no null spelling")
+	out, diags, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
 	}
-	diag, ok := err.(omnist.Diagnostic)
-	if !ok {
-		t.Fatalf("error is %T, want omnist.Diagnostic", err)
+	if out != "" {
+		t.Errorf("out = %q, want empty (the only key was a dropped null)", out)
 	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	}
+	diag := diags[0]
 	if diag.Code != omnist.CodeFormatNullUnrepresentable {
 		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diag.Code, omnist.CodeFormatNullUnrepresentable)
 	}
@@ -158,13 +166,18 @@ func TestWriteTOMLNullReportsAdjustment(t *testing.T) {
 
 func TestWriteTOMLNullInsideNestedNodeReportsAdjustment(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("order", omnist.NewNode().AddValue("coupon", omnist.NullValue())))
-	_, err := Write(d)
-	diag, ok := err.(omnist.Diagnostic)
-	if !ok {
-		t.Fatalf("error is %T, want omnist.Diagnostic", err)
+	out, diags, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
 	}
-	if diag.Path != "$.order.coupon" {
-		t.Errorf("omnist.Diagnostic.Path = %s, want $.order.coupon", diag.Path)
+	if out != `"order" = {}`+"\n" {
+		t.Errorf("out = %q, want the order table with its only key (the dropped null) omitted", out)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	}
+	if diags[0].Path != "$.order.coupon" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.order.coupon", diags[0].Path)
 	}
 }
 
@@ -172,16 +185,21 @@ func TestWriteTOMLNullInsideListReportsAdjustment(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
 		AddValue("m", omnist.NullValue()))
-	_, err := Write(d)
-	diag, ok := err.(omnist.Diagnostic)
-	if !ok {
-		t.Fatalf("error is %T, want omnist.Diagnostic", err)
+	out, diags, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
 	}
-	if diag.Code != omnist.CodeFormatNullUnrepresentable {
-		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diag.Code, omnist.CodeFormatNullUnrepresentable)
+	if out != `"m" = ["A"]`+"\n" {
+		t.Errorf("out = %q, want the array with its dropped null element omitted", out)
 	}
-	if diag.Path != "$.m[1]" {
-		t.Errorf("omnist.Diagnostic.Path = %s, want $.m[1]", diag.Path)
+	if len(diags) != 1 {
+		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	}
+	if diags[0].Code != omnist.CodeFormatNullUnrepresentable {
+		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diags[0].Code, omnist.CodeFormatNullUnrepresentable)
+	}
+	if diags[0].Path != "$.m[1]" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.m[1]", diags[0].Path)
 	}
 }
 
@@ -189,7 +207,7 @@ func TestWriteTOMLNullInsideListReportsAdjustment(t *testing.T) {
 
 func TestWriteTOMLBareScalarRootFails(t *testing.T) {
 	d := omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar("x")))
-	_, err := Write(d)
+	_, _, err := Write(d)
 	if err == nil {
 		t.Fatal("expected an error: TOML has no bare-scalar-root spelling")
 	}
@@ -208,7 +226,7 @@ func TestWriteTOMLNumberAlwaysDistinctFromInteger(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().
 		AddValue("i", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(2)))).
 		AddValue("f", omnist.ScalarValue(omnist.NewNumberScalar(2.0))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +244,7 @@ func TestWriteTOMLNaNInfinityNativeSpellings(t *testing.T) {
 		AddValue("a", omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))).
 		AddValue("b", omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(1)))).
 		AddValue("c", omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(-1)))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +263,7 @@ func TestWriteTOMLBareTimeWithOffsetDropsOffset(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(omnist.TimeValue{
 		Hour: 12, Minute: 0, Second: 0, HasOffset: true, OffsetSeconds: 3600,
 	}))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +281,7 @@ func TestWriteTOMLBareTimeWithOffsetDropsOffset(t *testing.T) {
 
 func TestWriteTOMLStringEscaping(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("s", omnist.ScalarValue(omnist.NewStringScalar("a\nb\tc\"d\\e\bf\rg\fh\x01i"))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +298,7 @@ func TestWriteTOMLStringEscaping(t *testing.T) {
 
 func TestWriteTOMLQuotesEveryKey(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("has space", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +317,7 @@ func TestWriteTOMLBooleans(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().
 		AddValue("t", omnist.ScalarValue(omnist.NewBooleanScalar(true))).
 		AddValue("f", omnist.ScalarValue(omnist.NewBooleanScalar(false))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +334,7 @@ func TestWriteTOMLBooleans(t *testing.T) {
 
 func TestWriteTOMLEmptyNode(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode())
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +347,7 @@ func TestWriteTOMLEmptyNode(t *testing.T) {
 
 func TestWriteTOMLNestedNode(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("a", omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1))))))
-	out, err := Write(d)
+	out, _, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}

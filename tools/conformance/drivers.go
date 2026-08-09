@@ -267,25 +267,26 @@ func runWrite(v Vector) Result {
 	}
 
 	var text string
+	var gotDiags []omnist.Diagnostic
 	var werr error
 	switch in.Format {
 	case "json":
 		if in.Strict {
-			text, werr = json.WriteStrict(doc)
+			text, gotDiags, werr = json.WriteStrict(doc)
 		} else {
-			text, werr = json.Write(doc)
+			text, gotDiags, werr = json.Write(doc)
 		}
 	case "oml":
-		text = oml.Write(doc, false)
+		text, gotDiags = oml.Write(doc, false)
 	case "yaml":
-		text, werr = yaml.Write(doc)
+		text, gotDiags, werr = yaml.Write(doc)
 	case "toml":
 		if in.Strict {
-			return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: WriteTOML has no strict-mode parameter in this repository (toml.Write(d Document) (string, error) only) -- flagged for a follow-up issue, not fixed here per issue #31's scope"}
+			return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: WriteTOML has no strict-mode parameter in this repository (toml.Write(d Document) (string, []omnist.Diagnostic, error) only) -- flagged for a follow-up issue, not fixed here per issue #31's/#49's scope"}
 		}
-		text, werr = toml.Write(doc)
+		text, gotDiags, werr = toml.Write(doc)
 	case "xml":
-		text, werr = xml.Write(doc)
+		text, gotDiags, werr = xml.Write(doc)
 	default:
 		return fail(v, "unrecognized format %q", in.Format)
 	}
@@ -310,14 +311,19 @@ func runWrite(v Vector) Result {
 		return fail(v, "expected error, got ok write")
 	}
 	// write is the one operation where ok:true and diagnostics can
-	// coexist (§8.5.3) -- WriteYAML/WriteTOML/WriteXML/WriteJSONStrict
-	// return only (string, error), with no side-channel for a non-fatal
-	// adjustment diagnostic alongside success. If the vector expects
-	// diagnostics alongside ok:true, this repo's writers cannot surface
-	// them today, so treat that case as a driver-detected gap rather than
-	// silently ignoring the expected diagnostics.
-	if wantDiags, _ := decodeExpectDiagnostics(expect); len(wantDiags) > 0 {
-		return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: this repository's Write* functions return (string, error) only, with no channel to report a non-fatal adjustment diagnostic alongside a successful write (spec allows ok:true + diagnostics together for write) -- flagged for a follow-up issue"}
+	// coexist (§8.5.3) -- since issue #49, every Write*/WriteStrict
+	// function returns (string, []omnist.Diagnostic, error) (oml.Write:
+	// (string, []omnist.Diagnostic), see its own doc comment for why it
+	// has no error return), so a successful write's adjustment
+	// diagnostics are compared here exactly like every other operation's.
+	if wantDiags, err := decodeExpectDiagnostics(expect); err != nil {
+		return fail(v, "decode expect.diagnostics: %v", err)
+	} else if _, hasDiagsKey := expect["diagnostics"]; hasDiagsKey {
+		got := diagsToPairs(gotDiags)
+		want := expectDiagPairs(wantDiags)
+		if !diagnosticSetsEqual(got, want) {
+			return fail(v, "diagnostics mismatch: got %v want %v", diagStrings(got), diagStrings(want))
+		}
 	}
 	wantText, ok := expect["text"]
 	if !ok {

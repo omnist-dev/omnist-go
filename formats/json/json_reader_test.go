@@ -58,7 +58,7 @@ func TestJSONCountOneAsymmetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadJSON failed: %v", err)
 	}
-	got, err := Write(doc)
+	got, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestJSONRoundTripProperty(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			text, err := Write(tc.doc)
+			text, _, err := Write(tc.doc)
 			if err != nil {
 				t.Fatalf("WriteJSON failed: %v", err)
 			}
@@ -304,7 +304,7 @@ func TestJSONNaNInfinityWriteThenReadBecomesNull(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().
 		AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))).
 		AddValue("ok", omnist.ScalarValue(omnist.NewStringScalar("still here"))))
-	text, err := Write(doc)
+	text, _, err := Write(doc)
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}

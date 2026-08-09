@@ -60,9 +60,9 @@ import (
 // writing anything and fails immediately (omnist.CodeWriteUnsupportedValue,
 // staying consistent with WriteTOML's identical call) if the root is a
 // scalar omnist.Value rather than a omnist.Node.
-func Write(d omnist.Document) (string, error) {
+func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	if !d.IsNode {
-		return "", omnist.Diagnostic{
+		return "", nil, omnist.Diagnostic{
 			Path:     "$",
 			Code:     omnist.CodeWriteUnsupportedValue,
 			Message:  "an XML document's top level must be a single element; a bare scalar omnist.Document has no XML spelling",
@@ -71,7 +71,7 @@ func Write(d omnist.Document) (string, error) {
 	}
 	switch len(d.Node.Edges) {
 	case 0:
-		return "", omnist.Diagnostic{
+		return "", nil, omnist.Diagnostic{
 			Path:     "$",
 			Code:     omnist.CodeWriteUnsupportedValue,
 			Message:  "an XML document needs exactly one top-level element; this omnist.Document has none",
@@ -80,7 +80,7 @@ func Write(d omnist.Document) (string, error) {
 	case 1:
 		// fall through
 	default:
-		return "", omnist.Diagnostic{
+		return "", nil, omnist.Diagnostic{
 			Path:     "$",
 			Code:     omnist.CodeFormatMultipleRoots,
 			Message:  "an XML document needs exactly one top-level element; this omnist.Document has more than one top-level edge",
@@ -90,10 +90,11 @@ func Write(d omnist.Document) (string, error) {
 
 	root := d.Node.Edges[0]
 	var b strings.Builder
-	if err := writeXMLElement(&b, root.Label, root.Target, "$."+root.Label); err != nil {
-		return "", err
+	var diags []omnist.Diagnostic
+	if err := writeXMLElement(&b, root.Label, root.Target, "$."+root.Label, &diags); err != nil {
+		return "", nil, err
 	}
-	return b.String(), nil
+	return b.String(), diags, nil
 }
 
 // writeXMLElement renders one omnist.Edge as a `<label>...</label>` element (or
@@ -103,7 +104,7 @@ func Write(d omnist.Document) (string, error) {
 // empty-string omnist.KindString leaf, and encxml.EscapeText writes nothing for an
 // empty byte slice, so the element naturally comes out as `<label></label>`
 // either way; nothing here special-cases self-closing form specifically).
-func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path string) error {
+func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path string, diags *[]omnist.Diagnostic) error {
 	if !isValidXMLName(label) {
 		return omnist.Diagnostic{
 			Path:     path,
@@ -118,7 +119,7 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		b.WriteString(label)
 		b.WriteByte('>')
 		for _, e := range node.Edges {
-			if err := writeXMLElement(b, e.Label, e.Target, path+"."+e.Label); err != nil {
+			if err := writeXMLElement(b, e.Label, e.Target, path+"."+e.Label, diags); err != nil {
 				return err
 			}
 		}
@@ -141,17 +142,22 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		// same warning-severity adjustment code TOML's writer already
 		// uses for "this leaf has no representation in this format, so it
 		// is written as empty/dropped", applied to XML's own empty-element
-		// spelling instead of TOML's outright omission.
-		diag := omnist.Diagnostic{
+		// spelling instead of TOML's outright omission. Unlike TOML
+		// (which has no spelling at all and must drop the leaf), XML's
+		// empty-element spelling is a real, if lossy, representation, so
+		// per spec §8.5.3 (write's ok:true + diagnostics coexistence) this
+		// is now a non-fatal diagnostic rather than a hard failure that
+		// discards the rest of the document.
+		*diags = append(*diags, omnist.Diagnostic{
 			Path:     path,
 			Code:     omnist.CodeFormatNullUnrepresentable,
 			Message:  "a null leaf cannot be written in XML, so it is written as an empty element",
 			Severity: omnist.SeverityWarning,
-		}
+		})
 		b.WriteString("</")
 		b.WriteString(label)
 		b.WriteByte('>')
-		return diag
+		return nil
 	}
 	// encxml.EscapeText's only failure mode is its io.Writer returning an
 	// error; xmlTextWriter wraps a *strings.Builder, whose Write never
