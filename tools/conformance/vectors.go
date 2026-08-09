@@ -47,16 +47,16 @@ func LoadVectorFile(data []byte) ([]Vector, error) {
 
 // --- §8.5.4 canonical Document JSON encoding -> omnist.Document ---
 //
-// This is deliberately independent of json_reader.go's ReadJSON: ReadJSON
+// This is deliberately independent of formats/json/json_reader.go's json.Read: json.Read
 // parses actual JSON-*format* documents (JSON's own map/array shape,
 // requiring the array-becomes-repeated-edges desugaring JSON's format page
 // describes). The vector suite's canonical encoding is a different,
 // explicit thing per §8.5.4 precisely so a vector file does not depend on
 // the reader's JSON library to decide whether "1" is an integer or a
 // number, or on desugaring rules a vector might be testing in the first
-// place (e.g. formats-json/json.json's own vectors test ReadJSON; a
+// place (e.g. formats-json/json.json's own vectors test json.Read; a
 // materialize vector's "document" input must not silently re-exercise
-// ReadJSON's array-desugaring on the way in).
+// json.Read's array-desugaring on the way in).
 
 // canonNode is the raw shape of a canonical-encoding node or scalar.
 type canonNode struct {

@@ -1,21 +1,23 @@
-package omnist
+package yaml
 
 import (
 	"math"
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	yamllib "gopkg.in/yaml.v3"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// WriteYAML renders d as YAML text (spec §7.3, docs/formats/yaml.md),
+// Write renders d as YAML text (spec §7.3, docs/formats/yaml.md),
 // schema-free: a writer MUST NOT accept a schema (§7.3), and this one
 // doesn't. It applies §7.3's two rules (grouping by label, the count-1
 // bare-value-vs-list rule) via writeYAMLNode/writeYAMLTarget below, then
 // this file's own leaf-rendering rules — see the temporal-value reasoning
 // below.
 //
-// Node-tree construction (buildYAMLNode/buildYAMLScalar) is done by hand;
+// omnist.Node-tree construction (buildYAMLNode/buildYAMLScalar) is done by hand;
 // yaml.v3's own Marshal is used only for the final text emission from that
 // tree (indentation, quoting punctuation, line wrapping), not for any
 // typing decision — every Style and Tag choice below is this package's
@@ -35,17 +37,17 @@ import (
 // resolution (the same resolution ReadYAML implements above), so they are
 // not all written the same way:
 //
-//   - KindDate: an unquoted bare ISO date (2024-01-01) is exactly what
+//   - omnist.KindDate: an unquoted bare ISO date (2024-01-01) is exactly what
 //     docs/formats/yaml.md's worked example shows resolving to a `date`
 //     at stage 1 with no schema involved. Writing it bare is therefore
 //     lossless all the way through stage 1 — strictly better than JSON,
 //     where the same value can only round-trip as a string until stage 2
 //     upgrades it with a schema. There is no reason to stringify a date.
-//   - KindDateTime: the same reasoning applies — an unquoted bare
+//   - omnist.KindDateTime: the same reasoning applies — an unquoted bare
 //     ISO-8601 datetime resolves to a `datetime` at stage 1 (confirmed
 //     against reYAMLDateTime/resolveYAMLScalar above, the same regex this
 //     writer's own reader half uses), so it is written bare too.
-//   - KindTime is the one genuine exception, and it exists because of the
+//   - omnist.KindTime is the one genuine exception, and it exists because of the
 //     sharp edge docs/formats/yaml.md names explicitly: "YAML's core
 //     schema has no standalone time type. A bare `12:00:00` resolves to
 //     the integer 43200." An unquoted bare time-of-day would not merely
@@ -53,11 +55,11 @@ import (
 //     different scalar kind entirely (integer) on read-back, which is
 //     worse than JSON's behavior (where it would at least come back as
 //     the same string). There is no bare spelling that survives YAML's
-//     own resolver as a time, so a KindTime leaf is quoted (forced to
-//     KindString on read-back) — the same stringify-and-report treatment
+//     own resolver as a time, so a omnist.KindTime leaf is quoted (forced to
+//     omnist.KindString on read-back) — the same stringify-and-report treatment
 //     JSON's writer gives every temporal kind unconditionally, applied
 //     here to exactly the one YAML kind that has no lossless bare form.
-//     This is reported via CodeFormatTemporalStringified (spec §8.3.8),
+//     This is reported via omnist.CodeFormatTemporalStringified (spec §8.3.8),
 //     the same code JSON's writer would use if it collected diagnostics
 //     today — see the TODO below on why the collection itself isn't wired
 //     up yet, mirroring json_writer.go's identical TODO.
@@ -70,30 +72,30 @@ import (
 // Full diagnostic-collection plumbing is a TODO, exactly as noted on
 // WriteJSON: spec §7.4 says only SHOULD, and no format.* adjustment-
 // reporting mechanism exists elsewhere in this repo yet to hook into.
-func WriteYAML(d Document) (string, error) {
-	var root *yaml.Node
+func Write(d omnist.Document) (string, error) {
+	var root *yamllib.Node
 	if d.IsNode {
 		root = buildYAMLNode(d.Node)
 	} else {
 		root = buildYAMLTargetScalar(d.Value)
 	}
-	out, err := yaml.Marshal(root)
+	out, err := yamllib.Marshal(root)
 	if err != nil {
 		// This is reachable, not defensive: encode.go's writer refuses
-		// to marshal a KindString Scalar whose Str holds bytes that are
+		// to marshal a omnist.KindString omnist.Scalar whose Str holds bytes that are
 		// not valid UTF-8, with exactly this error text
 		// ("cannot marshal invalid UTF-8 data as !!str") — confirmed
 		// empirically with a scalar built directly from invalid bytes.
-		// Document.Value.Scalar.Str is a Go string, which (unlike Go
+		// omnist.Document.Value.Scalar.Str is a Go string, which (unlike Go
 		// source-code string literals) is not required to hold valid
-		// UTF-8 at the type level, so a Document built programmatically
+		// UTF-8 at the type level, so a omnist.Document built programmatically
 		// (rather than only ever produced by a reader that validated its
 		// own input text) can legitimately reach this. There is no
 		// established taxonomy code (spec §8.3.9) more specific than
 		// this to translate it into and no other codec's writer in this
 		// package currently performs this translation either, so the
 		// library's own error is surfaced as-is rather than wrapped in
-		// a Diagnostic that would overstate precision this package
+		// a omnist.Diagnostic that would overstate precision this package
 		// doesn't actually have here.
 		return "", err
 	}
@@ -105,10 +107,10 @@ func WriteYAML(d Document) (string, error) {
 // preserved, per §7.3.1's `groups` construction.
 type yamlGroup struct {
 	label    string
-	children []Target
+	children []omnist.Target
 }
 
-func groupYAMLEdges(n *Node) []yamlGroup {
+func groupYAMLEdges(n *omnist.Node) []yamlGroup {
 	var groups []yamlGroup
 	index := make(map[string]int, len(n.Edges))
 	for _, e := range n.Edges {
@@ -117,7 +119,7 @@ func groupYAMLEdges(n *Node) []yamlGroup {
 			continue
 		}
 		index[e.Label] = len(groups)
-		groups = append(groups, yamlGroup{label: e.Label, children: []Target{e.Target}})
+		groups = append(groups, yamlGroup{label: e.Label, children: []omnist.Target{e.Target}})
 	}
 	return groups
 }
@@ -126,10 +128,10 @@ func groupYAMLEdges(n *Node) []yamlGroup {
 // format: group edges sharing a label (grouping rule), then render each
 // group as a bare value when it has exactly one child or as a sequence
 // otherwise (count-1 rule) — the same two rules writeJSONNode applies, on
-// yaml.Node values instead of directly-written text.
-func buildYAMLNode(n *Node) *yaml.Node {
+// yamllib.Node values instead of directly-written text.
+func buildYAMLNode(n *omnist.Node) *yamllib.Node {
 	groups := groupYAMLEdges(n)
-	m := &yaml.Node{Kind: yaml.MappingNode}
+	m := &yamllib.Node{Kind: yamllib.MappingNode}
 	for _, g := range groups {
 		// Every label is written double-quoted unconditionally, never
 		// bare. A label is always a string (spec §2.2.2), but a bare
@@ -137,18 +139,18 @@ func buildYAMLNode(n *Node) *yaml.Node {
 		// resolution (an "on"/"yes"/"no" label, or one that looks like
 		// a number or date) would silently stop being a string on
 		// read-back — this reader's own readLabel would then refuse to
-		// even build a Document from it (the Norway-problem rejection
+		// even build a omnist.Document from it (the Norway-problem rejection
 		// this issue's reader half implements). Unconditional quoting
 		// sidesteps needing to replicate resolveYAMLScalar's collision
 		// logic here just to decide, case by case, which labels are
 		// "safe" to leave bare — every label is safe when quoted, with
 		// no exceptions to enumerate or get wrong.
-		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: g.label})
+		m.Content = append(m.Content, &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: g.label})
 		if len(g.children) == 1 {
 			m.Content = append(m.Content, buildYAMLTarget(g.children[0]))
 			continue
 		}
-		seq := &yaml.Node{Kind: yaml.SequenceNode}
+		seq := &yamllib.Node{Kind: yamllib.SequenceNode}
 		for _, t := range g.children {
 			seq.Content = append(seq.Content, buildYAMLTarget(t))
 		}
@@ -157,7 +159,7 @@ func buildYAMLNode(n *Node) *yaml.Node {
 	return m
 }
 
-func buildYAMLTarget(t Target) *yaml.Node {
+func buildYAMLTarget(t omnist.Target) *yamllib.Node {
 	if node, ok := t.Node(); ok {
 		return buildYAMLNode(node)
 	}
@@ -165,85 +167,86 @@ func buildYAMLTarget(t Target) *yaml.Node {
 	return buildYAMLTargetScalar(v)
 }
 
-func buildYAMLTargetScalar(v Value) *yaml.Node {
+func buildYAMLTargetScalar(v omnist.Value) *yamllib.Node {
 	if v.IsNull {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!null", Value: "null"}
 	}
 	return buildYAMLScalar(v.Scalar)
 }
 
-// buildYAMLScalar renders one leaf as a yaml.Node, deciding bare-vs-quoted
-// per kind. See WriteYAML's doc comment for the temporal reasoning; every
+// buildYAMLScalar renders one leaf as a yamllib.Node, deciding bare-vs-quoted
+// per kind. See Write's doc comment for the temporal reasoning; every
 // other kind's bare spelling is chosen so it round-trips through this
 // file's ReadYAML/resolveYAMLScalar unambiguously:
 //
-//   - KindString is always double-quoted (see buildYAMLNode's identical
+//   - omnist.KindString is always double-quoted (see buildYAMLNode's identical
 //     reasoning for labels — a bare string can collide with core-schema
 //     resolution just as easily as a label can).
-//   - KindInteger/KindNumber (finite) are written bare in a spelling that
+//   - omnist.KindInteger/omnist.KindNumber (finite) are written bare in a spelling that
 //     only that kind's branch of resolveYAMLScalar accepts (an integer
 //     never contains '.'/'e'; a finite float always does, matching
 //     writeJSONNumber's identical reasoning for the identical ambiguity).
-//   - KindNumber (NaN/Infinity) is written bare using YAML's own core
+//   - omnist.KindNumber (NaN/Infinity) is written bare using YAML's own core
 //     schema spellings (.nan/.inf/-.inf) — unlike JSON, YAML's core
 //     schema has a native spelling for these (resolveYAMLScalar resolves
 //     them directly), so, unlike WriteJSON, no substitution or strict
 //     mode is needed here at all.
-//   - KindBoolean is written bare as true/false — unambiguous under
+//   - omnist.KindBoolean is written bare as true/false — unambiguous under
 //     resolveYAMLScalar in every YAML-1.1-conformant reader, including
 //     this one.
-//   - KindDate/KindDateTime are written bare in ISO-8601 form (see
-//     WriteYAML's doc comment).
-//   - KindTime is double-quoted (forced to string on read-back — see
-//     WriteYAML's doc comment for why this is the one unavoidable case).
-func buildYAMLScalar(s Scalar) *yaml.Node {
+//   - omnist.KindDate/omnist.KindDateTime are written bare in ISO-8601 form (see
+//     Write's doc comment).
+//   - omnist.KindTime is double-quoted (forced to string on read-back — see
+//     Write's doc comment for why this is the one unavoidable case).
+func buildYAMLScalar(s omnist.Scalar) *yamllib.Node {
 	switch s.Kind {
-	case KindString:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: s.Str}
-	case KindInteger:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: s.Int.String()}
-	case KindNumber:
+	case omnist.KindString:
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: s.Str}
+	case omnist.KindInteger:
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!int", Value: s.Int.String()}
+	case omnist.KindNumber:
 		return buildYAMLNumber(s.Num)
-	case KindBoolean:
+	case omnist.KindBoolean:
 		v := "false"
 		if s.Bool {
 			v = "true"
 		}
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: v}
-	case KindDate:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: formatISODate(s.Date)}
-	case KindTime:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: formatISOTime(s.Time)}
-	default: // KindDateTime
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: formatISODate(s.DateTime.Date) + "T" + formatISOTime(s.DateTime.Time)}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!bool", Value: v}
+	case omnist.KindDate:
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!timestamp", Value: omnist.FormatISODate(s.Date)}
+	case omnist.KindTime:
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: omnist.FormatISOTime(s.Time)}
+	default: // omnist.KindDateTime
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!timestamp", Value: omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)}
 	}
 }
 
-// buildYAMLNumber renders a KindNumber leaf, bare. A finite value always
+// buildYAMLNumber renders a omnist.KindNumber leaf, bare. A finite value always
 // gets a decimal point or exponent (mirroring writeJSONNumber's identical
 // reasoning: without it, resolveYAMLScalar's own int-before-float check
 // would read a whole-number float back as an integer, silently flipping
 // its kind on round-trip). NaN/Infinity use YAML's own core-schema
 // spellings directly — see buildYAMLScalar's doc comment for why, unlike
 // WriteJSON, no substitution is needed.
-func buildYAMLNumber(f float64) *yaml.Node {
+func buildYAMLNumber(f float64) *yamllib.Node {
 	if math.IsNaN(f) {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: ".nan"}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!float", Value: ".nan"}
 	}
 	if math.IsInf(f, 1) {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: ".inf"}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!float", Value: ".inf"}
 	}
 	if math.IsInf(f, -1) {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: "-.inf"}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!float", Value: "-.inf"}
 	}
 	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: s}
+	return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!float", Value: s}
 }
 
-// formatISODate/formatISOTime are shared with json_writer.go; this file
-// does not redefine them, per the same don't-duplicate-a-format-neutral-
-// ISO-8601-renderer reasoning oml_writer.go and json_writer.go already
-// follow for each other.
+// FormatISODate/FormatISOTime are temporal.go's shared, exported
+// ISO-8601 renderers (promoted there in issue #45 once the move to
+// formats/json revealed json_writer.go's private copies were a real
+// cross-codec dependency, not the doc-comment-only kind issue #45
+// originally assumed); this file does not redefine them.

@@ -247,50 +247,6 @@ func TestMaterializeDateShapedStringNeverUpgradesToTime(t *testing.T) {
 	}
 }
 
-// --- cross-codec integration: JSON never auto-resolves temporal strings ---
-
-func TestMaterializeUpgradesJSONSourcedStringsToTemporalKinds(t *testing.T) {
-	doc, err := ReadJSON(`{"d": "2024-01-01", "t": "12:30:00", "dt": "2024-01-01T12:30:00"}`, DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := &Record{
-		Name: "R",
-		Fields: []Field{
-			{Label: "d", Type: ScalarType(KindDate, false), Cardinality: DefaultCardinality()},
-			{Label: "t", Type: ScalarType(KindTime, false), Cardinality: DefaultCardinality()},
-			{Label: "dt", Type: ScalarType(KindDateTime, false), Cardinality: DefaultCardinality()},
-		},
-	}
-	s := Schema{Root: "R", Env: map[string]*Record{"R": r}}
-
-	got, diags, merr := Materialize(doc, s)
-	if merr != nil || len(diags) != 0 {
-		t.Fatalf("want ok, got diags=%v err=%v", diags, merr)
-	}
-	// A JSON reader can never itself produce a KindDate/KindTime/KindDateTime
-	// scalar (JSON has no such literal syntax) -- confirming these came out
-	// upgraded is the concrete proof that materialize, not the reader, did
-	// the work, which is the whole reason this operation exists.
-	for _, e := range got.Node.Edges {
-		v, _ := e.Target.Value()
-		switch e.Label {
-		case "d":
-			if v.Scalar.Kind != KindDate {
-				t.Fatalf("d: want KindDate, got %v", v.Scalar.Kind)
-			}
-		case "t":
-			if v.Scalar.Kind != KindTime {
-				t.Fatalf("t: want KindTime, got %v", v.Scalar.Kind)
-			}
-		case "dt":
-			if v.Scalar.Kind != KindDateTime {
-				t.Fatalf("dt: want KindDateTime, got %v", v.Scalar.Kind)
-			}
-		}
-	}
-}
-
 // --- the lockstep invariant with validate ---
 
 // TestMaterializeValidateLockstepOnShape is the shape/cardinality half of

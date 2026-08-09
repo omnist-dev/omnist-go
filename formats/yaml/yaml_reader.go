@@ -1,4 +1,4 @@
-package omnist
+package yaml
 
 import (
 	"errors"
@@ -10,18 +10,20 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	yamllib "gopkg.in/yaml.v3"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// ReadYAML parses YAML source text into a Document (spec
+// Read parses YAML source text into a omnist.Document (spec
 // docs/formats/yaml.md, "stage 1 only, no schema"). limits configures the
-// safety limits enforced while reading, via the same LimitChecker every
+// safety limits enforced while reading, via the same omnist.LimitChecker every
 // other codec uses (limits.go).
 //
 // # Library choice and empirical verification (issue #25)
 //
-// gopkg.in/yaml.v3 is used as the underlying parser, for its yaml.Node API:
-// it hands back a raw parse tree (Kind/Tag/Style/Value per node) rather than
+// gopkg.in/yaml.v3 is used as the underlying parser, for its yamllib.Node API:
+// it hands back a raw parse tree (Kind/Tag/Style/omnist.Value per node) rather than
 // only a fully-decoded Go value, which is exactly the "raw parse tree to
 // build a custom resolution layer on top of" the issue asks for.
 //
@@ -31,7 +33,7 @@ import (
 // to the integer 43200, not a time). Before writing anything below, this was
 // checked empirically (not assumed from documentation) against yaml.v3's
 // own resolve.go and confirmed with a standalone throwaway program that fed
-// yaml.v3 a Node-tree decode of "on: true", "on" alone, "12:00:00", and a
+// yaml.v3 a omnist.Node-tree decode of "on: true", "on" alone, "12:00:00", and a
 // bare ISO date:
 //
 //   - A bare "on" parses to Tag="!!str" — v3 does NOT resolve it to a
@@ -53,8 +55,8 @@ import (
 //     are unexported package internals, not something a caller can widen).
 //
 // Given that, this reader takes the issue's explicit fallback: parse with
-// yaml.v3's Node tree (which is unaffected by resolve.go — Node.Value keeps
-// the literal, un-interpreted source text of every scalar, and Node.Style
+// yaml.v3's omnist.Node tree (which is unaffected by resolve.go — omnist.Node.Value keeps
+// the literal, un-interpreted source text of every scalar, and omnist.Node.Style
 // reports whether it was quoted/block-style or bare), and layer this
 // package's own YAML-1.1 core-schema resolution on top in
 // resolveYAMLScalar below, rather than trusting either library's default
@@ -68,55 +70,55 @@ import (
 // against the node's raw un-interpreted text, before v3's tag is
 // consulted for anything — so v3's YAML-1.2 choices on exactly those two
 // points are never allowed to leak through.
-func ReadYAML(text string, limits Limits) (Document, error) {
-	dec := yaml.NewDecoder(strings.NewReader(text))
-	var root yaml.Node
+func Read(text string, limits omnist.Limits) (omnist.Document, error) {
+	dec := yamllib.NewDecoder(strings.NewReader(text))
+	var root yamllib.Node
 	if err := dec.Decode(&root); err != nil {
 		if errors.Is(err, io.EOF) {
-			return Document{}, &ParseError{Line: 1, Col: 1, Path: "1:1", Code: CodeParseUnexpectedToken, Message: "unexpected end of input"}
+			return omnist.Document{}, &omnist.ParseError{Line: 1, Col: 1, Path: "1:1", Code: omnist.CodeParseUnexpectedToken, Message: "unexpected end of input"}
 		}
-		return Document{}, wrapYAMLDecodeErr(err)
+		return omnist.Document{}, wrapYAMLDecodeErr(err)
 	}
 
 	// A YAML stream may contain multiple "---"-separated documents;
 	// Decode only ever reads one. Trailing documents have nowhere to
-	// attach in a single-Document result, so — mirroring ReadJSON's own
+	// attach in a single-omnist.Document result, so — mirroring ReadJSON's own
 	// trailing-content check — a second Decode call succeeding means
 	// there is more content this reader must refuse rather than silently
 	// discard.
-	var extra yaml.Node
+	var extra yamllib.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return Document{}, &ParseError{Line: extra.Line, Col: extra.Column, Path: fmt.Sprintf("%d:%d", extra.Line, extra.Column), Code: CodeParseTrailingContent, Message: "content remains after the document"}
+			return omnist.Document{}, &omnist.ParseError{Line: extra.Line, Col: extra.Column, Path: fmt.Sprintf("%d:%d", extra.Line, extra.Column), Code: omnist.CodeParseTrailingContent, Message: "content remains after the document"}
 		}
-		return Document{}, wrapYAMLDecodeErr(err)
+		return omnist.Document{}, wrapYAMLDecodeErr(err)
 	}
 
 	// root is always a DocumentNode wrapping exactly one child when Decode
 	// succeeds with io.EOF not yet reached above — yaml.v3's contract for
-	// decoding into a *yaml.Node.
-	r := &yamlReader{checker: NewLimitChecker(limits)}
+	// decoding into a *yamllib.Node.
+	r := &yamlReader{checker: omnist.NewLimitChecker(limits)}
 	return r.readDocument(root.Content[0])
 }
 
-// wrapYAMLDecodeErr converts a yaml.v3 decode error into a *ParseError.
+// wrapYAMLDecodeErr converts a yaml.v3 decode error into a *omnist.ParseError.
 // yaml.v3 does not expose a structured position for every syntax error (it
 // reports "yaml: line N: ..." as plain text), so — like ReadJSON's own
 // wrapDecodeErr for the same reason with encoding/json — this preserves the
 // library's message and falls back to position 1:1, which is not exact for
 // every syntax error but is what the library makes available.
 func wrapYAMLDecodeErr(err error) error {
-	return &ParseError{Line: 1, Col: 1, Path: "1:1", Code: CodeParseUnexpectedToken, Message: err.Error()}
+	return &omnist.ParseError{Line: 1, Col: 1, Path: "1:1", Code: omnist.CodeParseUnexpectedToken, Message: err.Error()}
 }
 
-// yamlReader holds the state for one ReadYAML call.
+// yamlReader holds the state for one Read call.
 type yamlReader struct {
-	checker *LimitChecker
-	// path is the Document path (spec §8.4) of the node currently being
+	checker *omnist.LimitChecker
+	// path is the omnist.Document path (spec §8.4) of the node currently being
 	// read — the root path "$" at the top level, descending by label as
 	// readMember/readSequenceElements recurse into nested mappings/
 	// sequences. Mirrors jsonReader.path.
-	path Path
+	path omnist.Path
 }
 
 // deref follows an AliasNode to the anchor it points at. Per
@@ -125,58 +127,58 @@ type yamlReader struct {
 // the caller's job (readTarget/readScalar/readMapping, all of which build a
 // brand-new Go value from what deref returns) that does the actual
 // expansion into an independent copy. Nothing here keeps a shared pointer
-// in the Document result: two edges built from the same alias each get
-// their own freshly-allocated Node/Scalar, because the functions that
-// consume deref's result never return the *yaml.Node itself as part of the
-// Document — they always finish by allocating Document-model types.
-func deref(n *yaml.Node) *yaml.Node {
-	if n.Kind == yaml.AliasNode {
+// in the omnist.Document result: two edges built from the same alias each get
+// their own freshly-allocated omnist.Node/omnist.Scalar, because the functions that
+// consume deref's result never return the *yamllib.Node itself as part of the
+// omnist.Document — they always finish by allocating omnist.Document-model types.
+func deref(n *yamllib.Node) *yamllib.Node {
+	if n.Kind == yamllib.AliasNode {
 		return n.Alias
 	}
 	return n
 }
 
-// readDocument builds the top-level Document, per the model-mapping table
+// readDocument builds the top-level omnist.Document, per the model-mapping table
 // (docs/formats/yaml.md): a mapping becomes a node document, a bare scalar
 // becomes a value document. A bare top-level sequence is rejected, for the
 // same reason ReadJSON rejects a bare top-level array — see
 // readSequenceElements's doc comment.
-func (r *yamlReader) readDocument(n *yaml.Node) (Document, error) {
+func (r *yamlReader) readDocument(n *yamllib.Node) (omnist.Document, error) {
 	n = deref(n)
 	switch n.Kind {
-	case yaml.MappingNode:
+	case yamllib.MappingNode:
 		node, err := r.readMappingBody(n)
 		if err != nil {
-			return Document{}, err
+			return omnist.Document{}, err
 		}
-		return NodeDocument(node), nil
-	case yaml.SequenceNode:
+		return omnist.NodeDocument(node), nil
+	case yamllib.SequenceNode:
 		// document.unlabeled-element is a document.* code, so per spec §8.4
 		// its path MUST be "$" here, matching ReadJSON's identical
 		// top-level-array case.
-		return Document{}, &ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: CodeDocumentUnlabeledElement, Message: "a top-level sequence has no label to attach to"}
+		return omnist.Document{}, &omnist.ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: omnist.CodeDocumentUnlabeledElement, Message: "a top-level sequence has no label to attach to"}
 	default:
 		v, err := r.readScalar(n)
 		if err != nil {
-			return Document{}, err
+			return omnist.Document{}, err
 		}
-		return ValueDocument(v), nil
+		return omnist.ValueDocument(v), nil
 	}
 }
 
 // readMappingBody reads a MappingNode's Content (alternating key, value
-// pairs) into a Node's edge list. Per the model-mapping table, a key whose
+// pairs) into a omnist.Node's edge list. Per the model-mapping table, a key whose
 // value is a sequence expands into one edge per element sharing that label
 // (the "repeated label" rule), exactly as JSON's array-valued members do —
 // docs/formats/yaml.md states YAML and JSON are "the same codec" on this
 // shape.
 //
-// The caller is responsible for LimitChecker.EnterNode/LeaveNode around
+// The caller is responsible for omnist.LimitChecker.EnterNode/LeaveNode around
 // this call when the mapping being read is itself a nested target — see
 // readNestedMapping. The top level is deliberately not wrapped, matching
 // ReadJSON's readObjectBody convention.
-func (r *yamlReader) readMappingBody(n *yaml.Node) (*Node, error) {
-	node := NewNode()
+func (r *yamlReader) readMappingBody(n *yamllib.Node) (*omnist.Node, error) {
+	node := omnist.NewNode()
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		keyNode := deref(n.Content[i])
 		label, err := r.readLabel(keyNode)
@@ -199,8 +201,8 @@ func (r *yamlReader) readMappingBody(n *yaml.Node) (*Node, error) {
 // integer or null key, or a mapping/sequence used as a key) — so this
 // checks the resolved kind generally, not only for booleans.
 //
-// Code choice: the spec taxonomy (errors.go, spec §8.3.2) has no
-// dedicated "key must be a string" code. CodeDocumentUnlabeledElement is
+// omnist.Code choice: the spec taxonomy (errors.go, spec §8.3.2) has no
+// dedicated "key must be a string" code. omnist.CodeDocumentUnlabeledElement is
 // reused here, following the same reasoning ReadJSON's readArrayElements
 // doc comment already applies to a different "no valid label" situation —
 // its own name and description ("unlabeled element") match a mapping entry
@@ -208,17 +210,17 @@ func (r *yamlReader) readMappingBody(n *yaml.Node) (*Node, error) {
 // reading of a narrow gap, not a load-bearing ambiguity: noted in the
 // issue report rather than inventing a new taxonomy code without
 // consultation.
-func (r *yamlReader) readLabel(keyNode *yaml.Node) (string, error) {
+func (r *yamlReader) readLabel(keyNode *yamllib.Node) (string, error) {
 	// document.unlabeled-element is a document.* code, so per spec §8.4
-	// its path MUST be a Document path: r.path is the path of the
+	// its path MUST be a omnist.Document path: r.path is the path of the
 	// enclosing mapping (the one whose key is being resolved here), which
 	// is exactly what identifies "which node has the bad key" — "$" at
 	// the top level, "$.parent" for a mapping nested under a label.
 	badKeyErr := func(msg string) error {
 		line, col := keyNode.Line, keyNode.Column
-		return &ParseError{Line: line, Col: col, Path: r.path.String(), Code: CodeDocumentUnlabeledElement, Message: msg}
+		return &omnist.ParseError{Line: line, Col: col, Path: r.path.String(), Code: omnist.CodeDocumentUnlabeledElement, Message: msg}
 	}
-	if keyNode.Kind != yaml.ScalarNode {
+	if keyNode.Kind != yamllib.ScalarNode {
 		return "", badKeyErr("a mapping key must be a scalar string, not a nested collection")
 	}
 	v, err := r.readScalar(keyNode)
@@ -228,7 +230,7 @@ func (r *yamlReader) readLabel(keyNode *yaml.Node) (string, error) {
 	if v.IsNull {
 		return "", badKeyErr("a mapping key resolved to null, not a string")
 	}
-	if v.Scalar.Kind != KindString {
+	if v.Scalar.Kind != omnist.KindString {
 		return "", badKeyErr(fmt.Sprintf("a mapping key must be a string; %q resolved to %s (YAML's core-schema resolution, not a string) — quote the key to keep it a string", keyNode.Value, v.Scalar.Kind))
 	}
 	return v.Scalar.Str, nil
@@ -236,10 +238,10 @@ func (r *yamlReader) readLabel(keyNode *yaml.Node) (string, error) {
 
 // readMember appends the edge(s) for one mapping entry (key already
 // resolved to label) to node.
-func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) error {
+func (r *yamlReader) readMember(node *omnist.Node, label string, valNode *yamllib.Node) error {
 	valNode = deref(valNode)
 	switch valNode.Kind {
-	case yaml.MappingNode:
+	case yamllib.MappingNode:
 		savedPath := r.path
 		r.path = r.path.Child(label, 0, false)
 		child, err := r.readNestedMapping(valNode)
@@ -249,7 +251,7 @@ func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) er
 		}
 		node.AddNode(label, child)
 		return nil
-	case yaml.SequenceNode:
+	case yamllib.SequenceNode:
 		savedPath := r.path
 		r.path = r.path.Child(label, 0, false)
 		targets, err := r.readSequenceElements(valNode)
@@ -258,7 +260,7 @@ func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) er
 			return err
 		}
 		for _, t := range targets {
-			node.Edges = append(node.Edges, Edge{Label: label, Target: t})
+			node.Edges = append(node.Edges, omnist.Edge{Label: label, Target: t})
 		}
 		return nil
 	default:
@@ -273,80 +275,80 @@ func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) er
 
 // readNestedMapping reads a MappingNode that is a target somewhere beneath
 // the root (a mapping value, or a sequence element), enforcing the
-// depth/node-count limits via the shared LimitChecker, per limits.go's
+// depth/node-count limits via the shared omnist.LimitChecker, per limits.go's
 // EnterNode/LeaveNode contract — mirroring ReadJSON's readNestedObject.
-func (r *yamlReader) readNestedMapping(n *yaml.Node) (*Node, error) {
+func (r *yamlReader) readNestedMapping(n *yamllib.Node) (*omnist.Node, error) {
 	// document.limit.depth/document.limit.nodes are document.* codes, so
-	// per spec §8.4 their path MUST be a Document path, never
+	// per spec §8.4 their path MUST be a omnist.Document path, never
 	// text-position — "$" here for the same reason ReadJSON's
 	// readNestedObject and oml_parser.go's parseBracedNode use it.
 	if diag := r.checker.EnterNode("$"); diag != nil {
-		return nil, &ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: diag.Code, Message: diag.Message}
+		return nil, &omnist.ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: diag.Code, Message: diag.Message}
 	}
 	defer r.checker.LeaveNode()
 	return r.readMappingBody(n)
 }
 
-// readSequenceElements reads a SequenceNode's Content into one Target per
+// readSequenceElements reads a SequenceNode's Content into one omnist.Target per
 // element. A YAML sequence is sugar for a repeated label (spec
 // docs/formats/yaml.md's model-mapping table), exactly like a JSON array;
-// it is not itself a Document-model construct. An element that is itself a
+// it is not itself a omnist.Document-model construct. An element that is itself a
 // sequence has no label to attach to and is rejected, for the identical
 // reason ReadJSON's readArrayElements rejects a nested bare array — see
 // that function's doc comment, which this mirrors rather than re-deriving.
 //
 // An empty sequence ('[]' or a key with no items) is rejected with
-// CodeParseEmptyArray for the same reason ReadJSON and OML's parser treat
+// omnist.CodeParseEmptyArray for the same reason ReadJSON and OML's parser treat
 // an empty array as an error rather than silently producing zero edges —
 // this is the same array-as-repeated-label-sugar mechanism in a third
 // format, so it follows the existing in-repo precedent rather than
 // inventing a fourth behavior for the identical construct. Narrow/cosmetic
 // reading: docs/formats/yaml.md does not spell out the empty-sequence case
 // explicitly.
-func (r *yamlReader) readSequenceElements(n *yaml.Node) ([]Target, error) {
+func (r *yamlReader) readSequenceElements(n *yamllib.Node) ([]omnist.Target, error) {
 	if len(n.Content) == 0 {
-		return nil, r.errAt(n, CodeParseEmptyArray, "an empty sequence is not a valid value")
+		return nil, r.errAt(n, omnist.CodeParseEmptyArray, "an empty sequence is not a valid value")
 	}
-	targets := make([]Target, 0, len(n.Content))
+	targets := make([]omnist.Target, 0, len(n.Content))
 	for _, elemNode := range n.Content {
 		elemNode = deref(elemNode)
 		switch elemNode.Kind {
-		case yaml.MappingNode:
+		case yamllib.MappingNode:
 			child, err := r.readNestedMapping(elemNode)
 			if err != nil {
 				return nil, err
 			}
-			targets = append(targets, NodeTarget(child))
-		case yaml.SequenceNode:
-			return nil, r.errAt(elemNode, CodeDocumentUnlabeledElement, "a sequence element must not itself be a sequence")
+			targets = append(targets, omnist.NodeTarget(child))
+		case yamllib.SequenceNode:
+			return nil, r.errAt(elemNode, omnist.CodeDocumentUnlabeledElement, "a sequence element must not itself be a sequence")
 		default:
 			v, err := r.readScalar(elemNode)
 			if err != nil {
 				return nil, err
 			}
-			targets = append(targets, ValueTarget(v))
+			targets = append(targets, omnist.ValueTarget(v))
 		}
 	}
 	return targets, nil
 }
 
-func (r *yamlReader) errAt(n *yaml.Node, code Code, msg string) *ParseError {
-	return &ParseError{Line: n.Line, Col: n.Column, Path: fmt.Sprintf("%d:%d", n.Line, n.Column), Code: code, Message: msg}
+func (r *yamlReader) errAt(n *yamllib.Node, code omnist.Code, msg string) *omnist.ParseError {
+	return &omnist.ParseError{Line: n.Line, Col: n.Column, Path: fmt.Sprintf("%d:%d", n.Line, n.Column), Code: code, Message: msg}
 }
 
-// readScalar resolves one already-dereferenced ScalarNode to a Document
-// Value, applying this reader's YAML-1.1 core-schema resolution
+// readScalar resolves one already-dereferenced ScalarNode to a omnist.Document
+// omnist.Value, applying this reader's YAML-1.1 core-schema resolution
 // (resolveYAMLScalar) and then the digit-count limit for any resulting
 // integer. resolveYAMLScalar itself cannot fail — every plain scalar that
-// doesn't resolve to a more specific kind falls back to KindString, so
+// doesn't resolve to a more specific kind falls back to omnist.KindString, so
 // there is nothing here for it to report an error about — the only
 // failure mode a scalar leaf can have is exceeding the digit limit below.
-func (r *yamlReader) readScalar(n *yaml.Node) (Value, error) {
+func (r *yamlReader) readScalar(n *yamllib.Node) (omnist.Value, error) {
 	v := resolveYAMLScalar(n)
-	if !v.IsNull && v.Scalar.Kind == KindInteger {
+	if !v.IsNull && v.Scalar.Kind == omnist.KindInteger {
 		digits := len(strings.TrimPrefix(v.Scalar.Int.String(), "-"))
 		if diag := r.checker.CheckIntDigits(fmt.Sprintf("%d:%d", n.Line, n.Column), digits); diag != nil {
-			return Value{}, &ParseError{Line: n.Line, Col: n.Column, Path: diag.Path, Code: diag.Code, Message: diag.Message}
+			return omnist.Value{}, &omnist.ParseError{Line: n.Line, Col: n.Column, Path: diag.Path, Code: diag.Code, Message: diag.Message}
 		}
 	}
 	return v, nil
@@ -355,8 +357,8 @@ func (r *yamlReader) readScalar(n *yaml.Node) (Value, error) {
 // --- YAML 1.1 core-schema scalar resolution ---
 //
 // resolveYAMLScalar is this package's own resolution layer, built directly
-// against each scalar node's raw, un-interpreted text (Node.Value) and its
-// Style, per the empirical findings documented on ReadYAML: neither
+// against each scalar node's raw, un-interpreted text (omnist.Node.Value) and its
+// Style, per the empirical findings documented on Read: neither
 // available library's default resolution matches spec-required YAML 1.1
 // behavior on the Norway words or sexagesimal notation, so those two are
 // always decided here, first, from raw text — never from yaml.v3's Tag.
@@ -411,7 +413,7 @@ var (
 	// sexagesimal float — so it is deliberately not implemented here.
 	// This is a narrow, cosmetic gap (an input like "1:30:00.5" would
 	// fall through to reYAMLSexagesimal's non-match and then to the
-	// plain-string fallback below, rather than becoming a KindNumber),
+	// plain-string fallback below, rather than becoming a omnist.KindNumber),
 	// noted in the issue report rather than treated as load-bearing.
 	reYAMLFloat = regexp.MustCompile(`^[-+]?(\.[0-9_]+|[0-9_]+(\.[0-9_]*)?)([eE][-+]?[0-9]+)?$`)
 
@@ -430,9 +432,9 @@ var (
 
 // resolveYAMLScalar is the core-schema resolution entry point for one
 // scalar node.
-func resolveYAMLScalar(n *yaml.Node) Value {
-	if n.Style&(yaml.SingleQuotedStyle|yaml.DoubleQuotedStyle|yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
-		return ScalarValue(NewStringScalar(n.Value))
+func resolveYAMLScalar(n *yamllib.Node) omnist.Value {
+	if n.Style&(yamllib.SingleQuotedStyle|yamllib.DoubleQuotedStyle|yamllib.LiteralStyle|yamllib.FoldedStyle) != 0 {
+		return omnist.ScalarValue(omnist.NewStringScalar(n.Value))
 	}
 
 	s := n.Value
@@ -441,21 +443,21 @@ func resolveYAMLScalar(n *yaml.Node) Value {
 	// checked ahead of yamlNullWords since "" can't be a map key in
 	// yamlNullWords the way non-empty words are).
 	if s == "" {
-		return NullValue()
+		return omnist.NullValue()
 	}
 	if b, ok := yamlBoolWords[s]; ok {
-		return ScalarValue(NewBooleanScalar(b))
+		return omnist.ScalarValue(omnist.NewBooleanScalar(b))
 	}
 	if yamlNullWords[s] {
-		return NullValue()
+		return omnist.NullValue()
 	}
 	if reYAMLSexagesimal.MatchString(s) {
-		return ScalarValue(NewIntegerScalar(parseSexagesimalInt(s)))
+		return omnist.ScalarValue(omnist.NewIntegerScalar(parseSexagesimalInt(s)))
 	}
 	if reYAMLInt.MatchString(s) {
 		bi, ok := parseYAMLInt(s)
 		if ok {
-			return ScalarValue(NewIntegerScalar(bi))
+			return omnist.ScalarValue(omnist.NewIntegerScalar(bi))
 		}
 		// Falls through to string on the chance SetString rejects text
 		// reYAMLInt's own pattern already constrains to a valid big.Int
@@ -465,25 +467,25 @@ func resolveYAMLScalar(n *yaml.Node) Value {
 	}
 	switch s {
 	case ".inf", "+.inf", ".Inf", "+.Inf", ".INF", "+.INF":
-		return ScalarValue(NewNumberScalar(math.Inf(1)))
+		return omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(1)))
 	case "-.inf", "-.Inf", "-.INF":
-		return ScalarValue(NewNumberScalar(math.Inf(-1)))
+		return omnist.ScalarValue(omnist.NewNumberScalar(math.Inf(-1)))
 	case ".nan", ".NaN", ".NAN":
-		return ScalarValue(NewNumberScalar(math.NaN()))
+		return omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))
 	}
 	if reYAMLFloat.MatchString(s) && strings.ContainsAny(s, ".eE") {
 		f, err := strconv.ParseFloat(strings.ReplaceAll(s, "_", ""), 64)
 		if err == nil {
-			return ScalarValue(NewNumberScalar(f))
+			return omnist.ScalarValue(omnist.NewNumberScalar(f))
 		}
 	}
 	if reYAMLDateTime.MatchString(s) {
-		return ScalarValue(NewDateTimeScalar(parseYAMLDateTime(s)))
+		return omnist.ScalarValue(omnist.NewDateTimeScalar(parseYAMLDateTime(s)))
 	}
 	if reYAMLDate.MatchString(s) {
-		return ScalarValue(NewDateScalar(ParseISODate(s)))
+		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(s)))
 	}
-	return ScalarValue(NewStringScalar(s))
+	return omnist.ScalarValue(omnist.NewStringScalar(s))
 }
 
 // parseSexagesimalInt computes the big.Int value of a YAML base-60
@@ -527,22 +529,22 @@ func parseYAMLInt(s string) (*big.Int, bool) {
 	return new(big.Int).SetString(s, 0)
 }
 
-// parseYAMLDateTime converts a scalar's text into a DateTimeValue. Its
+// parseYAMLDateTime converts a scalar's text into a omnist.DateTimeValue. Its
 // only caller (resolveYAMLScalar) checks reYAMLDateTime.MatchString(s)
 // first and only calls this on success, so FindStringSubmatch here is
-// guaranteed non-nil — mirroring temporal.go's ParseISODate/
-// ParseISOTime precondition convention (see that file's comment above
-// ParseISODate), this does not carry a permanently-dead "no match"
+// guaranteed non-nil — mirroring temporal.go's omnist.ParseISODate/
+// omnist.ParseISOTime precondition convention (see that file's comment above
+// omnist.ParseISODate), this does not carry a permanently-dead "no match"
 // branch for a case the precondition already excludes.
 //
-// Unlike OML's ISODateTimeRegexp (which temporal.go's ParseISODateTime
+// Unlike OML's ISODateTimeRegexp (which temporal.go's omnist.ParseISODateTime
 // assumes), YAML's timestamp type additionally allows a lowercase 't' or a
 // literal space as the date/time separator and a bare 'Z' for UTC, so this
-// does not reuse temporal.go's ParseISODateTime directly (its
+// does not reuse temporal.go's omnist.ParseISODateTime directly (its
 // Sscanf-based implementation is pinned to the OML lexer's own narrower
 // regex) and instead extracts fields from reYAMLDateTime's own capture
 // groups.
-func parseYAMLDateTime(s string) DateTimeValue {
+func parseYAMLDateTime(s string) omnist.DateTimeValue {
 	m := reYAMLDateTime.FindStringSubmatch(s)
 	year, _ := strconv.Atoi(m[1])
 	month, _ := strconv.Atoi(m[2])
@@ -550,12 +552,12 @@ func parseYAMLDateTime(s string) DateTimeValue {
 	hour, _ := strconv.Atoi(m[4])
 	minute, _ := strconv.Atoi(m[5])
 
-	tv := TimeValue{Hour: hour, Minute: minute}
+	tv := omnist.TimeValue{Hour: hour, Minute: minute}
 	if m[6] != "" {
 		sec, _ := strconv.Atoi(m[7])
 		tv.Second = sec
 		if m[8] != "" {
-			tv.Nanosecond = fracToNanos(m[9])
+			tv.Nanosecond = omnist.FracToNanos(m[9])
 		}
 	}
 	switch {
@@ -573,8 +575,8 @@ func parseYAMLDateTime(s string) DateTimeValue {
 		tv.HasOffset = true
 		tv.OffsetSeconds = sign * (oh*3600 + om*60)
 	}
-	return DateTimeValue{
-		Date: DateValue{Year: year, Month: month, Day: day},
+	return omnist.DateTimeValue{
+		Date: omnist.DateValue{Year: year, Month: month, Day: day},
 		Time: tv,
 	}
 }

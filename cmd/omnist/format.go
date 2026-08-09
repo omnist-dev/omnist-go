@@ -6,6 +6,10 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/formats/json"
+	"github.com/omnist-dev/omnist-go/formats/toml"
+	"github.com/omnist-dev/omnist-go/formats/xml"
+	"github.com/omnist-dev/omnist-go/formats/yaml"
 	"github.com/omnist-dev/omnist-go/oml"
 )
 
@@ -18,18 +22,18 @@ type formatReaderFunc func(text string, limits omnist.Limits) (omnist.Document, 
 type formatWriterFunc func(d omnist.Document) (string, error)
 
 var formatReaders = map[string]formatReaderFunc{
-	"json": omnist.ReadJSON,
-	"yaml": omnist.ReadYAML,
-	"toml": omnist.ReadTOML,
-	"xml":  omnist.ReadXML,
+	"json": json.Read,
+	"yaml": yaml.Read,
+	"toml": toml.Read,
+	"xml":  xml.Read,
 	"oml":  oml.Read,
 }
 
 var formatWriters = map[string]formatWriterFunc{
-	"json": omnist.WriteJSON,
-	"yaml": omnist.WriteYAML,
-	"toml": omnist.WriteTOML,
-	"xml":  omnist.WriteXML,
+	"json": json.Write,
+	"yaml": yaml.Write,
+	"toml": toml.Write,
+	"xml":  xml.Write,
 	// oml.Write never returns an error (compact-vs-pretty is the only
 	// knob, and both always succeed), but it's wrapped here so every
 	// entry in this table shares one signature.
