@@ -115,7 +115,7 @@ func ParseISOTime(s string) TimeValue {
 			for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
 				end++
 			}
-			tv.Nanosecond = fracToNanos(rest[1:end])
+			tv.Nanosecond = FracToNanos(rest[1:end])
 			rest = rest[end:]
 		}
 	}
@@ -139,9 +139,14 @@ func ParseISODateTime(s string) DateTimeValue {
 	return DateTimeValue{Date: ParseISODate(s[:idx]), Time: ParseISOTime(s[idx+1:])}
 }
 
-// fracToNanos converts a fractional-second digit string (1-6 digits, as
+// FracToNanos converts a fractional-second digit string (1-6 digits, as
 // matched by the grammar) to nanoseconds, right-padding to 9 digits.
-func fracToNanos(digits string) int {
+// Exported (issue #45) once formats/yaml's reader turned out to need it
+// directly for its own sexagesimal/fractional-time parsing (parseYAMLDateTime),
+// a real cross-codec dependency this project's package-restructuring plan
+// had not accounted for -- the same class of gap FormatISODate/
+// FormatISOTime/FormatISOFraction above were promoted to fix.
+func FracToNanos(digits string) int {
 	padded := (digits + "000000000")[:9]
 	n, _ := strconv.Atoi(padded)
 	return n
@@ -192,7 +197,7 @@ func FormatISOTime(t TimeValue) string {
 
 // FormatISOFraction converts a Nanosecond field to the shortest 1-6 digit
 // fraction string that reproduces it. Nanosecond is always a product of
-// fracToNanos above, which right-pads to 9 digits, so it is always an
+// FracToNanos above, which right-pads to 9 digits, so it is always an
 // exact multiple of 1000, and trimming trailing zeros from its 6-digit
 // microsecond form can never trim down to nothing given the caller's
 // guard that Nanosecond != 0. Promoted here (issue #45) alongside

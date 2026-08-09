@@ -21,6 +21,7 @@ import (
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/formats/json"
+	"github.com/omnist-dev/omnist-go/formats/yaml"
 )
 
 // --- cross-format structural equality (JSON vs OML) ---
@@ -137,7 +138,7 @@ price = 9.99
 // above.
 
 func TestYAMLCrossFormatStructuralEqualityWithJSON(t *testing.T) {
-	yd, err := omnist.ReadYAML("a: 1\nb: \"two\"\nc:\n  d: true\n", omnist.DefaultLimits())
+	yd, err := yaml.Read("a: 1\nb: \"two\"\nc:\n  d: true\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +161,7 @@ func TestYAMLWorkedExampleCrossFormatEqualityWithJSON(t *testing.T) {
     - {sku: W, qty: 3, price: 9.99}
     - {sku: G, qty: 1, price: 9.99}
 `
-	d, err := omnist.ReadYAML(src, omnist.DefaultLimits())
+	d, err := yaml.Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}

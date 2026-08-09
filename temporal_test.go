@@ -42,3 +42,24 @@ func TestFormatISOTimeNegativeOffset(t *testing.T) {
 		t.Errorf("FormatISOTime(...) = %q, want %q", got, want)
 	}
 }
+
+// TestFormatISOTimeFraction exercises FormatISOTime's fractional-second
+// rendering branch (t.Nanosecond != 0), which also is FormatISOFraction's
+// only caller in this package. Before issue #45 moved yaml_writer_test.go
+// (and, earlier, json_writer_test.go) into their own formats/* packages,
+// this branch was covered incidentally by their own "with-fraction"/
+// "with fraction" writer test cases -- toml_writer_test.go and
+// xml_writer_test.go's own time fixtures never happen to use a nonzero
+// Nanosecond. Once yaml_writer_test.go's coverage stopped counting toward
+// this package's own number (same per-package attribution rule
+// TestParseISOTimeNegativeOffset's comment explains), FormatISOTime's
+// fraction branch and all of FormatISOFraction dropped to 0% -- the same
+// class of regression again, caught by issue #45's per-function coverage
+// check.
+func TestFormatISOTimeFraction(t *testing.T) {
+	got := FormatISOTime(TimeValue{Hour: 1, Minute: 2, Second: 3, Nanosecond: 500000000})
+	want := "01:02:03.5"
+	if got != want {
+		t.Errorf("FormatISOTime(...) = %q, want %q", got, want)
+	}
+}
