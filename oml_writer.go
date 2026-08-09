@@ -149,7 +149,7 @@ func writeOMLValue(b *strings.Builder, v Value) {
 // either built by NewIntegerScalar (which always copies a non-nil
 // *big.Int) or produced by ReadOML/ReadOSD, neither of which ever leaves
 // Int nil for KindInteger. This mirrors the same trusted-precondition
-// convention oml_lexer.go's temporal decoders already use.
+// convention temporal.go's temporal decoders already use.
 func writeOMLScalar(b *strings.Builder, s Scalar) {
 	switch s.Kind {
 	case KindString:
@@ -205,7 +205,7 @@ func formatOMLDate(d DateValue) string {
 }
 
 // formatOMLTime renders a TimeValue per the TIME production (spec §4.2's
-// reTime). Seconds are emitted only when Second or Nanosecond is nonzero,
+// ISOTimeRegexp). Seconds are emitted only when Second or Nanosecond is nonzero,
 // and the fractional part only when Nanosecond is nonzero — the Document
 // model does not distinguish "seconds explicitly written as :00" from
 // "seconds omitted", so omitting a zero seconds/fraction component is a
@@ -242,7 +242,7 @@ func formatOMLTime(t TimeValue) string {
 
 // formatOMLFraction converts a Nanosecond field back to the shortest 1-6
 // digit fraction string that reproduces it. Nanosecond is always a
-// product of fracToNanos (oml_lexer.go), which right-pads a 1-6 digit
+// product of fracToNanos (temporal.go), which right-pads a 1-6 digit
 // source fraction to 9 digits with zeros — so Nanosecond is always an
 // exact multiple of 1000, and trimming trailing zeros from its 6-digit
 // microsecond form can never trim down to nothing given the caller's

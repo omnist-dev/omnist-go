@@ -242,7 +242,7 @@ func formatISOTime(t TimeValue) string {
 // formatISOFraction converts a Nanosecond field to the shortest 1-6 digit
 // fraction string that reproduces it, mirroring oml_writer.go's
 // formatOMLFraction. Nanosecond is always a product of a source fraction
-// decoder that right-pads to 9 digits (oml_lexer.go's fracToNanos is the
+// decoder that right-pads to 9 digits (temporal.go's fracToNanos is the
 // only producer of TimeValue.Nanosecond in this repo), so it is always an
 // exact multiple of 1000, and trimming trailing zeros from its 6-digit
 // microsecond form can never trim down to nothing given the caller's

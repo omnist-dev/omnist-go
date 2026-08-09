@@ -347,8 +347,8 @@ func (r *jsonReader) readArrayElements(key string) ([]Target, error) {
 // function), so the type switch's only remaining possibilities from
 // json.Decoder.UseNumber()'s token set are nil, bool, string, and
 // json.Number — an exhaustive set with no default case needed, matching
-// the no-dead-branch convention oml_lexer.go's temporal decoders already
-// use (see the comment above parseDateValue).
+// the no-dead-branch convention temporal.go's temporal decoders already
+// use (see the comment above ParseISODate).
 func (r *jsonReader) scalarToValue(tok json.Token, path Path) (Value, error) {
 	switch v := tok.(type) {
 	case nil:
@@ -392,10 +392,9 @@ func (r *jsonReader) numberToValue(n json.Number, path Path) (Value, error) {
 	// s is a JSON-grammar-valid integer literal (the only kind
 	// json.Decoder.UseNumber() ever hands back for a no-'.'/'e'/'E' token):
 	// -?(0|[1-9]\d*). SetString with base 10 cannot fail on such a string,
-	// so — mirroring oml_lexer.go's parseDateValue/parseTimeValue
+	// so — mirroring temporal.go's ParseISODate/ParseISOTime
 	// convention for a regex-pinned precondition — this does not carry a
 	// permanently-dead "malformed" branch for a case no input can reach.
 	bi, _ := new(big.Int).SetString(s, 10)
 	return ScalarValue(NewIntegerScalar(bi)), nil
 }
-
