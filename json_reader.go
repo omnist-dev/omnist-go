@@ -64,6 +64,10 @@ type jsonReader struct {
 	dec     *json.Decoder
 	checker *LimitChecker
 	text    string
+	// path is the Document path (spec §8.4) of the value currently being
+	// read — the root path "$" at the top level, descending by label as
+	// readMember/readArrayElements recurse into nested objects/arrays.
+	path Path
 }
 
 // next reads the next raw JSON token, translating any decode error (bad
@@ -133,10 +137,15 @@ func (r *jsonReader) readDocument(tok json.Token) (Document, error) {
 			}
 			return NodeDocument(node), nil
 		case '[':
-			return Document{}, r.errHere(CodeDocumentUnlabeledElement, "a top-level array has no label to attach to")
+			// document.unlabeled-element is a document.* code, so per spec
+			// §8.4 its path MUST be a Document path; "$" is the
+			// whole-document fallback since a top-level array has no
+			// label of its own to descend by.
+			line, col := offsetToLineCol(r.text, r.dec.InputOffset())
+			return Document{}, &ParseError{Line: line, Col: col, Path: "$", Code: CodeDocumentUnlabeledElement, Message: "a top-level array has no label to attach to"}
 		}
 	}
-	v, err := r.scalarToValue(tok)
+	v, err := r.scalarToValue(tok, RootPath())
 	if err != nil {
 		return Document{}, err
 	}
@@ -195,14 +204,17 @@ func (r *jsonReader) readMember(node *Node, key string, valTok json.Token) error
 	if delim, ok := valTok.(json.Delim); ok {
 		switch delim {
 		case '{':
+			savedPath := r.path
+			r.path = r.path.Child(key, 0, false)
 			child, err := r.readNestedObject()
+			r.path = savedPath
 			if err != nil {
 				return err
 			}
 			node.AddNode(key, child)
 			return nil
 		case '[':
-			targets, err := r.readArrayElements()
+			targets, err := r.readArrayElements(key)
 			if err != nil {
 				return err
 			}
@@ -212,7 +224,7 @@ func (r *jsonReader) readMember(node *Node, key string, valTok json.Token) error
 			return nil
 		}
 	}
-	v, err := r.scalarToValue(valTok)
+	v, err := r.scalarToValue(valTok, r.path.Child(key, 0, false))
 	if err != nil {
 		return err
 	}
@@ -225,10 +237,15 @@ func (r *jsonReader) readMember(node *Node, key string, valTok json.Token) error
 // enforcing the depth/node-count limits via the shared LimitChecker
 // around the read, per limits.go's EnterNode/LeaveNode contract.
 func (r *jsonReader) readNestedObject() (*Node, error) {
+	// document.limit.depth/document.limit.nodes are document.* codes, so
+	// per spec §8.4 their path MUST be a Document path, never
+	// text-position — "$" here for the same reason oml_parser.go's
+	// parseBracedNode uses it (no general path more specific than the
+	// whole document is tracked for a limit that can be tripped by any
+	// descendant).
 	line, col := offsetToLineCol(r.text, r.dec.InputOffset())
-	path := fmt.Sprintf("%d:%d", line, col)
-	if diag := r.checker.EnterNode(path); diag != nil {
-		return nil, &ParseError{Line: line, Col: col, Path: path, Code: diag.Code, Message: diag.Message}
+	if diag := r.checker.EnterNode("$"); diag != nil {
+		return nil, &ParseError{Line: line, Col: col, Path: "$", Code: diag.Code, Message: diag.Message}
 	}
 	defer r.checker.LeaveNode()
 	return r.readObjectBody()
@@ -261,7 +278,7 @@ func (r *jsonReader) readNestedObject() (*Node, error) {
 // already treats zero repeats of that sugar as an error rather than a
 // silent no-op; this reader follows that existing, in-repo precedent for
 // the identical construct rather than inventing a second behavior for it.
-func (r *jsonReader) readArrayElements() ([]Target, error) {
+func (r *jsonReader) readArrayElements(key string) ([]Target, error) {
 	if !r.dec.More() {
 		// Consume the ']' before erroring so callers don't have to.
 		errPos := r.errHere(CodeParseEmptyArray, "'[]' is not a valid value")
@@ -272,29 +289,44 @@ func (r *jsonReader) readArrayElements() ([]Target, error) {
 	}
 
 	var targets []Target
+	index := 0
 	for r.dec.More() {
 		tok, err := r.next()
 		if err != nil {
 			return nil, err
 		}
+		// elemPath is this element's Document path, per §8.4: a JSON array
+		// is sugar for a repeated edge (spec docs/formats/json.md's
+		// model-mapping table), so every element is treated as an
+		// occurrence of the repeated label key, indexed by its position —
+		// even a single-element array, since it is the array construct
+		// (not the eventual edge count) that marks this as repeated-label
+		// sugar.
+		elemPath := r.path.Child(key, index, true)
 		if delim, ok := tok.(json.Delim); ok {
 			switch delim {
 			case '{':
+				savedPath := r.path
+				r.path = elemPath
 				child, err := r.readNestedObject()
+				r.path = savedPath
 				if err != nil {
 					return nil, err
 				}
 				targets = append(targets, NodeTarget(child))
+				index++
 				continue
 			case '[':
-				return nil, r.errHere(CodeDocumentUnlabeledElement, "an array element must not itself be an array")
+				line, col := offsetToLineCol(r.text, r.dec.InputOffset())
+				return nil, &ParseError{Line: line, Col: col, Path: elemPath.String(), Code: CodeDocumentUnlabeledElement, Message: "an array element must not itself be an array"}
 			}
 		}
-		v, err := r.scalarToValue(tok)
+		v, err := r.scalarToValue(tok, elemPath)
 		if err != nil {
 			return nil, err
 		}
 		targets = append(targets, ValueTarget(v))
+		index++
 	}
 	// Consume the closing ']'.
 	if _, err := r.next(); err != nil {
@@ -317,7 +349,7 @@ func (r *jsonReader) readArrayElements() ([]Target, error) {
 // json.Number — an exhaustive set with no default case needed, matching
 // the no-dead-branch convention oml_lexer.go's temporal decoders already
 // use (see the comment above parseDateValue).
-func (r *jsonReader) scalarToValue(tok json.Token) (Value, error) {
+func (r *jsonReader) scalarToValue(tok json.Token, path Path) (Value, error) {
 	switch v := tok.(type) {
 	case nil:
 		return NullValue(), nil
@@ -326,7 +358,7 @@ func (r *jsonReader) scalarToValue(tok json.Token) (Value, error) {
 	case string:
 		return ScalarValue(NewStringScalar(v)), nil
 	default:
-		return r.numberToValue(v.(json.Number))
+		return r.numberToValue(v.(json.Number), path)
 	}
 }
 
@@ -335,7 +367,14 @@ func (r *jsonReader) scalarToValue(tok json.Token) (Value, error) {
 // numeric literal is a number. json.Number preserves the original literal
 // text (that's the entire reason ReadJSON calls UseNumber()), so this
 // inspects the text directly rather than the decoded magnitude.
-func (r *jsonReader) numberToValue(n json.Number) (Value, error) {
+//
+// path is this value's own Document path (spec §8.4), supplied by the
+// caller (the top-level document, an object member, or an array element
+// each know their own path differently) — used only for
+// document.limit.int-digits, which is a document.* code and so MUST carry
+// a Document path, never the text-position path every parse.* diagnostic
+// in this file uses.
+func (r *jsonReader) numberToValue(n json.Number, path Path) (Value, error) {
 	s := string(n)
 	if strings.ContainsAny(s, ".eE") {
 		f, err := n.Float64()
@@ -346,7 +385,7 @@ func (r *jsonReader) numberToValue(n json.Number) (Value, error) {
 	}
 
 	digits := strings.TrimPrefix(s, "-")
-	if diag := r.checker.CheckIntDigits(r.pathHere(), len(digits)); diag != nil {
+	if diag := r.checker.CheckIntDigits(path.String(), len(digits)); diag != nil {
 		line, col := offsetToLineCol(r.text, r.dec.InputOffset())
 		return Value{}, &ParseError{Line: line, Col: col, Path: diag.Path, Code: diag.Code, Message: diag.Message}
 	}
@@ -360,9 +399,3 @@ func (r *jsonReader) numberToValue(n json.Number) (Value, error) {
 	return ScalarValue(NewIntegerScalar(bi)), nil
 }
 
-// pathHere returns the "line:col" text-position path for the decoder's
-// current byte offset, for use in Diagnostic.Path.
-func (r *jsonReader) pathHere() string {
-	line, col := offsetToLineCol(r.text, r.dec.InputOffset())
-	return fmt.Sprintf("%d:%d", line, col)
-}

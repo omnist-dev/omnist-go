@@ -60,7 +60,7 @@ func TestJSONCountOneAsymmetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
-	if want := `{"m":"A"}`; got != want {
+	if want := `{"m": "A"}`; got != want {
 		t.Errorf("WriteJSON(ReadJSON(%q)) = %q, want %q", `{"m":["A"]}`, got, want)
 	}
 }
@@ -464,6 +464,81 @@ func TestJSONMultilinePositionReporting(t *testing.T) {
 }
 
 // --- offsetToLineCol helper ---
+
+// --- issue #33: document.* diagnostics carry Document paths (spec §8.4),
+// never text-position paths ---
+
+func TestNestedArrayIsRejectedWithDocumentPath(t *testing.T) {
+	_, err := ReadJSON(`{"m":[[1,2],[3,4]]}`, DefaultLimits())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentUnlabeledElement {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentUnlabeledElement)
+	}
+	if pe.Path != "$.m[0]" {
+		t.Errorf("path = %q, want %q", pe.Path, "$.m[0]")
+	}
+}
+
+func TestTopLevelArrayIsRejectedWithDollarPath(t *testing.T) {
+	_, err := ReadJSON(`[1,2]`, DefaultLimits())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentUnlabeledElement {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentUnlabeledElement)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
+func TestJSONNodeCountLimitUsesDollarPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxNodes = 1
+	_, err := ReadJSON(`{"a":{"b":{"c":1}}}`, limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentLimitNodes {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitNodes)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
+func TestJSONIntDigitsLimitUsesDocumentPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxIntDigits = 3
+	_, err := ReadJSON(`{"n":1000}`, limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentLimitIntDigits {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitIntDigits)
+	}
+	if pe.Path != "$.n" {
+		t.Errorf("path = %q, want %q", pe.Path, "$.n")
+	}
+}
 
 func TestOffsetToLineCol(t *testing.T) {
 	text := "ab\ncd\nef"

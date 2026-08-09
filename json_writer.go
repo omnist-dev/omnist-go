@@ -77,10 +77,10 @@ func writeJSONNode(b *strings.Builder, n *Node, path string, strict bool) error 
 	b.WriteByte('{')
 	for i, g := range groups {
 		if i > 0 {
-			b.WriteByte(',')
+			b.WriteString(", ")
 		}
 		writeJSONString(b, g.label)
-		b.WriteByte(':')
+		b.WriteString(": ")
 		childPath := path + "." + g.label
 
 		if len(g.children) == 1 {
@@ -92,7 +92,7 @@ func writeJSONNode(b *strings.Builder, n *Node, path string, strict bool) error 
 		b.WriteByte('[')
 		for j, t := range g.children {
 			if j > 0 {
-				b.WriteByte(',')
+				b.WriteString(", ")
 			}
 			if err := writeJSONTarget(b, t, fmt.Sprintf("%s[%d]", childPath, j), strict); err != nil {
 				return err

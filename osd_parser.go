@@ -197,7 +197,12 @@ func (p *osdParser) parseRecordDef() (*Record, error) {
 			return nil, err
 		}
 		if seenLabels[field.Label] {
-			return nil, schemaError(name+"."+field.Label, CodeSchemaDuplicateField, fmt.Sprintf("field %q is already defined in record %q", field.Label, name))
+			// Path is the record itself (RecordName), not
+			// RecordName.field, per §8.4's Schema-path form: this is a
+			// record-level diagnostic (the record has two fields with the
+			// same label), not a field-level one — there's no single field
+			// it names, since it's the duplication itself that's wrong.
+			return nil, schemaError(name, CodeSchemaDuplicateField, fmt.Sprintf("field %q is already defined in record %q", field.Label, name))
 		}
 		seenLabels[field.Label] = true
 		rec.Fields = append(rec.Fields, field)
@@ -402,9 +407,13 @@ func (p *osdParser) parseType(recordName, label string) (Type, error) {
 	t := p.cur
 	if t.kind != osdTokName {
 		// Per the quoting rule (§5.2), a quoted string in type position is
-		// an error; there is no dedicated schema.* code for this specific
-		// case (unlike the reverse, schema.unquoted-label), so it is
-		// reported as a generic syntax error.
+		// an error, symmetric with the reverse case (schema.unquoted-label
+		// for an unquoted field name). schema.quoted-type (added upstream
+		// via omnist-spec#35) is the dedicated code for it; any other
+		// non-name token in type position is still a generic syntax error.
+		if t.kind == osdTokString {
+			return Type{}, schemaError(recordName, CodeSchemaQuotedType, "expected a bare type name, not a quoted string")
+		}
 		return Type{}, p.errAt(t, CodeParseUnexpectedToken, "expected a type name")
 	}
 	name := t.text

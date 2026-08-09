@@ -29,6 +29,11 @@ type parser struct {
 	lex     *lexer
 	checker *LimitChecker
 	cur     token
+	// path is the Document path (spec §8.4) of the value about to be
+	// parsed — the root path "$" at the top level, descending by label as
+	// parseEdge recurses into nested `{ }` nodes. See parseEdge's
+	// childPath comment for the one caveat (repeated-label indices).
+	path Path
 }
 
 func (p *parser) advance() *ParseError {
@@ -89,11 +94,25 @@ func (p *parser) parseDocument() (Document, error) {
 		return NodeDocument(node), nil
 	}
 
+	startTok := p.cur
 	val, err := p.parseScalarValue()
 	if err != nil {
 		return Document{}, err
 	}
 	if p.cur.kind != tokEOF {
+		// A leftover ':' is only "trailing content" when the scalar just
+		// consumed came from a reserved-word IDENT (null/true/false) that
+		// failed the §4.6.1 label lookahead — spec §4.6.1's own worked
+		// example ("null: 1 ... fails on the leftover ':' as trailing
+		// content") pins that case explicitly. Any other leftover ':' (for
+		// instance after a bare NUMBER like "nan") was never a candidate
+		// for label position at all, so it is simply an out-of-place
+		// token, not a continuation of an almost-valid construct —
+		// reported as parse.unexpected-token instead, per
+		// oml-grammar/reserved/nan-bare-is-a-number-token-not-a-label.
+		if p.cur.kind == tokColon && startTok.kind != tokIdent {
+			return Document{}, p.errAt(p.cur, CodeParseUnexpectedToken, "unexpected ':' after a value")
+		}
 		return Document{}, p.errAt(p.cur, CodeParseTrailingContent, "content remains after the document")
 	}
 	return ValueDocument(val), nil
@@ -138,6 +157,25 @@ func (p *parser) parseNodeEdges(closing tokenKind) (*Node, error) {
 			return nil, p.errAt(p.cur, CodeParseUnexpectedToken, "unexpected end of input, expected '}'")
 		}
 		if !first && !p.cur.sepBefore {
+			// At the top level (closing == tokEOF), whether this is
+			// "trailing content" or "a missing separator between edges"
+			// depends on whether what follows still looks like an edge
+			// attempt (§4.6.1's own STRING/IDENT-plus-':' lookahead,
+			// applied here the same way it disambiguates the top level):
+			//   - "a: 1 b: 2" — "b" is followed by ':', so this reads as
+			//     a second edge with a missing separator before it
+			//     (parse.unexpected-token).
+			//   - "a: 2024-01-01T99" — "T99" is not followed by ':', so
+			//     it never looks like another edge attempt; per spec
+			//     §4.8's worked example this is trailing content instead
+			//     (parse.trailing-content), the same reading as a bare
+			//     scalar document's own leftover-content check above.
+			// Inside a brace-delimited node more structure is always
+			// still expected before '}', so the missing-separator reading
+			// applies unconditionally there.
+			if closing == tokEOF && !p.looksLikeEdgeStart() {
+				return nil, p.errAt(p.cur, CodeParseTrailingContent, "content remains after the document")
+			}
 			return nil, p.errAt(p.cur, CodeParseUnexpectedToken, "expected a separator (newline or ';') between edges")
 		}
 		edges, err := p.parseEdge()
@@ -161,9 +199,20 @@ func (p *parser) parseEdge() ([]Edge, error) {
 	if p.cur.kind != tokColon {
 		return nil, p.errAt(p.cur, CodeParseUnexpectedToken, "expected ':' after label")
 	}
+	// childPath is this edge's Document path (spec §8.4), best-effort:
+	// repeated-label occurrence indices aren't tracked at parse time (that
+	// needs the finished Node, per path.go's PathIndexInNode), so a
+	// repeated label always renders unindexed here. The one diagnostic
+	// this currently feeds, document.limit.int-digits, only has a
+	// conformance vector for a singly-occurring label, so this
+	// simplification is not currently vector-visible.
+	childPath := p.path.Child(label, 0, false)
+	p.lex.valuePath = childPath.String()
 	if err := p.advance(); err != nil {
+		p.lex.valuePath = ""
 		return nil, err
 	}
+	p.lex.valuePath = ""
 
 	if p.cur.kind == tokLBracket {
 		targets, err := p.parseArray()
@@ -177,7 +226,10 @@ func (p *parser) parseEdge() ([]Edge, error) {
 		return edges, nil
 	}
 
+	savedPath := p.path
+	p.path = childPath
 	target, err := p.parseValueTarget()
+	p.path = savedPath
 	if err != nil {
 		return nil, err
 	}
@@ -247,9 +299,15 @@ func (p *parser) parseValueTarget() (Target, error) {
 // instruction to flag such readings in code.
 func (p *parser) parseBracedNode() (*Node, error) {
 	openTok := p.cur
-	diag := p.checker.EnterNode(fmt.Sprintf("%d:%d", openTok.line, openTok.col))
+	// document.limit.depth/document.limit.nodes are document.* codes, so
+	// per spec §8.4 their path MUST be a Document path, never a
+	// text-position one — "$" (the whole-document fallback) is used here
+	// rather than a computed line:col, since this repo has no general
+	// Document-path tracking through arbitrarily nested braces/arrays at
+	// parse time to name a more specific location.
+	diag := p.checker.EnterNode("$")
 	if diag != nil {
-		return nil, &ParseError{Line: openTok.line, Col: openTok.col, Path: fmt.Sprintf("%d:%d", openTok.line, openTok.col), Code: diag.Code, Message: diag.Message}
+		return nil, &ParseError{Line: openTok.line, Col: openTok.col, Path: "$", Code: diag.Code, Message: diag.Message}
 	}
 	defer p.checker.LeaveNode()
 

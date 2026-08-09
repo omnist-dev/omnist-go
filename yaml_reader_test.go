@@ -689,6 +689,59 @@ func TestYAMLRoundTripProperty(t *testing.T) {
 	}
 }
 
+// --- issue #33: document.unlabeled-element carries a Document path (spec
+// §8.4), never a text-position path ---
+
+func TestNorwayProblemKeyUsesDollarPath(t *testing.T) {
+	_, err := ReadYAML("on:\n  push: true\n", DefaultLimits())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentUnlabeledElement {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentUnlabeledElement)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
+func TestYAMLTopLevelSequenceUsesDollarPath(t *testing.T) {
+	_, err := ReadYAML("- 1\n- 2\n", DefaultLimits())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
+func TestYAMLNodeDepthLimitUsesDollarPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxDepth = 1
+	_, err := ReadYAML("a:\n  b:\n    c: 1\n", limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentLimitDepth {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitDepth)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
 func TestYAMLCrossFormatStructuralEqualityWithJSON(t *testing.T) {
 	yd, err := ReadYAML("a: 1\nb: \"two\"\nc:\n  d: true\n", DefaultLimits())
 	if err != nil {

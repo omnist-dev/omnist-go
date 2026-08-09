@@ -20,7 +20,7 @@ func TestWriteJSONGroupingAndCountOne(t *testing.T) {
 	}
 	// Cross-label interleaving is lost: m's two edges group together
 	// regardless of x sitting between them in the edge list.
-	want := `{"m":["A","B"],"x":"X"}`
+	want := `{"m": ["A", "B"], "x": "X"}`
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -32,7 +32,7 @@ func TestWriteJSONSingleLabelIsBareValueNotList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
-	if want := `{"tag":"x"}`; got != want {
+	if want := `{"tag": "x"}`; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -51,7 +51,7 @@ func TestWriteJSONTemporalStringified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
-	want := `{"d":"2024-01-02","t":"10:30","dt":"2024-01-02T10:30:05.25"}`
+	want := `{"d": "2024-01-02", "t": "10:30", "dt": "2024-01-02T10:30:05.25"}`
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -123,7 +123,7 @@ func TestWriteJSONNaNInfinitySubstitutesNull(t *testing.T) {
 			if err != nil {
 				t.Fatalf("WriteJSON failed: %v", err)
 			}
-			want := `{"before":"kept","n":null,"after":7}`
+			want := `{"before": "kept", "n": null, "after": 7}`
 			if got != want {
 				t.Errorf("got %q, want %q (rest of the document must be otherwise unaffected)", got, want)
 			}
@@ -180,7 +180,7 @@ func TestWriteJSONStrictSucceedsOnFiniteValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSONStrict failed: %v", err)
 	}
-	if want := `{"n":3.5}`; got != want {
+	if want := `{"n": 3.5}`; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -285,7 +285,7 @@ func TestWriteJSONNestedNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
-	if want := `{"a":{"b":1}}`; got != want {
+	if want := `{"a": {"b": 1}}`; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

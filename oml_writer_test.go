@@ -207,7 +207,7 @@ func TestOMLPrettyLayoutMatchesSpecExample(t *testing.T) {
 		AddValue("tag", ScalarValue(NewStringScalar("x"))).
 		AddValue("tag", ScalarValue(NewStringScalar("y"))))
 
-	want := "name: \"Ann\"\naddress: {\n  city: \"Zurich\"\n  postcode: \"8001\"\n}\ntag: \"x\"\ntag: \"y\""
+	want := "name: \"Ann\"\naddress: {\n  city: \"Zurich\"\n  postcode: \"8001\"\n}\ntag: \"x\"\ntag: \"y\"\n"
 	if got := WriteOML(doc, false); got != want {
 		t.Errorf("pretty form mismatch:\ngot:  %q\nwant: %q", got, want)
 	}
@@ -215,6 +215,29 @@ func TestOMLPrettyLayoutMatchesSpecExample(t *testing.T) {
 	wantCompact := `name: "Ann"; address: { city: "Zurich"; postcode: "8001" }; tag: "x"; tag: "y"`
 	if got := WriteOML(doc, true); got != wantCompact {
 		t.Errorf("compact form mismatch:\ngot:  %q\nwant: %q", got, wantCompact)
+	}
+}
+
+// --- issue #33: the canonical writer always emits seconds for a time
+// value, even when they are zero, since TimeValue has no way to record
+// "seconds were explicitly ':00' in the source" separately from "seconds
+// defaulted to zero" ---
+
+func TestOMLTimeAlwaysEmitsSeconds(t *testing.T) {
+	doc := NodeDocument(NewNode().AddValue("t", ScalarValue(NewTimeScalar(TimeValue{Hour: 12, Minute: 0}))))
+	want := "t: 12:00:00\n"
+	if got := WriteOML(doc, false); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// --- issue #33: the pretty-printed writer ends with a trailing newline ---
+
+func TestOMLPrettyOutputEndsWithNewline(t *testing.T) {
+	doc := NodeDocument(NewNode().AddValue("a", ScalarValue(NewIntegerScalar(big.NewInt(1)))))
+	got := WriteOML(doc, false)
+	if len(got) == 0 || got[len(got)-1] != '\n' {
+		t.Errorf("got %q, want a trailing newline", got)
 	}
 }
 

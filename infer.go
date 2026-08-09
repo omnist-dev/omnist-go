@@ -53,7 +53,10 @@ type AnyFallback struct {
 func InferWithReport(samples []Document, rootName string, allowAny bool) (Schema, []AnyFallback, error) {
 	if len(samples) == 0 {
 		return Schema{}, nil, Diagnostic{
-			Path:     "",
+			// $ is the whole-schema fallback per spec §8.4: infer-no-samples
+			// fails before any schema exists, so there is no more specific
+			// Document/Schema path to name.
+			Path:     "$",
 			Code:     CodeAlgebraInferNoSamples,
 			Message:  "cannot infer a schema from zero samples",
 			Severity: SeverityError,
@@ -67,7 +70,12 @@ func InferWithReport(samples []Document, rootName string, allowAny bool) (Schema
 	for i, s := range samples {
 		if !s.IsNode {
 			return Schema{}, nil, Diagnostic{
-				Path:     fmt.Sprintf("samples[%d]", i),
+				// $ is the whole-schema fallback per spec §8.4: like
+				// infer-no-samples above, this fails before any schema
+				// exists (it's about the shape of the input samples, not a
+				// schema), so "samples[N]" (a non-Document/Schema-shaped
+				// path) is wrong regardless of which sample failed.
+				Path:     "$",
 				Code:     CodeAlgebraInferScalarRoot,
 				Message:  "infer expects object (record) samples at the root",
 				Severity: SeverityError,

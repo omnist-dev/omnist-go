@@ -367,6 +367,12 @@ func TestInferZeroSamplesErrors(t *testing.T) {
 	if diag.Code != CodeAlgebraInferNoSamples {
 		t.Fatalf("expected CodeAlgebraInferNoSamples, got %s", diag.Code)
 	}
+	// issue #33: algebra.infer-no-samples is a document.*-family code, so
+	// per spec §8.4 its path MUST be "$" (the pre-schema/whole-schema
+	// fallback), never a text-position or empty path.
+	if diag.Path != "$" {
+		t.Fatalf("path = %q, want %q", diag.Path, "$")
+	}
 }
 
 func TestInferScalarRootErrors(t *testing.T) {
@@ -381,6 +387,12 @@ func TestInferScalarRootErrors(t *testing.T) {
 	}
 	if diag.Code != CodeAlgebraInferScalarRoot {
 		t.Fatalf("expected CodeAlgebraInferScalarRoot, got %s", diag.Code)
+	}
+	// issue #33: algebra.infer-scalar-root's path is "$" per spec §8.4,
+	// not "samples[N]" — see TestInferZeroSamplesErrors for the same rule
+	// applied to the sibling code.
+	if diag.Path != "$" {
+		t.Fatalf("path = %q, want %q", diag.Path, "$")
 	}
 }
 
@@ -399,6 +411,12 @@ func TestInferScalarRootAmongMultipleSamplesErrors(t *testing.T) {
 	}
 	if diag.Code != CodeAlgebraInferScalarRoot {
 		t.Fatalf("expected CodeAlgebraInferScalarRoot, got %s", diag.Code)
+	}
+	// issue #33: algebra.infer-scalar-root's path is "$" per spec §8.4,
+	// not "samples[N]" — see TestInferZeroSamplesErrors for the same rule
+	// applied to the sibling code.
+	if diag.Path != "$" {
+		t.Fatalf("path = %q, want %q", diag.Path, "$")
 	}
 }
 

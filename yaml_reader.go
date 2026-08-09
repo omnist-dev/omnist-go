@@ -112,6 +112,11 @@ func wrapYAMLDecodeErr(err error) error {
 // yamlReader holds the state for one ReadYAML call.
 type yamlReader struct {
 	checker *LimitChecker
+	// path is the Document path (spec §8.4) of the node currently being
+	// read — the root path "$" at the top level, descending by label as
+	// readMember/readSequenceElements recurse into nested mappings/
+	// sequences. Mirrors jsonReader.path.
+	path Path
 }
 
 // deref follows an AliasNode to the anchor it points at. Per
@@ -146,7 +151,10 @@ func (r *yamlReader) readDocument(n *yaml.Node) (Document, error) {
 		}
 		return NodeDocument(node), nil
 	case yaml.SequenceNode:
-		return Document{}, r.errAt(n, CodeDocumentUnlabeledElement, "a top-level sequence has no label to attach to")
+		// document.unlabeled-element is a document.* code, so per spec §8.4
+		// its path MUST be "$" here, matching ReadJSON's identical
+		// top-level-array case.
+		return Document{}, &ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: CodeDocumentUnlabeledElement, Message: "a top-level sequence has no label to attach to"}
 	default:
 		v, err := r.readScalar(n)
 		if err != nil {
@@ -201,18 +209,27 @@ func (r *yamlReader) readMappingBody(n *yaml.Node) (*Node, error) {
 // issue report rather than inventing a new taxonomy code without
 // consultation.
 func (r *yamlReader) readLabel(keyNode *yaml.Node) (string, error) {
+	// document.unlabeled-element is a document.* code, so per spec §8.4
+	// its path MUST be a Document path: r.path is the path of the
+	// enclosing mapping (the one whose key is being resolved here), which
+	// is exactly what identifies "which node has the bad key" — "$" at
+	// the top level, "$.parent" for a mapping nested under a label.
+	badKeyErr := func(msg string) error {
+		line, col := keyNode.Line, keyNode.Column
+		return &ParseError{Line: line, Col: col, Path: r.path.String(), Code: CodeDocumentUnlabeledElement, Message: msg}
+	}
 	if keyNode.Kind != yaml.ScalarNode {
-		return "", r.errAt(keyNode, CodeDocumentUnlabeledElement, "a mapping key must be a scalar string, not a nested collection")
+		return "", badKeyErr("a mapping key must be a scalar string, not a nested collection")
 	}
 	v, err := r.readScalar(keyNode)
 	if err != nil {
 		return "", err
 	}
 	if v.IsNull {
-		return "", r.errAt(keyNode, CodeDocumentUnlabeledElement, "a mapping key resolved to null, not a string")
+		return "", badKeyErr("a mapping key resolved to null, not a string")
 	}
 	if v.Scalar.Kind != KindString {
-		return "", r.errAt(keyNode, CodeDocumentUnlabeledElement, fmt.Sprintf("a mapping key must be a string; %q resolved to %s (YAML's core-schema resolution, not a string) — quote the key to keep it a string", keyNode.Value, v.Scalar.Kind))
+		return "", badKeyErr(fmt.Sprintf("a mapping key must be a string; %q resolved to %s (YAML's core-schema resolution, not a string) — quote the key to keep it a string", keyNode.Value, v.Scalar.Kind))
 	}
 	return v.Scalar.Str, nil
 }
@@ -223,14 +240,20 @@ func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) er
 	valNode = deref(valNode)
 	switch valNode.Kind {
 	case yaml.MappingNode:
+		savedPath := r.path
+		r.path = r.path.Child(label, 0, false)
 		child, err := r.readNestedMapping(valNode)
+		r.path = savedPath
 		if err != nil {
 			return err
 		}
 		node.AddNode(label, child)
 		return nil
 	case yaml.SequenceNode:
+		savedPath := r.path
+		r.path = r.path.Child(label, 0, false)
 		targets, err := r.readSequenceElements(valNode)
+		r.path = savedPath
 		if err != nil {
 			return err
 		}
@@ -253,9 +276,12 @@ func (r *yamlReader) readMember(node *Node, label string, valNode *yaml.Node) er
 // depth/node-count limits via the shared LimitChecker, per limits.go's
 // EnterNode/LeaveNode contract — mirroring ReadJSON's readNestedObject.
 func (r *yamlReader) readNestedMapping(n *yaml.Node) (*Node, error) {
-	path := fmt.Sprintf("%d:%d", n.Line, n.Column)
-	if diag := r.checker.EnterNode(path); diag != nil {
-		return nil, &ParseError{Line: n.Line, Col: n.Column, Path: path, Code: diag.Code, Message: diag.Message}
+	// document.limit.depth/document.limit.nodes are document.* codes, so
+	// per spec §8.4 their path MUST be a Document path, never
+	// text-position — "$" here for the same reason ReadJSON's
+	// readNestedObject and oml_parser.go's parseBracedNode use it.
+	if diag := r.checker.EnterNode("$"); diag != nil {
+		return nil, &ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: diag.Code, Message: diag.Message}
 	}
 	defer r.checker.LeaveNode()
 	return r.readMappingBody(n)
