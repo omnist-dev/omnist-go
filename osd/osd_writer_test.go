@@ -1,8 +1,10 @@
-package omnist
+package osd
 
 import (
 	"strings"
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // --- round-trip property: the most valuable test category per the issue ---
@@ -10,22 +12,22 @@ import (
 func TestOSDRoundTripProperty(t *testing.T) {
 	cases := []struct {
 		name   string
-		schema Schema
+		schema omnist.Schema
 	}{
 		{
 			"single record, default cardinality, all scalar kinds plus any",
-			Schema{
+			omnist.Schema{
 				Root: "R",
-				Env: map[string]*Record{
-					"R": {Name: "R", Fields: []Field{
-						{Label: "a", Type: ScalarType(KindString, false)},
-						{Label: "b", Type: ScalarType(KindInteger, true)},
-						{Label: "c", Type: ScalarType(KindNumber, false)},
-						{Label: "d", Type: ScalarType(KindBoolean, false)},
-						{Label: "e", Type: ScalarType(KindDate, false)},
-						{Label: "f", Type: ScalarType(KindTime, false)},
-						{Label: "g", Type: ScalarType(KindDateTime, false)},
-						{Label: "h", Type: AnyType()},
+				Env: map[string]*omnist.Record{
+					"R": {Name: "R", Fields: []omnist.Field{
+						{Label: "a", Type: omnist.ScalarType(omnist.KindString, false)},
+						{Label: "b", Type: omnist.ScalarType(omnist.KindInteger, true)},
+						{Label: "c", Type: omnist.ScalarType(omnist.KindNumber, false)},
+						{Label: "d", Type: omnist.ScalarType(omnist.KindBoolean, false)},
+						{Label: "e", Type: omnist.ScalarType(omnist.KindDate, false)},
+						{Label: "f", Type: omnist.ScalarType(omnist.KindTime, false)},
+						{Label: "g", Type: omnist.ScalarType(omnist.KindDateTime, false)},
+						{Label: "h", Type: omnist.AnyType()},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -33,22 +35,22 @@ func TestOSDRoundTripProperty(t *testing.T) {
 		},
 		{
 			"empty record",
-			Schema{
+			omnist.Schema{
 				Root:     "R",
-				Env:      map[string]*Record{"R": {Name: "R"}},
+				Env:      map[string]*omnist.Record{"R": {Name: "R"}},
 				EnvOrder: []string{"R"},
 			},
 		},
 		{
 			"nested references, mutual recursion",
-			Schema{
+			omnist.Schema{
 				Root: "A",
-				Env: map[string]*Record{
-					"A": {Name: "A", Fields: []Field{
-						{Label: "b", Type: RefType("B"), Cardinality: Cardinality{Min: 0, Unbounded: true}},
+				Env: map[string]*omnist.Record{
+					"A": {Name: "A", Fields: []omnist.Field{
+						{Label: "b", Type: omnist.RefType("B"), Cardinality: omnist.Cardinality{Min: 0, Unbounded: true}},
 					}},
-					"B": {Name: "B", Fields: []Field{
-						{Label: "a", Type: RefType("A"), Cardinality: Cardinality{Min: 0, Max: 1}},
+					"B": {Name: "B", Fields: []omnist.Field{
+						{Label: "a", Type: omnist.RefType("A"), Cardinality: omnist.Cardinality{Min: 0, Max: 1}},
 					}},
 				},
 				EnvOrder: []string{"A", "B"},
@@ -56,16 +58,16 @@ func TestOSDRoundTripProperty(t *testing.T) {
 		},
 		{
 			"every cardinality shape",
-			Schema{
+			omnist.Schema{
 				Root: "R",
-				Env: map[string]*Record{
-					"R": {Name: "R", Fields: []Field{
-						{Label: "default", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
-						{Label: "exact", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 3, Max: 3}},
-						{Label: "range", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 1, Max: 5}},
-						{Label: "atleast", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 5, Unbounded: true}},
-						{Label: "atmost", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 0, Max: 5}},
-						{Label: "any_count", Type: ScalarType(KindString, false), Cardinality: Cardinality{Min: 0, Unbounded: true}},
+				Env: map[string]*omnist.Record{
+					"R": {Name: "R", Fields: []omnist.Field{
+						{Label: "default", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "exact", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 3, Max: 3}},
+						{Label: "range", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 1, Max: 5}},
+						{Label: "atleast", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 5, Unbounded: true}},
+						{Label: "atmost", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Max: 5}},
+						{Label: "any_count", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Unbounded: true}},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -73,11 +75,11 @@ func TestOSDRoundTripProperty(t *testing.T) {
 		},
 		{
 			"label needing escaping: quote, backslash, control char",
-			Schema{
+			omnist.Schema{
 				Root: "R",
-				Env: map[string]*Record{
-					"R": {Name: "R", Fields: []Field{
-						{Label: `a"b\c` + "\n" + "d", Type: ScalarType(KindString, false)},
+				Env: map[string]*omnist.Record{
+					"R": {Name: "R", Fields: []omnist.Field{
+						{Label: `a"b\c` + "\n" + "d", Type: omnist.ScalarType(omnist.KindString, false)},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -88,10 +90,10 @@ func TestOSDRoundTripProperty(t *testing.T) {
 	for _, tc := range cases {
 		for _, compact := range []bool{false, true} {
 			t.Run(tc.name, func(t *testing.T) {
-				text := WriteOSD(tc.schema, compact)
-				got, err := ReadOSD(text)
+				text := Write(tc.schema, compact)
+				got, err := Read(text)
 				if err != nil {
-					t.Fatalf("compact=%v ReadOSD(WriteOSD(schema)) failed: %v\ntext:\n%s", compact, err, text)
+					t.Fatalf("compact=%v Read(Write(schema)) failed: %v\ntext:\n%s", compact, err, text)
 				}
 				if !schemaEqual(tc.schema, got) {
 					t.Fatalf("compact=%v round-trip mismatch\ntext:\n%s\ngot:  %#v\nwant: %#v", compact, text, got, tc.schema)
@@ -104,32 +106,32 @@ func TestOSDRoundTripProperty(t *testing.T) {
 // --- §5.9 canonical form: the worked example, byte-for-byte ---
 
 func TestOSDCanonicalFormMatchesWorkedExample(t *testing.T) {
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "R",
-		Env: map[string]*Record{
-			"R": {Name: "R", Fields: []Field{
-				{Label: "a", Type: ScalarType(KindString, true), Cardinality: Cardinality{Min: 0, Max: 3}},
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{
+				{Label: "a", Type: omnist.ScalarType(omnist.KindString, true), Cardinality: omnist.Cardinality{Min: 0, Max: 3}},
 			}},
 		},
 		EnvOrder: []string{"R"},
 	}
 	want := "record R {\n    \"a\" [0,3]: string?,\n}\nroot R\n"
-	if got := WriteOSD(schema, false); got != want {
+	if got := Write(schema, false); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
 
 func TestOSDCardinalityOneOneOmitted(t *testing.T) {
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "R",
-		Env: map[string]*Record{
-			"R": {Name: "R", Fields: []Field{
-				{Label: "a", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{
+				{Label: "a", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 			}},
 		},
 		EnvOrder: []string{"R"},
 	}
-	text := WriteOSD(schema, false)
+	text := Write(schema, false)
 	if strings.Contains(text, "[") {
 		t.Errorf("default [1,1] cardinality should be omitted entirely, got %q", text)
 	}
@@ -142,15 +144,15 @@ func TestOSDCardinalityOneOneOmitted(t *testing.T) {
 func TestOSDRootAlwaysLast(t *testing.T) {
 	// EnvOrder deliberately does not put the root record first, to check
 	// that "root" is emitted last regardless of EnvOrder.
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "Second",
-		Env: map[string]*Record{
+		Env: map[string]*omnist.Record{
 			"First":  {Name: "First"},
 			"Second": {Name: "Second"},
 		},
 		EnvOrder: []string{"First", "Second"},
 	}
-	text := WriteOSD(schema, false)
+	text := Write(schema, false)
 	rootIdx := strings.Index(text, "root Second")
 	if rootIdx == -1 {
 		t.Fatalf("root declaration not found: %q", text)
@@ -165,22 +167,22 @@ func TestOSDRootAlwaysLast(t *testing.T) {
 // --- §5.9 compact mode ---
 
 func TestOSDCompactModeMatchesSpecExample(t *testing.T) {
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "R",
-		Env: map[string]*Record{
-			"R": {Name: "R", Fields: []Field{
-				{Label: "a", Type: ScalarType(KindString, false), Cardinality: DefaultCardinality()},
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{
+				{Label: "a", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 			}},
 		},
 		EnvOrder: []string{"R"},
 	}
 	want := `record R { "a": string } root R`
-	if got := WriteOSD(schema, true); got != want {
+	if got := Write(schema, true); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
-	got, err := ReadOSD(want)
+	got, err := Read(want)
 	if err != nil {
-		t.Fatalf("ReadOSD(compact example) failed: %v", err)
+		t.Fatalf("Read(compact example) failed: %v", err)
 	}
 	if !schemaEqual(schema, got) {
 		t.Errorf("compact example did not round-trip: got %#v want %#v", got, schema)
@@ -188,13 +190,13 @@ func TestOSDCompactModeMatchesSpecExample(t *testing.T) {
 }
 
 func TestOSDCompactEmptyRecord(t *testing.T) {
-	schema := Schema{
+	schema := omnist.Schema{
 		Root:     "R",
-		Env:      map[string]*Record{"R": {Name: "R"}},
+		Env:      map[string]*omnist.Record{"R": {Name: "R"}},
 		EnvOrder: []string{"R"},
 	}
 	want := `record R {} root R`
-	if got := WriteOSD(schema, true); got != want {
+	if got := Write(schema, true); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
@@ -203,15 +205,15 @@ func TestOSDCompactEmptyRecord(t *testing.T) {
 
 func TestOSDLabelEscapingBackslashAndQuote(t *testing.T) {
 	label := `contains \ backslash and " quote`
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "R",
-		Env: map[string]*Record{
-			"R": {Name: "R", Fields: []Field{{Label: label, Type: ScalarType(KindString, false)}}},
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false)}}},
 		},
 		EnvOrder: []string{"R"},
 	}
-	text := WriteOSD(schema, false)
-	got, err := ReadOSD(text)
+	text := Write(schema, false)
+	got, err := Read(text)
 	if err != nil {
 		t.Fatalf("ReadOSD failed: %v\ntext:\n%s", err, text)
 	}
@@ -246,15 +248,15 @@ func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
 			"newline byte, got %q", escaped)
 	}
 
-	schema := Schema{
+	schema := omnist.Schema{
 		Root: "R",
-		Env: map[string]*Record{
-			"R": {Name: "R", Fields: []Field{{Label: label, Type: ScalarType(KindString, false)}}},
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false)}}},
 		},
 		EnvOrder: []string{"R"},
 	}
-	text := WriteOSD(schema, false)
-	got, err := ReadOSD(text)
+	text := Write(schema, false)
+	got, err := Read(text)
 	if err != nil {
 		t.Fatalf("ReadOSD failed: %v\ntext:\n%s", err, text)
 	}
@@ -266,7 +268,7 @@ func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
 // --- §5.10 worked example: label containing \n unescapes to "anb" ---
 
 func TestOSDReaderWeakUnescapeWorkedExample(t *testing.T) {
-	s, err := ReadOSD(`record R { "a\nb": string } root R`)
+	s, err := Read(`record R { "a\nb": string } root R`)
 	if err != nil {
 		t.Fatal(err)
 	}

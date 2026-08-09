@@ -1,28 +1,32 @@
-package omnist
+package osd
 
-import "testing"
+import (
+	"testing"
 
-func mustParseOSD(t *testing.T, src string) Schema {
+	omnist "github.com/omnist-dev/omnist-go"
+)
+
+func mustParseOSD(t *testing.T, src string) omnist.Schema {
 	t.Helper()
-	s, err := ReadOSD(src)
+	s, err := Read(src)
 	if err != nil {
-		t.Fatalf("ReadOSD(%q) unexpected error: %v", src, err)
+		t.Fatalf("Read(%q) unexpected error: %v", src, err)
 	}
 	return s
 }
 
 func mustFailOSD(t *testing.T, src string) error {
 	t.Helper()
-	_, err := ReadOSD(src)
+	_, err := Read(src)
 	if err == nil {
-		t.Fatalf("ReadOSD(%q) expected error, got none", src)
+		t.Fatalf("Read(%q) expected error, got none", src)
 	}
 	return err
 }
 
-func wantParseErrCode(t *testing.T, err error, code Code) {
+func wantParseErrCode(t *testing.T, err error, code omnist.Code) {
 	t.Helper()
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
 		t.Fatalf("error is not *ParseError: %T %v", err, err)
 	}
@@ -31,9 +35,9 @@ func wantParseErrCode(t *testing.T, err error, code Code) {
 	}
 }
 
-func wantDiagCode(t *testing.T, err error, code Code) {
+func wantDiagCode(t *testing.T, err error, code omnist.Code) {
 	t.Helper()
-	d, ok := err.(Diagnostic)
+	d, ok := err.(omnist.Diagnostic)
 	if !ok {
 		t.Fatalf("error is not Diagnostic: %T %v", err, err)
 	}
@@ -42,9 +46,9 @@ func wantDiagCode(t *testing.T, err error, code Code) {
 	}
 }
 
-func wantDiag(t *testing.T, err error, code Code, path string) {
+func wantDiag(t *testing.T, err error, code omnist.Code, path string) {
 	t.Helper()
-	d, ok := err.(Diagnostic)
+	d, ok := err.(omnist.Diagnostic)
 	if !ok {
 		t.Fatalf("error is not Diagnostic: %T %v", err, err)
 	}
@@ -100,60 +104,60 @@ func TestWorkedCardinalityAny(t *testing.T) {
 
 func TestWorkedEmptyCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" []: string } root R`)
-	wantDiagCode(t, err, CodeSchemaEmptyCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaEmptyCardinality)
 }
 
 func TestWorkedNegativeCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [-1]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 func TestWorkedInvertedCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1,0]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 func TestWorkedNonIntegerCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1.5]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaNonIntegerCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaNonIntegerCardinality)
 }
 
 func TestWorkedNullableScalar(t *testing.T) {
 	s := mustParseOSD(t, `record R { "a": string? } root R`)
 	typ := s.Env["R"].Fields[0].Type
-	if typ.Kind != TypeScalarKind || typ.ScalarKind != KindString || !typ.Nullable {
+	if typ.Kind != omnist.TypeScalarKind || typ.ScalarKind != omnist.KindString || !typ.Nullable {
 		t.Fatalf("got %+v", typ)
 	}
 }
 
 func TestWorkedNullableRef(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": Other? } record Other { } root R`)
-	wantDiagCode(t, err, CodeSchemaNullableRef)
+	wantDiagCode(t, err, omnist.CodeSchemaNullableRef)
 }
 
 func TestWorkedReservedScalarName(t *testing.T) {
 	err := mustFailOSD(t, `record string { "a": string } root string`)
-	wantDiagCode(t, err, CodeSchemaReservedName)
+	wantDiagCode(t, err, omnist.CodeSchemaReservedName)
 }
 
 func TestWorkedReservedAnyName(t *testing.T) {
 	err := mustFailOSD(t, `record any { "a": string } root any`)
-	wantDiagCode(t, err, CodeSchemaReservedName)
+	wantDiagCode(t, err, omnist.CodeSchemaReservedName)
 }
 
 func TestWorkedDuplicateRecord(t *testing.T) {
 	err := mustFailOSD(t, `record R{"a":string} record R{"a":string} root R`)
-	wantDiagCode(t, err, CodeSchemaDuplicateRecord)
+	wantDiagCode(t, err, omnist.CodeSchemaDuplicateRecord)
 }
 
 func TestWorkedNoRoot(t *testing.T) {
 	err := mustFailOSD(t, `record R{"a":string}`)
-	wantDiag(t, err, CodeSchemaNoRoot, "$")
+	wantDiag(t, err, omnist.CodeSchemaNoRoot, "$")
 }
 
 func TestWorkedUnquotedLabel(t *testing.T) {
 	err := mustFailOSD(t, `record R{a:string} root R`)
-	wantDiagCode(t, err, CodeSchemaUnquotedLabel)
+	wantDiagCode(t, err, omnist.CodeSchemaUnquotedLabel)
 }
 
 func TestWorkedTrailingComma(t *testing.T) {
@@ -165,7 +169,7 @@ func TestWorkedTrailingComma(t *testing.T) {
 
 func TestWorkedAnyField(t *testing.T) {
 	s := mustParseOSD(t, `record R { "data": any } root R`)
-	if s.Env["R"].Fields[0].Type.Kind != TypeAnyKind {
+	if s.Env["R"].Fields[0].Type.Kind != omnist.TypeAnyKind {
 		t.Fatalf("got %+v", s.Env["R"].Fields[0].Type)
 	}
 }
@@ -173,19 +177,19 @@ func TestWorkedAnyField(t *testing.T) {
 func TestWorkedAnyWithCardinality(t *testing.T) {
 	s := mustParseOSD(t, `record R { "data" [0,]: any } root R`)
 	f := s.Env["R"].Fields[0]
-	if f.Type.Kind != TypeAnyKind || f.Cardinality.Min != 0 || !f.Cardinality.Unbounded {
+	if f.Type.Kind != omnist.TypeAnyKind || f.Cardinality.Min != 0 || !f.Cardinality.Unbounded {
 		t.Fatalf("got %+v", f)
 	}
 }
 
 func TestWorkedNullableAny(t *testing.T) {
 	err := mustFailOSD(t, `record R { "data": any? } root R`)
-	wantDiagCode(t, err, CodeSchemaNullableAny)
+	wantDiagCode(t, err, omnist.CodeSchemaNullableAny)
 }
 
 func TestWorkedCapitalizedAnyUnknown(t *testing.T) {
 	err := mustFailOSD(t, `record R { "data": Any } root R`)
-	wantDiagCode(t, err, CodeSchemaUnknownType)
+	wantDiagCode(t, err, omnist.CodeSchemaUnknownType)
 }
 
 // --- §5.2 quoting rule ---
@@ -196,7 +200,7 @@ func TestQuotedStringInTypePositionIsError(t *testing.T) {
 	// position is schema.quoted-type, the symmetric counterpart of
 	// schema.unquoted-label, pathed to the enclosing record ("R").
 	err := mustFailOSD(t, `record R { "a": "string" } root R`)
-	wantDiag(t, err, CodeSchemaQuotedType, "R")
+	wantDiag(t, err, omnist.CodeSchemaQuotedType, "R")
 }
 
 // --- §5.3.1 string unescaping ---
@@ -229,26 +233,26 @@ func TestStringUnescapingArbitraryLetterNotUpgraded(t *testing.T) {
 func TestAllScalarKinds(t *testing.T) {
 	cases := []struct {
 		name string
-		kind ScalarKind
+		kind omnist.ScalarKind
 	}{
-		{"string", KindString},
-		{"integer", KindInteger},
-		{"number", KindNumber},
-		{"boolean", KindBoolean},
-		{"date", KindDate},
-		{"time", KindTime},
-		{"datetime", KindDateTime},
+		{"string", omnist.KindString},
+		{"integer", omnist.KindInteger},
+		{"number", omnist.KindNumber},
+		{"boolean", omnist.KindBoolean},
+		{"date", omnist.KindDate},
+		{"time", omnist.KindTime},
+		{"datetime", omnist.KindDateTime},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			s := mustParseOSD(t, `record R { "a": `+c.name+` } root R`)
 			typ := s.Env["R"].Fields[0].Type
-			if typ.Kind != TypeScalarKind || typ.ScalarKind != c.kind || typ.Nullable {
+			if typ.Kind != omnist.TypeScalarKind || typ.ScalarKind != c.kind || typ.Nullable {
 				t.Fatalf("got %+v", typ)
 			}
 			s2 := mustParseOSD(t, `record R { "a": `+c.name+`? } root R`)
 			typ2 := s2.Env["R"].Fields[0].Type
-			if typ2.Kind != TypeScalarKind || typ2.ScalarKind != c.kind || !typ2.Nullable {
+			if typ2.Kind != omnist.TypeScalarKind || typ2.ScalarKind != c.kind || !typ2.Nullable {
 				t.Fatalf("got %+v", typ2)
 			}
 		})
@@ -260,7 +264,7 @@ func TestAllScalarKinds(t *testing.T) {
 func TestForwardReference(t *testing.T) {
 	s := mustParseOSD(t, `record R { "b": B } record B { "x": string } root R`)
 	f := s.Env["R"].Fields[0]
-	if f.Type.Kind != TypeRefKind || f.Type.RefName != "B" {
+	if f.Type.Kind != omnist.TypeRefKind || f.Type.RefName != "B" {
 		t.Fatalf("got %+v", f.Type)
 	}
 }
@@ -277,12 +281,12 @@ func TestMutualRecursion(t *testing.T) {
 
 func TestDanglingFieldReference(t *testing.T) {
 	err := mustFailOSD(t, `record R { "b": Ghost } root R`)
-	wantDiag(t, err, CodeSchemaUnknownType, "R.b")
+	wantDiag(t, err, omnist.CodeSchemaUnknownType, "R.b")
 }
 
 func TestDanglingRoot(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": string } root Ghost`)
-	wantDiag(t, err, CodeSchemaUnknownType, "$")
+	wantDiag(t, err, omnist.CodeSchemaUnknownType, "$")
 }
 
 // --- S-1..S-7 well-formedness, each with its own test ---
@@ -290,7 +294,7 @@ func TestDanglingRoot(t *testing.T) {
 // S-1: exactly one root, and root MUST resolve to a Ref.
 func TestS1RootMissingIsError(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": string }`)
-	wantDiag(t, err, CodeSchemaNoRoot, "$")
+	wantDiag(t, err, omnist.CodeSchemaNoRoot, "$")
 }
 
 func TestS1DuplicateRootFirstWins(t *testing.T) {
@@ -306,12 +310,12 @@ func TestS1DuplicateRootFirstWins(t *testing.T) {
 // S-2: cardinality bounds.
 func TestS2NegativeMinIsError(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [-1,5]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 func TestS2MaxLessThanMinIsError(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [5,1]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 // S-3: reserved record names -- every scalar keyword, plus "any".
@@ -319,7 +323,7 @@ func TestS3AllReservedRecordNames(t *testing.T) {
 	for _, name := range []string{"string", "integer", "number", "boolean", "date", "time", "datetime", "any"} {
 		t.Run(name, func(t *testing.T) {
 			err := mustFailOSD(t, `record `+name+` { } root `+name)
-			wantDiagCode(t, err, CodeSchemaReservedName)
+			wantDiagCode(t, err, omnist.CodeSchemaReservedName)
 		})
 	}
 }
@@ -327,17 +331,17 @@ func TestS3AllReservedRecordNames(t *testing.T) {
 // S-4: unique record names.
 func TestS4DuplicateRecordName(t *testing.T) {
 	err := mustFailOSD(t, `record R{} record R{} root R`)
-	wantDiag(t, err, CodeSchemaDuplicateRecord, "R")
+	wantDiag(t, err, omnist.CodeSchemaDuplicateRecord, "R")
 }
 
 // S-5: unique field labels per record.
 func TestS5DuplicateFieldLabel(t *testing.T) {
 	// Per osd-grammar/records/duplicate-field-label-in-one-record-is-an-error
-	// the path is the record itself ("R"), a Schema record-level path, not
+	// the path is the record itself ("R"), a omnist.Schema record-level path, not
 	// "R.a" — this is a record-level diagnostic (two fields sharing one
 	// label), not a field-level one.
 	err := mustFailOSD(t, `record R { "a": string, "a": integer } root R`)
-	wantDiag(t, err, CodeSchemaDuplicateField, "R")
+	wantDiag(t, err, omnist.CodeSchemaDuplicateField, "R")
 }
 
 // S-6: dangling reference (already covered above for a field and for
@@ -354,10 +358,10 @@ func TestS6UnreachableRecordIsLegal(t *testing.T) {
 // error (each already covered above by name; this groups them under S-7).
 func TestS7NullableOnlyOnScalar(t *testing.T) {
 	err1 := mustFailOSD(t, `record R { "a": Other? } record Other{} root R`)
-	wantDiagCode(t, err1, CodeSchemaNullableRef)
+	wantDiagCode(t, err1, omnist.CodeSchemaNullableRef)
 
 	err2 := mustFailOSD(t, `record R { "a": any? } root R`)
-	wantDiagCode(t, err2, CodeSchemaNullableAny)
+	wantDiagCode(t, err2, omnist.CodeSchemaNullableAny)
 }
 
 // --- misc: empty record body, comments, default cardinality ---
@@ -424,105 +428,105 @@ root Service
 
 func TestUnterminatedString(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a`)
-	wantParseErrCode(t, err, CodeParseUnterminatedString)
+	wantParseErrCode(t, err, omnist.CodeParseUnterminatedString)
 }
 
 func TestUnterminatedStringAfterBackslash(t *testing.T) {
 	err := mustFailOSD(t, "record R { \"a\\")
-	wantParseErrCode(t, err, CodeParseUnterminatedString)
+	wantParseErrCode(t, err, omnist.CodeParseUnterminatedString)
 }
 
 func TestControlCharacterInString(t *testing.T) {
 	err := mustFailOSD(t, "record R { \"a\x01b\": string } root R")
-	wantParseErrCode(t, err, CodeParseControlCharacter)
+	wantParseErrCode(t, err, omnist.CodeParseControlCharacter)
 }
 
 func TestUnexpectedCharacter(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": string } root R %`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestMissingBraceAfterRecordName(t *testing.T) {
 	err := mustFailOSD(t, `record R "a": string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestMissingRecordNameEOF(t *testing.T) {
 	err := mustFailOSD(t, `record`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestUnterminatedRecordBody(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": string`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestMissingCommaOrBraceAfterField(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": string "b": integer } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestMissingColonAfterLabel(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestMissingRootName(t *testing.T) {
 	err := mustFailOSD(t, `record R{"a":string} root`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestTopLevelUnexpectedToken(t *testing.T) {
 	err := mustFailOSD(t, `"a": string`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestTopLevelUnexpectedKeyword(t *testing.T) {
 	err := mustFailOSD(t, `bogus R { } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityMissingCloseBracket(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1,2: string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityMissingCloseBracketAfterMinComma(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1,2 : string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityUnexpectedTokenAfterOpenBracket(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [x]: string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityCommaFirstMissingCloseBracket(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [,5: string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityCommaFirstBadBound(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [,x]: string } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestTypeMissingAfterColon(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a": [1] } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestDiagnosticErrorMethod(t *testing.T) {
 	err := mustFailOSD(t, `record R{"a":string}`)
 	if err.Error() == "" {
-		t.Fatal("Diagnostic.Error() returned empty string")
+		t.Fatal("omnist.Diagnostic.Error() returned empty string")
 	}
 }
 
 func TestParseErrorErrorMethod(t *testing.T) {
 	err := mustFailOSD(t, `record`)
 	if err.Error() == "" {
-		t.Fatal("ParseError.Error() returned empty string")
+		t.Fatal("omnist.ParseError.Error() returned empty string")
 	}
 }
 
@@ -560,8 +564,8 @@ func TestLexerErrorAtEveryAdvancePoint(t *testing.T) {
 	for _, src := range sources {
 		t.Run(src, func(t *testing.T) {
 			err := mustFailOSD(t, src)
-			if _, ok := err.(*ParseError); !ok {
-				t.Fatalf("ReadOSD(%q) error is not *ParseError: %T %v", src, err, err)
+			if _, ok := err.(*omnist.ParseError); !ok {
+				t.Fatalf("Read(%q) error is not *ParseError: %T %v", src, err, err)
 			}
 		})
 	}
@@ -569,17 +573,17 @@ func TestLexerErrorAtEveryAdvancePoint(t *testing.T) {
 
 func TestEOFRightAfterCommaInRecordBody(t *testing.T) {
 	err := mustFailOSD(t, `record R{"a":string,`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestEOFRightAfterOpenBrace(t *testing.T) {
 	err := mustFailOSD(t, `record R{`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestNumericTokenInLabelPosition(t *testing.T) {
 	err := mustFailOSD(t, `record R{5:string} root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalitySingleValuePositive(t *testing.T) {
@@ -592,22 +596,22 @@ func TestCardinalitySingleValuePositive(t *testing.T) {
 
 func TestCardinalityCommaFirstNegativeMax(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [,-1]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 func TestCardinalityMinCommaOnlyNegativeMin(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [-1,]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaInvalidCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
 func TestCardinalitySecondBoundNonInteger(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1,2.5]: string } root R`)
-	wantDiagCode(t, err, CodeSchemaNonIntegerCardinality)
+	wantDiagCode(t, err, omnist.CodeSchemaNonIntegerCardinality)
 }
 
 func TestCardinalityUnexpectedTokenAfterFirstBound(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1:string} root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantParseErrCode(t, err, omnist.CodeParseUnexpectedToken)
 }
 
 func TestCardinalityBoundOverflowsInt64(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"io"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // cmdValidate implements `omnist validate`: stage-1 read INPUT, read the
@@ -60,7 +61,7 @@ func cmdValidate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "omnist validate: %v\n", err)
 		return ExitProblem
 	}
-	schema, err := omnist.ReadOSD(schemaText)
+	schema, err := osd.Read(schemaText)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist validate: %v\n", err)
 		return ExitProblem

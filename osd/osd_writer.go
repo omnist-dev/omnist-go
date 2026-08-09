@@ -1,11 +1,13 @@
-package omnist
+package osd
 
 import (
 	"fmt"
 	"strings"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// WriteOSD renders s as OSD text per spec §5.9's canonical-output rules,
+// Write renders s as OSD text per spec §5.9's canonical-output rules,
 // which — unlike OML's chapter 4 — are fully normative for the
 // pretty-printed layout: one record per block, fields one per line,
 // four-space indent, a trailing comma after every field including the
@@ -18,7 +20,7 @@ import (
 // this writer's own reasonable, deterministic, self-consistent choice —
 // §5.9 gives one worked example of compact mode and does not otherwise
 // pin its whitespace.
-func WriteOSD(s Schema, compact bool) string {
+func Write(s omnist.Schema, compact bool) string {
 	var b strings.Builder
 	if compact {
 		writeOSDCompact(&b, s)
@@ -28,7 +30,7 @@ func WriteOSD(s Schema, compact bool) string {
 	return b.String()
 }
 
-func writeOSDPretty(b *strings.Builder, s Schema) {
+func writeOSDPretty(b *strings.Builder, s omnist.Schema) {
 	for _, name := range s.EnvOrder {
 		rec := s.Env[name]
 		fmt.Fprintf(b, "record %s {\n", rec.Name)
@@ -42,7 +44,7 @@ func writeOSDPretty(b *strings.Builder, s Schema) {
 	fmt.Fprintf(b, "root %s\n", s.Root)
 }
 
-func writeOSDCompact(b *strings.Builder, s Schema) {
+func writeOSDCompact(b *strings.Builder, s omnist.Schema) {
 	for _, name := range s.EnvOrder {
 		rec := s.Env[name]
 		fmt.Fprintf(b, "record %s {", rec.Name)
@@ -61,7 +63,7 @@ func writeOSDCompact(b *strings.Builder, s Schema) {
 	fmt.Fprintf(b, "root %s", s.Root)
 }
 
-func writeOSDField(b *strings.Builder, f Field) {
+func writeOSDField(b *strings.Builder, f omnist.Field) {
 	b.WriteByte('"')
 	b.WriteString(escapeOSDLabel(f.Label))
 	b.WriteByte('"')
@@ -74,13 +76,13 @@ func writeOSDField(b *strings.Builder, f Field) {
 // rule. When not omitted, this always emits the two-bound bracket form
 // ("[min,max]" or, for an unbounded field, "[min,]") rather than trying to
 // reproduce whichever of the grammar's five equivalent bracketed spellings
-// (spec §5.5's table) produced the original Cardinality — the Schema model
+// (spec §5.5's table) produced the original omnist.Cardinality — the omnist.Schema model
 // only records (Min, Max, Unbounded), not which spelling was parsed, and
 // every one of those forms is losslessly reconstructible from that triple
 // alone, so there is exactly one canonical spelling to pick per triple.
 // The leading space is part of this string (or the empty string when
 // omitted) so callers can concatenate it directly after the label.
-func osdCardinalityString(c Cardinality) string {
+func osdCardinalityString(c omnist.Cardinality) string {
 	if !c.Unbounded && c.Min == 1 && c.Max == 1 {
 		return ""
 	}
@@ -93,13 +95,13 @@ func osdCardinalityString(c Cardinality) string {
 	return fmt.Sprintf(" [%d,%d]", c.Min, c.Max)
 }
 
-func osdTypeString(t Type) string {
+func osdTypeString(t omnist.Type) string {
 	switch t.Kind {
-	case TypeAnyKind:
+	case omnist.TypeAnyKind:
 		return "any"
-	case TypeRefKind:
+	case omnist.TypeRefKind:
 		return t.RefName
-	default: // TypeScalarKind
+	default: // omnist.TypeScalarKind
 		s := t.ScalarKind.String()
 		if t.Nullable {
 			s += "?"

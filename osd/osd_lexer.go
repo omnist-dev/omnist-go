@@ -1,10 +1,12 @@
-package omnist
+package osd
 
 import (
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // osdTokenKind identifies the lexical category of an OSD token, per spec
@@ -110,12 +112,12 @@ func (l *osdLexer) remainingString() string {
 	return string(l.src[l.pos:])
 }
 
-func (l *osdLexer) errAt(line, col int, code Code, msg string) *ParseError {
-	return &ParseError{Line: line, Col: col, Path: fmt.Sprintf("%d:%d", line, col), Code: code, Message: msg}
+func (l *osdLexer) errAt(line, col int, code omnist.Code, msg string) *omnist.ParseError {
+	return &omnist.ParseError{Line: line, Col: col, Path: fmt.Sprintf("%d:%d", line, col), Code: code, Message: msg}
 }
 
-// next returns the next token, or a *ParseError.
-func (l *osdLexer) next() (osdToken, *ParseError) {
+// next returns the next token, or a *omnist.ParseError.
+func (l *osdLexer) next() (osdToken, *omnist.ParseError) {
 	l.skipTrivia()
 	startLine, startCol := l.line, l.col
 
@@ -157,7 +159,7 @@ func (l *osdLexer) next() (osdToken, *ParseError) {
 		return osdToken{kind: osdTokName, text: m, line: startLine, col: startCol}, nil
 	}
 
-	return osdToken{}, l.errAt(startLine, startCol, CodeParseUnexpectedToken, fmt.Sprintf("unexpected character %q", r))
+	return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseUnexpectedToken, fmt.Sprintf("unexpected character %q", r))
 }
 
 func osdPunctKind(r rune) (osdTokenKind, bool) {
@@ -192,13 +194,13 @@ func (l *osdLexer) consumeRunes(n int) {
 // not a newline — and, since every \X is accepted by this rule (there is
 // no invalid-escape case), the only failure mode is running off the end of
 // input before the closing quote.
-func (l *osdLexer) scanString() (osdToken, *ParseError) {
+func (l *osdLexer) scanString() (osdToken, *omnist.ParseError) {
 	startLine, startCol := l.line, l.col
 	l.advance() // opening '"'
 	var b strings.Builder
 	for {
 		if l.atEOF() {
-			return osdToken{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
+			return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 		}
 		cLine, cCol := l.line, l.col
 		r := l.advance()
@@ -207,7 +209,7 @@ func (l *osdLexer) scanString() (osdToken, *ParseError) {
 			return osdToken{kind: osdTokString, strVal: b.String(), line: startLine, col: startCol}, nil
 		case r == '\\':
 			if l.atEOF() {
-				return osdToken{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
+				return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 			}
 			// Weak unescaping (§5.3.1): the character right after the
 			// backslash is written verbatim, whatever it is, including a
@@ -215,7 +217,7 @@ func (l *osdLexer) scanString() (osdToken, *ParseError) {
 			// allows "\" followed by any code point at all (%x00-10FFFF).
 			b.WriteRune(l.advance())
 		case r < 0x20:
-			return osdToken{}, l.errAt(cLine, cCol, CodeParseControlCharacter, "control character in string")
+			return osdToken{}, l.errAt(cLine, cCol, omnist.CodeParseControlCharacter, "control character in string")
 		default:
 			b.WriteRune(r)
 		}
