@@ -269,25 +269,27 @@ func (r *jsonReader) readNestedObject() (*omnist.Node, error) {
 // readDocument uses for a bare top-level array, which is the same
 // "array with nothing to hold it" situation one level up.
 //
-// An empty array ('[]') is treated the same way OML treats its identical
-// array-as-repeated-label-sugar construct (oml_parser.go's parseArray):
-// rejected with omnist.CodeParseEmptyArray, rather than silently producing zero
-// edges for the label. This is a narrow, cosmetic reading rather than a
-// load-bearing one — docs/formats/json.md's model-mapping table has no
-// empty-array row to consult, but JSON's array sugar is explicitly the
-// same mechanism OML's array sugar is ("the array is not a value in the
-// model, it is the same label occurring more than once"), and OML's reader
-// already treats zero repeats of that sugar as an error rather than a
-// silent no-op; this reader follows that existing, in-repo precedent for
-// the identical construct rather than inventing a second behavior for it.
+// An empty array ('[]') is a legitimate zero-edge encoding, not an error
+// (spec docs/formats/json.md: "An empty array is a legitimate zero-edge
+// encoding, not an error. `{"m":[]}` reads to zero `m` edges: the label
+// simply doesn't appear in the result, the same as if the key were absent
+// entirely."). This is explicitly JSON-specific and does not extend to
+// OML's `[...]` array sugar (oml_parser.go's parseArray correctly keeps
+// rejecting a zero-length OML array run): OML's array syntax is sugar for
+// a *run* of same-label edges, and a zero-length run is indistinguishable
+// from no sugar at all, while JSON's arrays are a real container
+// independent of the Document model's edge-repetition mechanism, so an
+// empty one is just as meaningful as a non-empty one. omnist.CodeParseEmptyArray
+// stays a valid code in errors.go for OML's use; it is simply never
+// produced here.
 func (r *jsonReader) readArrayElements(key string) ([]omnist.Target, error) {
 	if !r.dec.More() {
-		// Consume the ']' before erroring so callers don't have to.
-		errPos := r.errHere(omnist.CodeParseEmptyArray, "'[]' is not a valid value")
+		// Consume the ']' and return zero targets for this label — the
+		// label simply doesn't appear in the resulting Document.
 		if _, err := r.next(); err != nil {
 			return nil, err
 		}
-		return nil, errPos
+		return nil, nil
 	}
 
 	var targets []omnist.Target
