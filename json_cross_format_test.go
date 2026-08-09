@@ -21,6 +21,7 @@ import (
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/formats/json"
+	"github.com/omnist-dev/omnist-go/formats/toml"
 	"github.com/omnist-dev/omnist-go/formats/yaml"
 )
 
@@ -116,7 +117,7 @@ sku = "G"
 qty = 1
 price = 9.99
 `
-	td, err := omnist.ReadTOML(src, omnist.DefaultLimits())
+	td, err := toml.Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}

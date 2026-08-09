@@ -6,6 +6,7 @@ import (
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/formats/json"
+	"github.com/omnist-dev/omnist-go/formats/toml"
 	"github.com/omnist-dev/omnist-go/formats/yaml"
 	"github.com/omnist-dev/omnist-go/oml"
 	"github.com/omnist-dev/omnist-go/osd"
@@ -48,7 +49,7 @@ func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, e
 	case "yaml":
 		return yaml.Read(text, limits)
 	case "toml":
-		return omnist.ReadTOML(text, limits)
+		return toml.Read(text, limits)
 	case "xml":
 		return omnist.ReadXML(text, limits)
 	default:
@@ -278,9 +279,9 @@ func runWrite(v Vector) Result {
 		text, werr = yaml.Write(doc)
 	case "toml":
 		if in.Strict {
-			return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: WriteTOML has no strict-mode parameter in this repository (WriteTOML(d Document) (string, error) only) -- flagged for a follow-up issue, not fixed here per issue #31's scope"}
+			return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: WriteTOML has no strict-mode parameter in this repository (toml.Write(d Document) (string, error) only) -- flagged for a follow-up issue, not fixed here per issue #31's scope"}
 		}
-		text, werr = omnist.WriteTOML(doc)
+		text, werr = toml.Write(doc)
 	case "xml":
 		text, werr = omnist.WriteXML(doc)
 	default:

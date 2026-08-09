@@ -63,3 +63,20 @@ func TestFormatISOTimeFraction(t *testing.T) {
 		t.Errorf("FormatISOTime(...) = %q, want %q", got, want)
 	}
 }
+
+// TestParseISOTimeFraction exercises ParseISOTimes fractional-second
+// branch (rest[end] digits after the dot), which is also FracToNanoss
+// only caller in this package. Before issue #45 moved toml_reader_test.go
+// into the separate formats/toml package, this branch was covered
+// incidentally by that files own fractional-second datetime fixtures
+// (via parseTOMLDateTime -> ParseISOTime); no other root-package test
+// parses a fractional-second ISO time directly. Same class of regression
+// as TestParseISOTimeNegativeOffset/TestFormatISOTimeFraction above,
+// caught by issue #45s per-function coverage check.
+func TestParseISOTimeFraction(t *testing.T) {
+	got := ParseISOTime("10:30:00.5")
+	want := TimeValue{Hour: 10, Minute: 30, Second: 0, Nanosecond: 500000000}
+	if got != want {
+		t.Errorf("ParseISOTime(%q) = %+v, want %+v", "10:30:00.5", got, want)
+	}
+}

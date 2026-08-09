@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -214,7 +215,7 @@ func (r *xmlReader) pathHere() string {
 	// the pair every other reader's Path field renders as "line:col", with
 	// no byte-offset-to-line/col conversion needed at all.
 	line, col := r.dec.InputPos()
-	return itoa(line) + ":" + itoa(col)
+	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
 
 // readElementBody reads one element's children (the StartElement itself

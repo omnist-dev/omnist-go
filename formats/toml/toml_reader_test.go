@@ -1,22 +1,24 @@
-package omnist
+package toml
 
 import (
 	"math"
 	"math/big"
 	"strings"
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // --- model mapping table (docs/formats/toml.md) ---
 
 func TestTOMLModelMappingTableSimpleKeys(t *testing.T) {
-	d, err := ReadTOML("a = 1\nb = 2\n", DefaultLimits())
+	d, err := Read("a = 1\nb = 2\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddValue("a", ScalarValue(NewIntegerScalar(big.NewInt(1)))).
-		AddValue("b", ScalarValue(NewIntegerScalar(big.NewInt(2)))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddValue("a", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))).
+		AddValue("b", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(2)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -24,13 +26,13 @@ func TestTOMLModelMappingTableSimpleKeys(t *testing.T) {
 
 func TestTOMLArrayOfTablesRepeatedLabel(t *testing.T) {
 	src := "[[x]]\nname = \"a\"\n[[x]]\nname = \"b\"\n"
-	d, err := ReadTOML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	x1 := NewNode().AddValue("name", ScalarValue(NewStringScalar("a")))
-	x2 := NewNode().AddValue("name", ScalarValue(NewStringScalar("b")))
-	want := NodeDocument(NewNode().AddNode("x", x1).AddNode("x", x2))
+	x1 := omnist.NewNode().AddValue("name", omnist.ScalarValue(omnist.NewStringScalar("a")))
+	x2 := omnist.NewNode().AddValue("name", omnist.ScalarValue(omnist.NewStringScalar("b")))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("x", x1).AddNode("x", x2))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -43,14 +45,14 @@ func TestTOMLArrayOfTablesRepeatedLabel(t *testing.T) {
 
 func TestTOMLSingleTableIsOneEdge(t *testing.T) {
 	src := "[x]\nname = \"c\"\n"
-	d, err := ReadTOML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(d.Node.Edges) != 1 || d.Node.Edges[0].Label != "x" {
 		t.Fatalf("expected exactly one edge labeled x, got %+v", d.Node.Edges)
 	}
-	want := NodeDocument(NewNode().AddNode("x", NewNode().AddValue("name", ScalarValue(NewStringScalar("c")))))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("x", omnist.NewNode().AddValue("name", omnist.ScalarValue(omnist.NewStringScalar("c")))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -78,27 +80,27 @@ sku = "G"
 qty = 1
 price = 9.99
 `
-	d, err := ReadTOML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	address := NewNode().AddValue("street", ScalarValue(NewStringScalar("1 Main"))).
-		AddValue("city", ScalarValue(NewStringScalar("London")))
-	item1 := NewNode().AddValue("sku", ScalarValue(NewStringScalar("W"))).
-		AddValue("qty", ScalarValue(NewIntegerScalar(big.NewInt(3)))).
-		AddValue("price", ScalarValue(NewNumberScalar(9.99)))
-	item2 := NewNode().AddValue("sku", ScalarValue(NewStringScalar("G"))).
-		AddValue("qty", ScalarValue(NewIntegerScalar(big.NewInt(1)))).
-		AddValue("price", ScalarValue(NewNumberScalar(9.99)))
-	order := NewNode().
-		AddValue("id", ScalarValue(NewStringScalar("A1"))).
-		AddValue("status", ScalarValue(NewStringScalar("shipped"))).
-		AddValue("total", ScalarValue(NewNumberScalar(29.97))).
+	address := omnist.NewNode().AddValue("street", omnist.ScalarValue(omnist.NewStringScalar("1 Main"))).
+		AddValue("city", omnist.ScalarValue(omnist.NewStringScalar("London")))
+	item1 := omnist.NewNode().AddValue("sku", omnist.ScalarValue(omnist.NewStringScalar("W"))).
+		AddValue("qty", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(3)))).
+		AddValue("price", omnist.ScalarValue(omnist.NewNumberScalar(9.99)))
+	item2 := omnist.NewNode().AddValue("sku", omnist.ScalarValue(omnist.NewStringScalar("G"))).
+		AddValue("qty", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))).
+		AddValue("price", omnist.ScalarValue(omnist.NewNumberScalar(9.99)))
+	order := omnist.NewNode().
+		AddValue("id", omnist.ScalarValue(omnist.NewStringScalar("A1"))).
+		AddValue("status", omnist.ScalarValue(omnist.NewStringScalar("shipped"))).
+		AddValue("total", omnist.ScalarValue(omnist.NewNumberScalar(29.97))).
 		AddNode("address", address).
 		AddNode("items", item1).
 		AddNode("items", item2)
-	want := NodeDocument(NewNode().AddNode("order", order))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("order", order))
 
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
@@ -108,47 +110,47 @@ price = 9.99
 // --- native temporal literals ---
 
 func TestTOMLNativeDate(t *testing.T) {
-	d, err := ReadTOML("d = 2024-01-01\n", DefaultLimits())
+	d, err := Read("d = 2024-01-01\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("d", ScalarValue(NewDateScalar(DateValue{Year: 2024, Month: 1, Day: 1}))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("d", omnist.ScalarValue(omnist.NewDateScalar(omnist.DateValue{Year: 2024, Month: 1, Day: 1}))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLNativeTime(t *testing.T) {
-	d, err := ReadTOML("t = 12:30:45\n", DefaultLimits())
+	d, err := Read("t = 12:30:45\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("t", ScalarValue(NewTimeScalar(TimeValue{Hour: 12, Minute: 30, Second: 45}))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(omnist.TimeValue{Hour: 12, Minute: 30, Second: 45}))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLNativeTimeWithFraction(t *testing.T) {
-	d, err := ReadTOML("t = 12:30:45.5\n", DefaultLimits())
+	d, err := Read("t = 12:30:45.5\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := d.Node.Edges[0].Target
 	v, _ := got.Value()
-	if v.Scalar.Kind != KindTime || v.Scalar.Time.Nanosecond != 500000000 {
+	if v.Scalar.Kind != omnist.KindTime || v.Scalar.Time.Nanosecond != 500000000 {
 		t.Errorf("got %+v, want a time with 500000000ns", v)
 	}
 }
 
 func TestTOMLNativeLocalDateTime(t *testing.T) {
-	d, err := ReadTOML("dt = 2024-01-01T12:00:00\n", DefaultLimits())
+	d, err := Read("dt = 2024-01-01T12:00:00\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("dt", ScalarValue(NewDateTimeScalar(DateTimeValue{
-		Date: DateValue{Year: 2024, Month: 1, Day: 1},
-		Time: TimeValue{Hour: 12},
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("dt", omnist.ScalarValue(omnist.NewDateTimeScalar(omnist.DateTimeValue{
+		Date: omnist.DateValue{Year: 2024, Month: 1, Day: 1},
+		Time: omnist.TimeValue{Hour: 12},
 	}))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
@@ -156,13 +158,13 @@ func TestTOMLNativeLocalDateTime(t *testing.T) {
 }
 
 func TestTOMLNativeOffsetDateTimeZ(t *testing.T) {
-	d, err := ReadTOML("dt = 2024-01-01T12:00:00Z\n", DefaultLimits())
+	d, err := Read("dt = 2024-01-01T12:00:00Z\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ := d.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != KindDateTime {
-		t.Fatalf("kind = %v, want KindDateTime", v.Scalar.Kind)
+	if v.Scalar.Kind != omnist.KindDateTime {
+		t.Fatalf("kind = %v, want omnist.KindDateTime", v.Scalar.Kind)
 	}
 	if !v.Scalar.DateTime.Time.HasOffset || v.Scalar.DateTime.Time.OffsetSeconds != 0 {
 		t.Errorf("got %+v, want HasOffset=true OffsetSeconds=0", v.Scalar.DateTime.Time)
@@ -170,7 +172,7 @@ func TestTOMLNativeOffsetDateTimeZ(t *testing.T) {
 }
 
 func TestTOMLNativeOffsetDateTimeLowercaseZ(t *testing.T) {
-	d, err := ReadTOML("dt = 2024-01-01 12:00:00z\n", DefaultLimits())
+	d, err := Read("dt = 2024-01-01 12:00:00z\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestTOMLNativeOffsetDateTimeLowercaseZ(t *testing.T) {
 }
 
 func TestTOMLNativeOffsetDateTimeWithOffset(t *testing.T) {
-	d, err := ReadTOML("dt = 2024-01-01T12:00:00.123+05:30\n", DefaultLimits())
+	d, err := Read("dt = 2024-01-01T12:00:00.123+05:30\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,12 +198,12 @@ func TestTOMLNativeOffsetDateTimeWithOffset(t *testing.T) {
 }
 
 func TestTOMLNativeDateTimeSpaceSeparator(t *testing.T) {
-	d, err := ReadTOML("dt = 2024-01-01 12:00:00\n", DefaultLimits())
+	d, err := Read("dt = 2024-01-01 12:00:00\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ := d.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != KindDateTime || v.Scalar.DateTime.Time.HasOffset {
+	if v.Scalar.Kind != omnist.KindDateTime || v.Scalar.DateTime.Time.HasOffset {
 		t.Errorf("got %+v, want a local datetime with no offset", v)
 	}
 }
@@ -209,27 +211,27 @@ func TestTOMLNativeDateTimeSpaceSeparator(t *testing.T) {
 // --- integer/float distinction ---
 
 func TestTOMLIntegerFloatDistinctionByShape(t *testing.T) {
-	d, err := ReadTOML("i = 2\nf = 2.0\n", DefaultLimits())
+	d, err := Read("i = 2\nf = 2.0\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddValue("i", ScalarValue(NewIntegerScalar(big.NewInt(2)))).
-		AddValue("f", ScalarValue(NewNumberScalar(2.0))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddValue("i", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(2)))).
+		AddValue("f", omnist.ScalarValue(omnist.NewNumberScalar(2.0))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLIntegerRadixForms(t *testing.T) {
-	d, err := ReadTOML("hex = 0xFF\noct = 0o17\nbin = 0b101\n", DefaultLimits())
+	d, err := Read("hex = 0xFF\noct = 0o17\nbin = 0b101\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddValue("hex", ScalarValue(NewIntegerScalar(big.NewInt(255)))).
-		AddValue("oct", ScalarValue(NewIntegerScalar(big.NewInt(15)))).
-		AddValue("bin", ScalarValue(NewIntegerScalar(big.NewInt(5)))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddValue("hex", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(255)))).
+		AddValue("oct", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(15)))).
+		AddValue("bin", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(5)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -237,33 +239,33 @@ func TestTOMLIntegerRadixForms(t *testing.T) {
 
 func TestTOMLIntegerArbitraryPrecision(t *testing.T) {
 	big53 := "99999999999999999999999999999999999999999999999999"
-	d, err := ReadTOML("n = "+big53+"\n", DefaultLimits())
+	d, err := Read("n = "+big53+"\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ := d.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != KindInteger || v.Scalar.Int.String() != big53 {
+	if v.Scalar.Kind != omnist.KindInteger || v.Scalar.Int.String() != big53 {
 		t.Errorf("got %+v, want integer %s", v, big53)
 	}
 }
 
 func TestTOMLIntegerUnderscoreSeparators(t *testing.T) {
-	d, err := ReadTOML("n = 1_000_000\n", DefaultLimits())
+	d, err := Read("n = 1_000_000\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("n", ScalarValue(NewIntegerScalar(big.NewInt(1000000)))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1000000)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLIntegerNegative(t *testing.T) {
-	d, err := ReadTOML("n = -42\n", DefaultLimits())
+	d, err := Read("n = -42\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("n", ScalarValue(NewIntegerScalar(big.NewInt(-42)))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(-42)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -272,7 +274,7 @@ func TestTOMLIntegerNegative(t *testing.T) {
 // --- floats, including special values ---
 
 func TestTOMLFloatSpecialValues(t *testing.T) {
-	d, err := ReadTOML("a = inf\nb = +inf\nc = -inf\nd = nan\ne = -nan\nf = +nan\n", DefaultLimits())
+	d, err := Read("a = inf\nb = +inf\nc = -inf\nd = nan\ne = -nan\nf = +nan\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,13 +297,13 @@ func TestTOMLFloatSpecialValues(t *testing.T) {
 }
 
 func TestTOMLFloatUnderscoreAndExponent(t *testing.T) {
-	d, err := ReadTOML("n = 1_234.5e1_0\n", DefaultLimits())
+	d, err := Read("n = 1_234.5e1_0\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ := d.Node.Edges[0].Target.Value()
 	want := 1234.5e10
-	if v.Scalar.Kind != KindNumber || v.Scalar.Num != want {
+	if v.Scalar.Kind != omnist.KindNumber || v.Scalar.Num != want {
 		t.Errorf("got %+v, want %v", v, want)
 	}
 }
@@ -309,103 +311,103 @@ func TestTOMLFloatUnderscoreAndExponent(t *testing.T) {
 // --- inline tables and arrays ---
 
 func TestTOMLInlineTable(t *testing.T) {
-	d, err := ReadTOML(`p = {x = 1, y = 2}`+"\n", DefaultLimits())
+	d, err := Read(`p = {x = 1, y = 2}`+"\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddNode("p", NewNode().
-		AddValue("x", ScalarValue(NewIntegerScalar(big.NewInt(1)))).
-		AddValue("y", ScalarValue(NewIntegerScalar(big.NewInt(2))))))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("p", omnist.NewNode().
+		AddValue("x", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))).
+		AddValue("y", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(2))))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLInlineArrayRepeatedLabel(t *testing.T) {
-	d, err := ReadTOML("nums = [1, 2, 3]\n", DefaultLimits())
+	d, err := Read("nums = [1, 2, 3]\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddValue("nums", ScalarValue(NewIntegerScalar(big.NewInt(1)))).
-		AddValue("nums", ScalarValue(NewIntegerScalar(big.NewInt(2)))).
-		AddValue("nums", ScalarValue(NewIntegerScalar(big.NewInt(3)))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddValue("nums", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))).
+		AddValue("nums", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(2)))).
+		AddValue("nums", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(3)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLInlineArrayOfInlineTables(t *testing.T) {
-	d, err := ReadTOML(`items = [{n = "a"}, {n = "b"}]`+"\n", DefaultLimits())
+	d, err := Read(`items = [{n = "a"}, {n = "b"}]`+"\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddNode("items", NewNode().AddValue("n", ScalarValue(NewStringScalar("a")))).
-		AddNode("items", NewNode().AddValue("n", ScalarValue(NewStringScalar("b")))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddNode("items", omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewStringScalar("a")))).
+		AddNode("items", omnist.NewNode().AddValue("n", omnist.ScalarValue(omnist.NewStringScalar("b")))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLEmptyInlineArrayIsRejected(t *testing.T) {
-	_, err := ReadTOML("a = []\n", DefaultLimits())
+	_, err := Read("a = []\n", omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for an empty array")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeParseEmptyArray {
-		t.Errorf("error = %#v, want CodeParseEmptyArray", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseEmptyArray {
+		t.Errorf("error = %#v, want omnist.CodeParseEmptyArray", err)
 	}
 }
 
 func TestTOMLNestedArrayIsRejected(t *testing.T) {
-	_, err := ReadTOML("a = [[1, 2], [3, 4]]\n", DefaultLimits())
+	_, err := Read("a = [[1, 2], [3, 4]]\n", omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for a nested bare array")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentUnlabeledElement {
-		t.Errorf("error = %#v, want CodeDocumentUnlabeledElement", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentUnlabeledElement {
+		t.Errorf("error = %#v, want omnist.CodeDocumentUnlabeledElement", err)
 	}
 }
 
 // --- dotted keys ---
 
 func TestTOMLDottedKeyCreatesImplicitTable(t *testing.T) {
-	d, err := ReadTOML("host.name = \"x\"\nhost.port = 1\n", DefaultLimits())
+	d, err := Read("host.name = \"x\"\nhost.port = 1\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(d.Node.Edges) != 1 || d.Node.Edges[0].Label != "host" {
 		t.Fatalf("expected a single host edge, got %+v", d.Node.Edges)
 	}
-	want := NodeDocument(NewNode().AddNode("host", NewNode().
-		AddValue("name", ScalarValue(NewStringScalar("x"))).
-		AddValue("port", ScalarValue(NewIntegerScalar(big.NewInt(1))))))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("host", omnist.NewNode().
+		AddValue("name", omnist.ScalarValue(omnist.NewStringScalar("x"))).
+		AddValue("port", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1))))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLDottedKeyDeepNesting(t *testing.T) {
-	d, err := ReadTOML("a.b.c = 5\n", DefaultLimits())
+	d, err := Read("a.b.c = 5\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddNode("a", NewNode().AddNode("b", NewNode().
-		AddValue("c", ScalarValue(NewIntegerScalar(big.NewInt(5)))))))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("a", omnist.NewNode().AddNode("b", omnist.NewNode().
+		AddValue("c", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(5)))))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
 
 func TestTOMLQuotedKey(t *testing.T) {
-	d, err := ReadTOML(`"q key" = 9` + "\n", DefaultLimits())
+	d, err := Read(`"q key" = 9` + "\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("q key", ScalarValue(NewIntegerScalar(big.NewInt(9)))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("q key", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(9)))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -421,7 +423,7 @@ func TestTOMLQuotedKey(t *testing.T) {
 // cannot reuse: a scalar has no edges to extend). This is exactly the
 // narrow, documented gap, not a crash or silent data loss.
 func TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar(t *testing.T) {
-	d, err := ReadTOML("a = 1\na.b = 2\n", DefaultLimits())
+	d, err := Read("a = 1\na.b = 2\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +431,7 @@ func TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar(t *testing.T) {
 		t.Fatalf("expected 2 edges labeled a, got %+v", d.Node.Edges)
 	}
 	v, ok := d.Node.Edges[0].Target.Value()
-	if !ok || v.Scalar.Kind != KindInteger {
+	if !ok || v.Scalar.Kind != omnist.KindInteger {
 		t.Errorf("first a edge = %+v, want the original scalar", d.Node.Edges[0])
 	}
 	child, ok := d.Node.Edges[1].Target.Node()
@@ -439,13 +441,13 @@ func TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar(t *testing.T) {
 }
 
 func TestTOMLNestedErrorInsideInlineTableInsideArray(t *testing.T) {
-	_, err := ReadTOML("items = [{a = []}]\n", DefaultLimits())
+	_, err := Read("items = [{a = []}]\n", omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for the empty array nested inside the inline table")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeParseEmptyArray {
-		t.Errorf("error = %#v, want CodeParseEmptyArray", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseEmptyArray {
+		t.Errorf("error = %#v, want omnist.CodeParseEmptyArray", err)
 	}
 }
 
@@ -467,7 +469,7 @@ name = "banana"
 [[fruits.varieties]]
 name = "plantain"
 `
-	d, err := ReadTOML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +503,7 @@ name = "plantain"
 // --- empty document ---
 
 func TestTOMLEmptyDocument(t *testing.T) {
-	d, err := ReadTOML("", DefaultLimits())
+	d, err := Read("", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,13 +515,13 @@ func TestTOMLEmptyDocument(t *testing.T) {
 // --- syntax errors ---
 
 func TestTOMLSyntaxErrorReported(t *testing.T) {
-	_, err := ReadTOML("a = -0xFF\n", DefaultLimits())
+	_, err := Read("a = -0xFF\n", omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected a parse error for a signed radix literal")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeParseUnexpectedToken {
-		t.Errorf("error = %#v, want CodeParseUnexpectedToken", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseUnexpectedToken {
+		t.Errorf("error = %#v, want omnist.CodeParseUnexpectedToken", err)
 	}
 	if !strings.Contains(pe.Message, "radix") {
 		t.Errorf("message = %q, want it to mention the radix-prefix rule", pe.Message)
@@ -529,100 +531,100 @@ func TestTOMLSyntaxErrorReported(t *testing.T) {
 // --- limits ---
 
 func TestTOMLLimitDepth(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxDepth = 2
-	_, err := ReadTOML("a.b.c.d = 1\n", limits)
+	_, err := Read("a.b.c.d = 1\n", limits)
 	if err == nil {
 		t.Fatal("expected depth limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitDepth {
-		t.Errorf("error = %#v, want CodeDocumentLimitDepth", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitDepth", err)
 	}
 }
 
 func TestTOMLLimitDepthViaTableHeader(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxDepth = 1
-	_, err := ReadTOML("[a.b]\nc = 1\n", limits)
+	_, err := Read("[a.b]\nc = 1\n", limits)
 	if err == nil {
 		t.Fatal("expected depth limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitDepth {
-		t.Errorf("error = %#v, want CodeDocumentLimitDepth", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitDepth", err)
 	}
 }
 
 func TestTOMLLimitNodes(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxNodes = 2
-	_, err := ReadTOML("a = {}\nb = {}\nc = {}\n", limits)
+	_, err := Read("a = {}\nb = {}\nc = {}\n", limits)
 	if err == nil {
 		t.Fatal("expected node-count limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitNodes {
-		t.Errorf("error = %#v, want CodeDocumentLimitNodes", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitNodes {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitNodes", err)
 	}
 }
 
 func TestTOMLLimitDepthViaArrayTableParentPath(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxDepth = 1
-	_, err := ReadTOML("[[a.b.c]]\nx = 1\n", limits)
+	_, err := Read("[[a.b.c]]\nx = 1\n", limits)
 	if err == nil {
 		t.Fatal("expected depth limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitDepth {
-		t.Errorf("error = %#v, want CodeDocumentLimitDepth", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitDepth", err)
 	}
 }
 
 func TestTOMLLimitNodesViaArrayTable(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxNodes = 1
-	_, err := ReadTOML("[[a]]\nx = 1\n[[a]]\ny = 2\n", limits)
+	_, err := Read("[[a]]\nx = 1\n[[a]]\ny = 2\n", limits)
 	if err == nil {
 		t.Fatal("expected node-count limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitNodes {
-		t.Errorf("error = %#v, want CodeDocumentLimitNodes", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitNodes {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitNodes", err)
 	}
 }
 
 func TestTOMLLimitIntDigitsInsideArray(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxIntDigits = 3
-	_, err := ReadTOML("n = [12345]\n", limits)
+	_, err := Read("n = [12345]\n", limits)
 	if err == nil {
 		t.Fatal("expected int-digits limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitIntDigits {
-		t.Errorf("error = %#v, want CodeDocumentLimitIntDigits", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitIntDigits {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitIntDigits", err)
 	}
 }
 
 func TestTOMLLimitIntDigits(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxIntDigits = 3
-	_, err := ReadTOML("n = 12345\n", limits)
+	_, err := Read("n = 12345\n", limits)
 	if err == nil {
 		t.Fatal("expected int-digits limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitIntDigits {
-		t.Errorf("error = %#v, want CodeDocumentLimitIntDigits", err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitIntDigits {
+		t.Errorf("error = %#v, want omnist.CodeDocumentLimitIntDigits", err)
 	}
 }
 
 // --- string escaping ---
 
 func TestTOMLBasicStringEscapes(t *testing.T) {
-	d, err := ReadTOML(`s = "a\nb\tc\"d"` + "\n", DefaultLimits())
+	d, err := Read(`s = "a\nb\tc\"d"` + "\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,7 +636,7 @@ func TestTOMLBasicStringEscapes(t *testing.T) {
 }
 
 func TestTOMLMultilineString(t *testing.T) {
-	d, err := ReadTOML("s = \"\"\"hi\nthere\"\"\"\n", DefaultLimits())
+	d, err := Read("s = \"\"\"hi\nthere\"\"\"\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,13 +649,13 @@ func TestTOMLMultilineString(t *testing.T) {
 // --- booleans ---
 
 func TestTOMLBooleans(t *testing.T) {
-	d, err := ReadTOML("t = true\nf = false\n", DefaultLimits())
+	d, err := Read("t = true\nf = false\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().
-		AddValue("t", ScalarValue(NewBooleanScalar(true))).
-		AddValue("f", ScalarValue(NewBooleanScalar(false))))
+	want := omnist.NodeDocument(omnist.NewNode().
+		AddValue("t", omnist.ScalarValue(omnist.NewBooleanScalar(true))).
+		AddValue("f", omnist.ScalarValue(omnist.NewBooleanScalar(false))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}

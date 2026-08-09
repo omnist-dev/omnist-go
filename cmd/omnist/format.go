@@ -7,6 +7,7 @@ import (
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/formats/json"
+	"github.com/omnist-dev/omnist-go/formats/toml"
 	"github.com/omnist-dev/omnist-go/formats/yaml"
 	"github.com/omnist-dev/omnist-go/oml"
 )
@@ -22,7 +23,7 @@ type formatWriterFunc func(d omnist.Document) (string, error)
 var formatReaders = map[string]formatReaderFunc{
 	"json": json.Read,
 	"yaml": yaml.Read,
-	"toml": omnist.ReadTOML,
+	"toml": toml.Read,
 	"xml":  omnist.ReadXML,
 	"oml":  oml.Read,
 }
@@ -30,7 +31,7 @@ var formatReaders = map[string]formatReaderFunc{
 var formatWriters = map[string]formatWriterFunc{
 	"json": json.Write,
 	"yaml": yaml.Write,
-	"toml": omnist.WriteTOML,
+	"toml": toml.Write,
 	"xml":  omnist.WriteXML,
 	// oml.Write never returns an error (compact-vs-pretty is the only
 	// knob, and both always succeed), but it's wrapped here so every

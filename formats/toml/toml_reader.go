@@ -1,4 +1,4 @@
-package omnist
+package toml
 
 import (
 	"math"
@@ -7,24 +7,26 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2/unstable"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// ReadTOML parses TOML source text into a Document (spec §7.1,
+// Read parses TOML source text into a omnist.Document (spec §7.1,
 // docs/formats/toml.md, "stage 1 only, no schema"). limits configures the
-// safety limits enforced while reading, per the same Limits struct every
+// safety limits enforced while reading, per the same omnist.Limits struct every
 // other codec uses (limits.go); see the "Limit enforcement" section below
 // for how this reader applies them — TOML's own document shape does not
-// fit LimitChecker's Enter/LeaveNode calling convention directly, so this
+// fit omnist.LimitChecker's Enter/LeaveNode calling convention directly, so this
 // reader adapts rather than forces it.
 //
 // # Library choice and empirical verification (issue #27)
 //
 // github.com/pelletier/go-toml/v2 is used, specifically its unstable
 // package (an explicitly-unstable but public raw-AST API: unstable.Parser
-// hands back a stream of Node values with Kind/Raw/Data/Children, one per
+// hands back a stream of omnist.Node values with Kind/Raw/Data/Children, one per
 // top-level expression, rather than only a fully-decoded Go value) — the
 // same "raw parse tree to build on top of" shape issue #25 used yaml.v3's
-// Node API for, and for the identical reason: this reader needs source
+// omnist.Node API for, and for the identical reason: this reader needs source
 // key order and full-precision numeric literals, neither of which the
 // library's own high-level decode path (toml.Unmarshal) preserves.
 //
@@ -35,11 +37,11 @@ import (
 //   - Key order: decoding into map[string]interface{} loses order (Go
 //     maps have none) for every table's fields, and would violate D-1.
 //     The unstable.Parser's NextExpression()/Expression() stream instead
-//     yields exactly one Node per top-level statement (KeyValue, Table,
-//     ArrayTable) in source order, with each container Node's Children()
+//     yields exactly one omnist.Node per top-level statement (KeyValue, Table,
+//     ArrayTable) in source order, with each container omnist.Node's Children()
 //     iterator likewise walking child nodes (inline-table members, array
 //     elements, dotted-key segments) in source order. This reader builds
-//     the Document tree directly from that stream, never through the
+//     the omnist.Document tree directly from that stream, never through the
 //     map-shaped decode path, so source order is preserved throughout.
 //   - Integer precision: decoding into either map[string]interface{} or a
 //     typed field routes through the library's internal parseInteger,
@@ -48,7 +50,7 @@ import (
 //     confirmed with a 53-digit literal, which the high-level decode path
 //     rejects outright. Spec §2.4 requires supporting integers up to
 //     4,300 decimal digits. The unstable.Parser's own tokenizer, however,
-//     does not apply this width limit at all: an Integer-kind Node's Data
+//     does not apply this width limit at all: an Integer-kind omnist.Node's Data
 //     field holds the literal's raw, unparsed text regardless of
 //     magnitude (confirmed with the same 53-digit literal, which the
 //     unstable parser accepts and reports as Kind=Integer, Data="999...").
@@ -68,7 +70,7 @@ import (
 //     temporal kinds — LocalDate, LocalTime, LocalDateTime, and DateTime
 //     (offset) — confirmed by parsing all four TOML forms and observing
 //     each produces its own Kind. See "Offset vs. local datetime" below
-//     for how DateTime (the offset-carrying one) maps onto the Document
+//     for how DateTime (the offset-carrying one) maps onto the omnist.Document
 //     model, which has no separate offset-datetime kind of its own.
 //   - Float special values: confirmed `nan`/`inf`/`+inf`/`-inf` all parse
 //     to Kind=Float with their literal spelling in Data (not resolved to
@@ -94,16 +96,16 @@ import (
 // # Offset vs. local datetime
 //
 // TOML's grammar has both local-date-time (no offset) and offset-date-time
-// (RFC 3339, with a 'Z' or +HH:MM/-HH:MM suffix); the Document model's
+// (RFC 3339, with a 'Z' or +HH:MM/-HH:MM suffix); the omnist.Document model's
 // `datetime` kind (spec §2.2.1) makes no such distinction — issue #1's
 // design does not carve out a separate "offset datetime" kind, and
 // docs/formats/toml.md does not address TOML's offset variant explicitly
 // (noted in the issue as something this reader would need to decide).
 //
 // The decision made here: an offset date-time reads to the same
-// Document-model `datetime` kind as a local one, with the offset itself
-// preserved losslessly in TimeValue.HasOffset/OffsetSeconds (document.go)
-// — fields that already exist on every datetime's embedded TimeValue and
+// omnist.Document-model `datetime` kind as a local one, with the offset itself
+// preserved losslessly in omnist.TimeValue.HasOffset/OffsetSeconds (document.go)
+// — fields that already exist on every datetime's embedded omnist.TimeValue and
 // are already populated by ReadYAML's identical offset-carrying timestamp
 // case (yaml_reader.go's parseYAMLDateTime) and already round-tripped by
 // WriteJSON/WriteYAML's shared formatISOTime (json_writer.go). This is not
@@ -116,7 +118,7 @@ import (
 //
 // # Limit enforcement
 //
-// LimitChecker (limits.go) is built around a single recursive descent
+// omnist.LimitChecker (limits.go) is built around a single recursive descent
 // (EnterNode before descending into a nested value, LeaveNode after)
 // which fits ReadJSON/ReadYAML/OML's parsers exactly, because each of
 // those readers builds one nested container in one recursive call.
@@ -126,7 +128,7 @@ import (
 // a table that a much earlier, unrelated expression already created
 // (`[[fruits]]` ... later ... `[fruits.physical]`), or a sibling header at
 // the same depth follows immediately after a deeply-nested one with no
-// "closing" expression in between. LimitChecker's currentDepth is a
+// "closing" expression in between. omnist.LimitChecker's currentDepth is a
 // single monotonic counter that only ever goes up between EnterNode calls
 // and down on LeaveNode — there is no natural point in a flat expression
 // stream to call LeaveNode "the right number of times" between two
@@ -136,26 +138,26 @@ import (
 //
 // Rather than force TOML's flat shape through an API built for recursive
 // descent, this reader enforces the identical §2.4 limits directly:
-// every *Node this reader allocates is assigned its true depth (parent's
+// every *omnist.Node this reader allocates is assigned its true depth (parent's
 // depth + 1, exactly what EnterNode would have computed had the document
 // been built by recursive descent) at creation time, checked against
 // limits.MaxDepth right there — this needs no running counter at all,
 // since a node's distance from the root never changes after it is
 // created. A single monotonic nodeCount field (never decremented, exactly
-// matching LimitChecker's own nodeCount field, which also never
+// matching omnist.LimitChecker's own nodeCount field, which also never
 // decreases) is checked against limits.MaxNodes on the same allocations.
-// Both checks report the identical Diagnostic codes/messages/severity
-// LimitChecker.EnterNode itself would (CodeDocumentLimitDepth,
-// CodeDocumentLimitNodes) — this is the same §2.4 enforcement against the
-// same Limits configuration, adapted to fit, not a different policy.
-// CheckIntDigits (limits.go), the one LimitChecker method that is
+// Both checks report the identical omnist.Diagnostic codes/messages/severity
+// omnist.LimitChecker.EnterNode itself would (omnist.CodeDocumentLimitDepth,
+// omnist.CodeDocumentLimitNodes) — this is the same §2.4 enforcement against the
+// same omnist.Limits configuration, adapted to fit, not a different policy.
+// CheckIntDigits (limits.go), the one omnist.LimitChecker method that is
 // stateless, is used directly and unmodified, exactly as every other
 // codec uses it.
-func ReadTOML(text string, limits Limits) (Document, error) {
+func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	r := &tomlReader{
 		limits:  limits,
-		checker: NewLimitChecker(limits),
-		root:    NewNode(),
+		checker: omnist.NewLimitChecker(limits),
+		root:    omnist.NewNode(),
 	}
 	p := &unstable.Parser{}
 	p.Reset([]byte(text))
@@ -164,37 +166,37 @@ func ReadTOML(text string, limits Limits) (Document, error) {
 	for p.NextExpression() {
 		expr := p.Expression()
 		if err := r.readTopLevel(expr); err != nil {
-			return Document{}, err
+			return omnist.Document{}, err
 		}
 	}
 	if err := p.Error(); err != nil {
-		return Document{}, r.wrapParserError(err)
+		return omnist.Document{}, r.wrapParserError(err)
 	}
-	return NodeDocument(r.root), nil
+	return omnist.NodeDocument(r.root), nil
 }
 
-// tomlReader holds the state for one ReadTOML call.
+// tomlReader holds the state for one Read call.
 type tomlReader struct {
-	limits    Limits
-	checker   *LimitChecker
+	limits    omnist.Limits
+	checker   *omnist.LimitChecker
 	p         *unstable.Parser
-	root      *Node
-	current   *Node // insertion point for a bare (non-dotted) KeyValue
+	root      *omnist.Node
+	current   *omnist.Node // insertion point for a bare (non-dotted) KeyValue
 	nodeCount int
 }
 
-// newChildNode allocates a new *Node at depth childDepth (the parent's own
-// depth + 1), enforcing MaxDepth/MaxNodes per ReadTOML's doc comment. path
-// is used only for the resulting Diagnostic's Path field.
-func (r *tomlReader) newChildNode(childDepth int, path string) (*Node, error) {
+// newChildNode allocates a new *omnist.Node at depth childDepth (the parent's own
+// depth + 1), enforcing MaxDepth/MaxNodes per Read's doc comment. path
+// is used only for the resulting omnist.Diagnostic's omnist.Path field.
+func (r *tomlReader) newChildNode(childDepth int, path string) (*omnist.Node, error) {
 	if childDepth > r.limits.MaxDepth {
-		return nil, &ParseError{Path: path, Code: CodeDocumentLimitDepth, Message: "nesting exceeds the configured depth limit"}
+		return nil, &omnist.ParseError{Path: path, Code: omnist.CodeDocumentLimitDepth, Message: "nesting exceeds the configured depth limit"}
 	}
 	r.nodeCount++
 	if r.nodeCount > r.limits.MaxNodes {
-		return nil, &ParseError{Path: path, Code: CodeDocumentLimitNodes, Message: "node count exceeds the configured node limit"}
+		return nil, &omnist.ParseError{Path: path, Code: omnist.CodeDocumentLimitNodes, Message: "node count exceeds the configured node limit"}
 	}
-	return NewNode(), nil
+	return omnist.NewNode(), nil
 }
 
 // readTopLevel dispatches one top-level expression (Table, ArrayTable, or
@@ -237,12 +239,12 @@ func (r *tomlReader) readTopLevel(expr *unstable.Node) error {
 // always relative to the document root, per TOML's own grammar — see
 // resolveParentPathFrom's doc comment for the contrasting KeyValue case),
 // and returns the resolved parent node, its depth, and the final
-// (unresolved) segment's label. ReadTOML's ArrayTable branch always
+// (unresolved) segment's label. Read's ArrayTable branch always
 // allocates a fresh node for that final segment itself (never reusing an
 // existing one — see resolvePath's doc comment for why), which is why
 // this stops one segment short of resolveParentPathFrom, its
 // arbitrary-starting-point counterpart used for a KeyValue's dotted key.
-func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*Node, int, string, error) {
+func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*omnist.Node, int, string, error) {
 	return r.resolveParentPathFrom(r.root, 0, keys)
 }
 
@@ -254,11 +256,11 @@ func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*Node, int, stri
 // table (e.g. `[fruits.physical]` extending a `fruits` table an earlier
 // `[[fruits]]` implicitly created) is legal TOML and must land on the
 // same node, not a new sibling. ArrayTable headers do NOT use this
-// function — see ReadTOML's readTopLevel, which always allocates a fresh
+// function — see Read's readTopLevel, which always allocates a fresh
 // node for an ArrayTable's final segment (two `[[x]]` headers are two
 // distinct nodes sharing the label `x`, never merged) — that is the one
 // point docs/formats/toml.md itself contrasts Table and ArrayTable on.
-func (r *tomlReader) resolvePath(start *Node, startDepth int, keys unstable.Iterator) (*Node, int, error) {
+func (r *tomlReader) resolvePath(start *omnist.Node, startDepth int, keys unstable.Iterator) (*omnist.Node, int, error) {
 	var segs []string
 	for keys.Next() {
 		segs = append(segs, string(keys.Node().Data))
@@ -292,9 +294,9 @@ func (r *tomlReader) resolvePath(start *Node, startDepth int, keys unstable.Iter
 // independently re-validates grammar-adjacent rules their own underlying
 // library doesn't already enforce. This is the plainly-correct reading of
 // a narrow, cosmetic gap (malformed input of exactly this shape produces
-// a Document that merges the redefinitions rather than an error), noted
+// a omnist.Document that merges the redefinitions rather than an error), noted
 // here rather than treated as load-bearing.
-func (r *tomlReader) navigateOrCreate(node *Node, depth int, seg string) (*Node, int, error) {
+func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string) (*omnist.Node, int, error) {
 	for i := len(node.Edges) - 1; i >= 0; i-- {
 		e := node.Edges[i]
 		if e.Label == seg {
@@ -316,7 +318,7 @@ func (r *tomlReader) navigateOrCreate(node *Node, depth int, seg string) (*Node,
 // inside an inline table), attaching its value under target at the depth
 // target itself sits at (targetDepth), per the dotted-key resolution
 // navigateOrCreate implements.
-func (r *tomlReader) readKeyValue(target *Node, targetDepth int, kv *unstable.Node) error {
+func (r *tomlReader) readKeyValue(target *omnist.Node, targetDepth int, kv *unstable.Node) error {
 	parent, depth, label, err := r.resolveParentPathFrom(target, targetDepth, kv.Key())
 	if err != nil {
 		return err
@@ -331,7 +333,7 @@ func (r *tomlReader) readKeyValue(target *Node, targetDepth int, kv *unstable.No
 // root-relative per TOML's own grammar), while a KeyValue's dotted key
 // (whether top-level or inside an inline table) is relative to whatever
 // table it appears in.
-func (r *tomlReader) resolveParentPathFrom(target *Node, targetDepth int, keys unstable.Iterator) (*Node, int, string, error) {
+func (r *tomlReader) resolveParentPathFrom(target *omnist.Node, targetDepth int, keys unstable.Iterator) (*omnist.Node, int, string, error) {
 	var segs []string
 	for keys.Next() {
 		segs = append(segs, string(keys.Node().Data))
@@ -347,7 +349,7 @@ func (r *tomlReader) resolveParentPathFrom(target *Node, targetDepth int, keys u
 	return node, depth, segs[len(segs)-1], nil
 }
 
-// attachValue builds and attaches the Target(s) for one resolved
+// attachValue builds and attaches the omnist.Target(s) for one resolved
 // (parent, label) pair from a KeyValue's value node. An Array value
 // expands into one edge per element sharing label, exactly as ReadJSON's
 // readMember/ReadYAML's readSequenceElements treat a JSON array/YAML
@@ -356,7 +358,7 @@ func (r *tomlReader) resolveParentPathFrom(target *Node, targetDepth int, keys u
 // only tables/array-of-tables), so this is the plainly-correct default
 // reading shared by every other format in the JSON family, applied here
 // too, per the same repeated-label rule.
-func (r *tomlReader) attachValue(parent *Node, parentDepth int, label string, v *unstable.Node) error {
+func (r *tomlReader) attachValue(parent *omnist.Node, parentDepth int, label string, v *unstable.Node) error {
 	switch v.Kind {
 	case unstable.Array:
 		return r.attachArray(parent, parentDepth, label, v)
@@ -379,12 +381,12 @@ func (r *tomlReader) attachValue(parent *Node, parentDepth int, label string, v 
 
 // attachArray appends one edge per array element to parent, all sharing
 // label — the repeated-label expansion attachValue's doc comment
-// describes. An empty array is rejected with CodeParseEmptyArray, and a
+// describes. An empty array is rejected with omnist.CodeParseEmptyArray, and a
 // nested bare array (an array element that is itself an Array) is
-// rejected with CodeDocumentUnlabeledElement, mirroring ReadYAML's
+// rejected with omnist.CodeDocumentUnlabeledElement, mirroring ReadYAML's
 // readSequenceElements exactly (see that function's doc comment for why:
 // the same array-as-repeated-label-sugar mechanism, a third format).
-func (r *tomlReader) attachArray(parent *Node, parentDepth int, label string, arr *unstable.Node) error {
+func (r *tomlReader) attachArray(parent *omnist.Node, parentDepth int, label string, arr *unstable.Node) error {
 	it := arr.Children()
 	empty := true
 	for it.Next() {
@@ -392,7 +394,7 @@ func (r *tomlReader) attachArray(parent *Node, parentDepth int, label string, ar
 		elem := it.Node()
 		switch elem.Kind {
 		case unstable.Array:
-			return &ParseError{Path: label, Code: CodeDocumentUnlabeledElement, Message: "an array element must not itself be an array"}
+			return &omnist.ParseError{Path: label, Code: omnist.CodeDocumentUnlabeledElement, Message: "an array element must not itself be an array"}
 		case unstable.InlineTable:
 			child, err := r.buildInlineTable(parentDepth, elem)
 			if err != nil {
@@ -408,21 +410,21 @@ func (r *tomlReader) attachArray(parent *Node, parentDepth int, label string, ar
 		}
 	}
 	if empty {
-		return &ParseError{Path: label, Code: CodeParseEmptyArray, Message: "an empty array is not a valid value"}
+		return &omnist.ParseError{Path: label, Code: omnist.CodeParseEmptyArray, Message: "an empty array is not a valid value"}
 	}
 	return nil
 }
 
 // buildInlineTable reads an InlineTable value node's children (each one a
 // KeyValue node — confirmed empirically against the AST; the unstable
-// package's own doc comment on Node states an InlineTable's children are
+// package's own doc comment on omnist.Node states an InlineTable's children are
 // "each of kind InlineTable", which a throwaway probe program showed to
 // be inaccurate: `{a = 1, b = "x"}` produces two KeyValue children, not
 // InlineTable ones. This reader trusts what the AST actually returns
 // (checked directly) rather than that comment, per this issue's own
 // instruction to verify empirically rather than trust documentation) into
 // a freshly allocated node one level deeper than parentDepth.
-func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*Node, error) {
+func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*omnist.Node, error) {
 	child, err := r.newChildNode(parentDepth+1, "")
 	if err != nil {
 		return nil, err
@@ -436,9 +438,9 @@ func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*Nod
 	return child, nil
 }
 
-// posPath renders a Raw range as a "line:col" Path via the parser's own
-// Shape (unstable.Parser.Shape), matching every other reader's ParseError
-// Path convention (spec §8.4).
+// posPath renders a Raw range as a "line:col" omnist.Path via the parser's own
+// Shape (unstable.Parser.Shape), matching every other reader's omnist.ParseError
+// omnist.Path convention (spec §8.4).
 func (r *tomlReader) posPath(raw unstable.Range) string {
 	shape := r.p.Shape(raw)
 	return itoa(shape.Start.Line) + ":" + itoa(shape.Start.Column)
@@ -447,47 +449,47 @@ func (r *tomlReader) posPath(raw unstable.Range) string {
 func itoa(n int) string { return strconv.Itoa(n) }
 
 // wrapParserError converts the error unstable.Parser.Error() reports into
-// a *ParseError. Every one of the library's own error sites (confirmed by
+// a *omnist.ParseError. Every one of the library's own error sites (confirmed by
 // reading every unstable.NewParserError call in the library's parser.go)
 // constructs a *unstable.ParserError with a genuine, non-nil Highlight —
 // a real subslice of the input — so the type assertion below is
 // unchecked and Highlight is trusted to be non-nil, the same precondition
-// -trusting convention temporal.go's ParseISODate/ParseISOTime
+// -trusting convention temporal.go's omnist.ParseISODate/omnist.ParseISOTime
 // already use in this package (see that file's comment above
-// ParseISODate) rather than carrying a defensive fallback branch no
+// omnist.ParseISODate) rather than carrying a defensive fallback branch no
 // input can reach.
 func (r *tomlReader) wrapParserError(err error) error {
 	pe := err.(*unstable.ParserError) //nolint:errorlint // see doc comment: the library's own error is always this concrete type
 	shape := r.p.Shape(r.p.Range(pe.Highlight))
 	path := itoa(shape.Start.Line) + ":" + itoa(shape.Start.Column)
-	return &ParseError{Line: shape.Start.Line, Col: shape.Start.Column, Path: path, Code: CodeParseUnexpectedToken, Message: pe.Message}
+	return &omnist.ParseError{Line: shape.Start.Line, Col: shape.Start.Column, Path: path, Code: omnist.CodeParseUnexpectedToken, Message: pe.Message}
 }
 
 // readScalar resolves a scalar-kind value node (String/Bool/Integer/
-// Float/LocalDate/LocalTime/LocalDateTime/DateTime) to a Document Value,
+// Float/LocalDate/LocalTime/LocalDateTime/DateTime) to a omnist.Document omnist.Value,
 // applying the digit-count limit to any resulting integer via
-// LimitChecker.CheckIntDigits, exactly as ReadYAML's own readScalar does.
-func (r *tomlReader) readScalar(v *unstable.Node) (Value, error) {
+// omnist.LimitChecker.CheckIntDigits, exactly as ReadYAML's own readScalar does.
+func (r *tomlReader) readScalar(v *unstable.Node) (omnist.Value, error) {
 	switch v.Kind {
 	case unstable.String:
-		return ScalarValue(NewStringScalar(string(v.Data))), nil
+		return omnist.ScalarValue(omnist.NewStringScalar(string(v.Data))), nil
 	case unstable.Bool:
-		return ScalarValue(NewBooleanScalar(string(v.Data) == "true")), nil
+		return omnist.ScalarValue(omnist.NewBooleanScalar(string(v.Data) == "true")), nil
 	case unstable.Integer:
 		bi := parseTOMLInt(string(v.Data))
 		digits := len(strings.TrimPrefix(bi.String(), "-"))
 		if diag := r.checker.CheckIntDigits(r.posPath(v.Raw), digits); diag != nil {
-			return Value{}, &ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
+			return omnist.Value{}, &omnist.ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
 		}
-		return ScalarValue(NewIntegerScalar(bi)), nil
+		return omnist.ScalarValue(omnist.NewIntegerScalar(bi)), nil
 	case unstable.Float:
-		return ScalarValue(NewNumberScalar(parseTOMLFloat(string(v.Data)))), nil
+		return omnist.ScalarValue(omnist.NewNumberScalar(parseTOMLFloat(string(v.Data)))), nil
 	case unstable.LocalDate:
-		return ScalarValue(NewDateScalar(ParseISODate(string(v.Data)))), nil
+		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(string(v.Data)))), nil
 	case unstable.LocalTime:
-		return ScalarValue(NewTimeScalar(ParseISOTime(string(v.Data)))), nil
+		return omnist.ScalarValue(omnist.NewTimeScalar(omnist.ParseISOTime(string(v.Data)))), nil
 	default: // unstable.LocalDateTime, unstable.DateTime
-		return ScalarValue(NewDateTimeScalar(parseTOMLDateTime(string(v.Data)))), nil
+		return omnist.ScalarValue(omnist.NewDateTimeScalar(parseTOMLDateTime(string(v.Data)))), nil
 	}
 }
 
@@ -500,10 +502,10 @@ func (r *tomlReader) readScalar(v *unstable.Node) (Value, error) {
 // (different but overlapping) prefix set — so this defers to it directly
 // rather than hand-rolling per-base parsing. Every Integer-kind node this
 // is called on already satisfies TOML's grammar (confirmed empirically —
-// see ReadTOML's doc comment on the sign/radix-prefix combination the
+// see Read's doc comment on the sign/radix-prefix combination the
 // parser itself rejects before this function ever sees the text), so
 // SetString cannot fail on well-formed input, so — mirroring
-// temporal.go's ParseISODate/ParseISOTime convention of trusting a
+// temporal.go's omnist.ParseISODate/omnist.ParseISOTime convention of trusting a
 // checked precondition rather than carrying a permanently-dead error
 // branch (see that file's comment for the same reasoning applied to a
 // different precondition) — this has no error return at all.
@@ -517,7 +519,7 @@ func parseTOMLInt(raw string) *big.Int {
 // float64, stripping underscores first. TOML's grammar allows a sign on
 // "nan" (`+nan`/`-nan`), whose sign is defined to carry no meaning, but
 // Go's strconv.ParseFloat rejects a signed nan outright — confirmed
-// empirically (see ReadTOML's doc comment) — so a signed inf/nan is
+// empirically (see Read's doc comment) — so a signed inf/nan is
 // special-cased here first, mirroring the small hand-rolled check the
 // library's own unexported decode.go parseFloat performs for the
 // identical reason, before falling back to strconv.ParseFloat for every
@@ -544,25 +546,25 @@ func parseTOMLFloat(raw string) float64 {
 }
 
 // parseTOMLDateTime parses a LocalDateTime or DateTime node's raw literal
-// text into a DateTimeValue. TOML's grammar allows 'T', 't', or a literal
+// text into a omnist.DateTimeValue. TOML's grammar allows 'T', 't', or a literal
 // space as the date/time separator (all three confirmed empirically to
 // reach Kind=LocalDateTime/DateTime, not rejected), and either 'Z'/'z' or
 // a +HH:MM/-HH:MM suffix for an offset — wider than temporal.go's own
-// ParseISODateTime (OML's grammar only allows 'T', matching ISODateTimeRegexp),
+// omnist.ParseISODateTime (OML's grammar only allows 'T', matching ISODateTimeRegexp),
 // so this does not reuse it directly, though it does reuse
-// ParseISODate/ParseISOTime (document-model-neutral, format-agnostic
+// omnist.ParseISODate/omnist.ParseISOTime (document-model-neutral, format-agnostic
 // field parsers temporal.go already defines) for the date and
 // (offset-less) time portions.
-func parseTOMLDateTime(s string) DateTimeValue {
+func parseTOMLDateTime(s string) omnist.DateTimeValue {
 	datePart := s[:10]
 	timePart := s[11:]
-	var tv TimeValue
+	var tv omnist.TimeValue
 	if n := len(timePart); n > 0 && (timePart[n-1] == 'Z' || timePart[n-1] == 'z') {
-		tv = ParseISOTime(timePart[:n-1])
+		tv = omnist.ParseISOTime(timePart[:n-1])
 		tv.HasOffset = true
 		tv.OffsetSeconds = 0
 	} else {
-		tv = ParseISOTime(timePart)
+		tv = omnist.ParseISOTime(timePart)
 	}
-	return DateTimeValue{Date: ParseISODate(datePart), Time: tv}
+	return omnist.DateTimeValue{Date: omnist.ParseISODate(datePart), Time: tv}
 }
