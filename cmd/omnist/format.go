@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/oml"
 )
 
 // formatReaderFunc and formatWriterFunc give every stage-1 reader/writer
@@ -21,7 +22,7 @@ var formatReaders = map[string]formatReaderFunc{
 	"yaml": omnist.ReadYAML,
 	"toml": omnist.ReadTOML,
 	"xml":  omnist.ReadXML,
-	"oml":  omnist.ReadOML,
+	"oml":  oml.Read,
 }
 
 var formatWriters = map[string]formatWriterFunc{
@@ -29,10 +30,10 @@ var formatWriters = map[string]formatWriterFunc{
 	"yaml": omnist.WriteYAML,
 	"toml": omnist.WriteTOML,
 	"xml":  omnist.WriteXML,
-	// WriteOML never returns an error (compact-vs-pretty is the only
+	// oml.Write never returns an error (compact-vs-pretty is the only
 	// knob, and both always succeed), but it's wrapped here so every
 	// entry in this table shares one signature.
-	"oml": func(d omnist.Document) (string, error) { return omnist.WriteOML(d, false), nil },
+	"oml": func(d omnist.Document) (string, error) { return oml.Write(d, false), nil },
 }
 
 // knownFormatNames returns the five supported format names, sorted, for

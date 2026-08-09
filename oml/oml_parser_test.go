@@ -1,35 +1,37 @@
-package omnist
+package oml
 
 import (
 	"math"
 	"math/big"
 	"strings"
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-func mustParse(t *testing.T, src string) Document {
+func mustParse(t *testing.T, src string) omnist.Document {
 	t.Helper()
-	doc, err := ReadOML(src, DefaultLimits())
+	doc, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
-		t.Fatalf("ReadOML(%q) unexpected error: %v", src, err)
+		t.Fatalf("Read(%q) unexpected error: %v", src, err)
 	}
 	return doc
 }
 
-func mustFail(t *testing.T, src string) *ParseError {
+func mustFail(t *testing.T, src string) *omnist.ParseError {
 	t.Helper()
-	_, err := ReadOML(src, DefaultLimits())
+	_, err := Read(src, omnist.DefaultLimits())
 	if err == nil {
-		t.Fatalf("ReadOML(%q) expected error, got none", src)
+		t.Fatalf("Read(%q) expected error, got none", src)
 	}
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
-		t.Fatalf("ReadOML(%q) error is not *ParseError: %T %v", src, err, err)
+		t.Fatalf("Read(%q) error is not *omnist.ParseError: %T %v", src, err, err)
 	}
 	return pe
 }
 
-func wantCode(t *testing.T, pe *ParseError, code Code) {
+func wantCode(t *testing.T, pe *omnist.ParseError, code omnist.Code) {
 	t.Helper()
 	if pe.Code != code {
 		t.Errorf("code = %q, want %q (err: %v)", pe.Code, code, pe)
@@ -40,10 +42,10 @@ func wantCode(t *testing.T, pe *ParseError, code Code) {
 
 func TestWorkedDateTime(t *testing.T) {
 	doc := mustParse(t, `2024-01-01T10:30`)
-	if doc.IsNode || doc.Value.IsNull || doc.Value.Scalar.Kind != KindDateTime {
+	if doc.IsNode || doc.Value.IsNull || doc.Value.Scalar.Kind != omnist.KindDateTime {
 		t.Fatalf("got %+v", doc)
 	}
-	want := DateTimeValue{Date: DateValue{2024, 1, 1}, Time: TimeValue{Hour: 10, Minute: 30}}
+	want := omnist.DateTimeValue{Date: omnist.DateValue{Year: 2024, Month: 1, Day: 1}, Time: omnist.TimeValue{Hour: 10, Minute: 30}}
 	if doc.Value.Scalar.DateTime != want {
 		t.Errorf("got %+v want %+v", doc.Value.Scalar.DateTime, want)
 	}
@@ -51,7 +53,7 @@ func TestWorkedDateTime(t *testing.T) {
 
 func TestWorkedDateThenTrailingIdent(t *testing.T) {
 	pe := mustFail(t, `2024-01-01T99`)
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 }
 
 func TestWorkedRawString(t *testing.T) {
@@ -83,7 +85,7 @@ func TestWorkedMultilineTwoQuoteRuns(t *testing.T) {
 
 func TestWorkedMultilineFourClosingQuotes(t *testing.T) {
 	pe := mustFail(t, "a: \"\"\"\nx\"\"\"\"")
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestWorkedNanLabelError(t *testing.T) {
@@ -96,7 +98,7 @@ func TestWorkedNanLabelError(t *testing.T) {
 	// position at all, so it is simply out of place rather than a
 	// continuation of an almost-valid construct.
 	pe := mustFail(t, `nan: 1`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestWorkedQuotedNan(t *testing.T) {
@@ -109,12 +111,12 @@ func TestWorkedQuotedNan(t *testing.T) {
 
 func TestWorkedNullAtTopLevel(t *testing.T) {
 	pe := mustFail(t, `null: 1`)
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 }
 
 func TestWorkedNullInsideNode(t *testing.T) {
 	pe := mustFail(t, `a: { null: 1 }`)
-	wantCode(t, pe, CodeParseReservedWordLabel)
+	wantCode(t, pe, omnist.CodeParseReservedWordLabel)
 }
 
 func TestWorkedRepeatedTags(t *testing.T) {
@@ -147,7 +149,7 @@ func TestWorkedArraySugar(t *testing.T) {
 
 func TestWorkedEmptyArray(t *testing.T) {
 	pe := mustFail(t, `a: []`)
-	wantCode(t, pe, CodeParseEmptyArray)
+	wantCode(t, pe, omnist.CodeParseEmptyArray)
 }
 
 func TestWorkedEmptyBraces(t *testing.T) {
@@ -175,7 +177,7 @@ func TestWorkedBareScalar(t *testing.T) {
 
 func TestPriorityDateVsDateTimeTrailingIdent(t *testing.T) {
 	doc := mustParse(t, `2024-01-01`)
-	if doc.Value.Scalar.Kind != KindDate {
+	if doc.Value.Scalar.Kind != omnist.KindDate {
 		t.Fatalf("got kind %v", doc.Value.Scalar.Kind)
 	}
 }
@@ -185,7 +187,7 @@ func TestPriorityNanBecomesNumberNotIdent(t *testing.T) {
 	pe := mustFail(t, `a: { nan: 1 }`)
 	// nan tokenizes as NUMBER; inside braces label-position expects
 	// STRING/IDENT, so NUMBER where a label is expected is unexpected-token.
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 // --- string forms ---
@@ -218,47 +220,47 @@ func TestDQuoteSurrogatePair(t *testing.T) {
 
 func TestDQuoteUnpairedHighSurrogate(t *testing.T) {
 	pe := mustFail(t, `a: "\ud83d"`)
-	wantCode(t, pe, CodeParseUnpairedSurrogate)
+	wantCode(t, pe, omnist.CodeParseUnpairedSurrogate)
 }
 
 func TestDQuoteHighSurrogateFollowedByNonLowSurrogate(t *testing.T) {
 	pe := mustFail(t, `a: "\ud83d\u0041"`)
-	wantCode(t, pe, CodeParseUnpairedSurrogate)
+	wantCode(t, pe, omnist.CodeParseUnpairedSurrogate)
 }
 
 func TestDQuoteLoneLowSurrogate(t *testing.T) {
 	pe := mustFail(t, `a: "\udc00"`)
-	wantCode(t, pe, CodeParseUnpairedSurrogate)
+	wantCode(t, pe, omnist.CodeParseUnpairedSurrogate)
 }
 
 func TestDQuoteInvalidEscape(t *testing.T) {
 	pe := mustFail(t, `a: "\x"`)
-	wantCode(t, pe, CodeParseInvalidEscape)
+	wantCode(t, pe, omnist.CodeParseInvalidEscape)
 }
 
 func TestDQuoteInvalidHexEscape(t *testing.T) {
 	pe := mustFail(t, `a: "\uZZZZ"`)
-	wantCode(t, pe, CodeParseInvalidEscape)
+	wantCode(t, pe, omnist.CodeParseInvalidEscape)
 }
 
 func TestDQuoteTruncatedHexEscape(t *testing.T) {
 	pe := mustFail(t, `a: "\u12`)
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestDQuoteControlCharacter(t *testing.T) {
 	pe := mustFail(t, "a: \"x\ty\"")
-	wantCode(t, pe, CodeParseControlCharacter)
+	wantCode(t, pe, omnist.CodeParseControlCharacter)
 }
 
 func TestDQuoteUnterminated(t *testing.T) {
 	pe := mustFail(t, `a: "abc`)
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestDQuoteUnterminatedAfterBackslash(t *testing.T) {
 	pe := mustFail(t, `a: "abc\`)
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestRawStringLiteralBackslash(t *testing.T) {
@@ -271,7 +273,7 @@ func TestRawStringLiteralBackslash(t *testing.T) {
 
 func TestRawStringUnterminated(t *testing.T) {
 	pe := mustFail(t, `a: 'abc`)
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestMultilineLeadingCRLFStripped(t *testing.T) {
@@ -308,12 +310,12 @@ func TestMultilineTabAllowed(t *testing.T) {
 
 func TestMultilineControlCharacter(t *testing.T) {
 	pe := mustFail(t, "a: \"\"\"x\x01y\"\"\"")
-	wantCode(t, pe, CodeParseControlCharacter)
+	wantCode(t, pe, omnist.CodeParseControlCharacter)
 }
 
 func TestMultilineUnterminated(t *testing.T) {
 	pe := mustFail(t, `a: """abc`)
-	wantCode(t, pe, CodeParseUnterminatedString)
+	wantCode(t, pe, omnist.CodeParseUnterminatedString)
 }
 
 func TestMultilineFiveClosingQuotesLeavesTwoLiteralQuotes(t *testing.T) {
@@ -327,14 +329,14 @@ func TestMultilineFiveClosingQuotesLeavesTwoLiteralQuotes(t *testing.T) {
 	// never goes on to look like a genuine second edge (it isn't followed
 	// by ':'), so there's no "edge" it could be missing a separator from.
 	pe := mustFail(t, "a: \"\"\"x\"\"\"\"\"")
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 }
 
 // --- arrays ---
 
 func TestArrayNestedError(t *testing.T) {
 	pe := mustFail(t, `a: [[1]]`)
-	wantCode(t, pe, CodeParseNestedArray)
+	wantCode(t, pe, omnist.CodeParseNestedArray)
 }
 
 func TestArrayTrailingComma(t *testing.T) {
@@ -346,12 +348,12 @@ func TestArrayTrailingComma(t *testing.T) {
 
 func TestArrayNewlineSeparatorError(t *testing.T) {
 	pe := mustFail(t, "a: [1,\n2]")
-	wantCode(t, pe, CodeParseSeparatorInArray)
+	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
 }
 
 func TestArraySemicolonSeparatorError(t *testing.T) {
 	pe := mustFail(t, "a: [1;2]")
-	wantCode(t, pe, CodeParseSeparatorInArray)
+	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
 }
 
 func TestArrayOfNodes(t *testing.T) {
@@ -367,14 +369,14 @@ func TestArrayOfNodes(t *testing.T) {
 
 func TestArrayMissingCommaError(t *testing.T) {
 	pe := mustFail(t, `a: [1 2]`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestArrayCommentFollowedByNewlineStillErrors(t *testing.T) {
 	// The comment itself is insignificant, but the newline after it is
 	// still a forbidden array separator - comments don't disable that rule.
 	pe := mustFail(t, "a: [1, # comment\n2]")
-	wantCode(t, pe, CodeParseSeparatorInArray)
+	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
 }
 
 func TestArrayCommentSameLineAllowed(t *testing.T) {
@@ -427,12 +429,12 @@ func TestBareBooleanDocuments(t *testing.T) {
 
 func TestTwoBareScalarsError(t *testing.T) {
 	pe := mustFail(t, `1 2`)
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 }
 
 func TestBareIdentifierError(t *testing.T) {
 	pe := mustFail(t, `hello`)
-	wantCode(t, pe, CodeParseBareWord)
+	wantCode(t, pe, omnist.CodeParseBareWord)
 }
 
 func TestSingleLineCompactForm(t *testing.T) {
@@ -444,7 +446,7 @@ func TestSingleLineCompactForm(t *testing.T) {
 
 func TestMissingSeparatorBetweenEdgesError(t *testing.T) {
 	pe := mustFail(t, `a: 1 b: 2`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestNestedNode(t *testing.T) {
@@ -474,12 +476,12 @@ func TestQuotedLabel(t *testing.T) {
 
 func TestUnclosedBraceError(t *testing.T) {
 	pe := mustFail(t, `a: { b: 1`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestUnexpectedTokenAtLabelPosition(t *testing.T) {
 	pe := mustFail(t, `a: { 1: 2 }`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestBareIdentifierFollowedByAnotherTokenIsBareWord(t *testing.T) {
@@ -487,12 +489,12 @@ func TestBareIdentifierFollowedByAnotherTokenIsBareWord(t *testing.T) {
 	// scalar branch; "a" alone is not null/true/false, so it fails as a
 	// bare word before "1" is ever reached.
 	pe := mustFail(t, `a 1`)
-	wantCode(t, pe, CodeParseBareWord)
+	wantCode(t, pe, omnist.CodeParseBareWord)
 }
 
 func TestValueIsRBraceError(t *testing.T) {
 	pe := mustFail(t, `a: }`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 // --- limits ---
@@ -500,7 +502,7 @@ func TestValueIsRBraceError(t *testing.T) {
 func TestIntDigitLimitBoundaryOK(t *testing.T) {
 	digits := strings.Repeat("9", 4300)
 	doc := mustParse(t, digits)
-	if doc.Value.Scalar.Kind != KindInteger {
+	if doc.Value.Scalar.Kind != omnist.KindInteger {
 		t.Fatalf("got %+v", doc.Value)
 	}
 }
@@ -508,7 +510,7 @@ func TestIntDigitLimitBoundaryOK(t *testing.T) {
 func TestIntDigitLimitExceeded(t *testing.T) {
 	digits := strings.Repeat("9", 4301)
 	pe := mustFail(t, digits)
-	wantCode(t, pe, CodeDocumentLimitIntDigits)
+	wantCode(t, pe, omnist.CodeDocumentLimitIntDigits)
 }
 
 func buildNesting(n int) string {
@@ -527,7 +529,7 @@ func buildNesting(n int) string {
 func TestNestingDepthBoundaryOK(t *testing.T) {
 	// 200 '{' levels, per §4.7's boundary table.
 	src := buildNesting(200)
-	if _, err := ReadOML(src, DefaultLimits()); err != nil {
+	if _, err := Read(src, omnist.DefaultLimits()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -535,18 +537,18 @@ func TestNestingDepthBoundaryOK(t *testing.T) {
 func TestNestingDepthExceeded(t *testing.T) {
 	src := buildNesting(201)
 	pe := mustFail(t, src)
-	wantCode(t, pe, CodeDocumentLimitDepth)
+	wantCode(t, pe, omnist.CodeDocumentLimitDepth)
 }
 
 func TestCustomLimits(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxIntDigits = 2
-	_, err := ReadOML("123", limits)
+	_, err := Read("123", limits)
 	if err == nil {
 		t.Fatal("expected error with custom low limit")
 	}
-	pe := err.(*ParseError)
-	wantCode(t, pe, CodeDocumentLimitIntDigits)
+	pe := err.(*omnist.ParseError)
+	wantCode(t, pe, omnist.CodeDocumentLimitIntDigits)
 }
 
 // --- error paths (line:col) ---
@@ -579,7 +581,7 @@ func TestNegativeInteger(t *testing.T) {
 
 func TestDecimalNumber(t *testing.T) {
 	doc := mustParse(t, `3.14`)
-	if doc.Value.Scalar.Kind != KindNumber || doc.Value.Scalar.Num != 3.14 {
+	if doc.Value.Scalar.Kind != omnist.KindNumber || doc.Value.Scalar.Num != 3.14 {
 		t.Errorf("got %+v", doc.Value.Scalar)
 	}
 }
@@ -651,7 +653,7 @@ func TestTimeWithNegativeOffset(t *testing.T) {
 func TestDateTimeWithFractionAndOffset(t *testing.T) {
 	doc := mustParse(t, `2024-06-15T10:30:15.123456+00:00`)
 	dt := doc.Value.Scalar.DateTime
-	if dt.Date != (DateValue{2024, 6, 15}) {
+	if dt.Date != (omnist.DateValue{Year: 2024, Month: 6, Day: 15}) {
 		t.Errorf("date = %+v", dt.Date)
 	}
 	if dt.Time.Second != 15 || dt.Time.Nanosecond != 123456000 || !dt.Time.HasOffset {
@@ -697,14 +699,14 @@ func TestLoneCRAtEOF(t *testing.T) {
 
 func TestUnrecognizedCharacter(t *testing.T) {
 	pe := mustFail(t, `$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 // --- coverage: surrogate-pair second escape has invalid hex ---
 
 func TestDQuoteHighSurrogateThenInvalidHex(t *testing.T) {
 	pe := mustFail(t, `a: "\ud83d\uZZZZ"`)
-	wantCode(t, pe, CodeParseInvalidEscape)
+	wantCode(t, pe, omnist.CodeParseInvalidEscape)
 }
 
 // --- coverage: looksLikeEdgeStart's swallowed lookahead-lex-error path ---
@@ -715,7 +717,7 @@ func TestLookaheadTokenMalformedFallsBackToScalarBareWord(t *testing.T) {
 	// reported error - it falls back to the scalar branch, which then
 	// fails as a bare word without ever needing to retokenize "$".
 	pe := mustFail(t, `a$`)
-	wantCode(t, pe, CodeParseBareWord)
+	wantCode(t, pe, omnist.CodeParseBareWord)
 }
 
 // --- coverage: p.advance() surfacing a lex error for the token that
@@ -724,87 +726,87 @@ func TestLookaheadTokenMalformedFallsBackToScalarBareWord(t *testing.T) {
 
 func TestAdvanceErrorAfterStringLabel(t *testing.T) {
 	pe := mustFail(t, "x: 1; \"a\"$: 2")
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterIdentLabel(t *testing.T) {
 	pe := mustFail(t, "x: 1; a$: 2")
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterOpenBrace(t *testing.T) {
 	pe := mustFail(t, `a: {$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterCloseBrace(t *testing.T) {
 	pe := mustFail(t, `a: {}$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterStringValue(t *testing.T) {
 	pe := mustFail(t, `a: "x"$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterIntegerValue(t *testing.T) {
 	pe := mustFail(t, `a: 1$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterNumberValue(t *testing.T) {
 	pe := mustFail(t, `a: 1.5$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterDateValue(t *testing.T) {
 	pe := mustFail(t, `a: 2024-01-01$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterTimeValue(t *testing.T) {
 	pe := mustFail(t, `a: 10:30$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterDateTimeValue(t *testing.T) {
 	pe := mustFail(t, `a: 2024-01-01T10:30$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterNullValue(t *testing.T) {
 	pe := mustFail(t, `a: null$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterTrueValue(t *testing.T) {
 	pe := mustFail(t, `a: true$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterFalseValue(t *testing.T) {
 	pe := mustFail(t, `a: false$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterOpenBracket(t *testing.T) {
 	pe := mustFail(t, `a: [$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterComma(t *testing.T) {
 	pe := mustFail(t, `a: [1,$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterTrailingCommaCloseBracket(t *testing.T) {
 	pe := mustFail(t, `a: [1,]$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 func TestAdvanceErrorAfterCloseBracket(t *testing.T) {
 	pe := mustFail(t, `a: [1]$`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 // --- coverage: CRLF as a single separator ---
@@ -820,19 +822,19 @@ func TestCRLFSeparator(t *testing.T) {
 
 func TestBareArrayAtTopLevelIsUnexpectedToken(t *testing.T) {
 	pe := mustFail(t, `[1, 2]`)
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
 // --- coverage: separator immediately after '[', and a malformed element ---
 
 func TestArraySeparatorRightAfterOpenBracket(t *testing.T) {
 	pe := mustFail(t, "a: [\n1]")
-	wantCode(t, pe, CodeParseSeparatorInArray)
+	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
 }
 
 func TestArrayElementBareWordError(t *testing.T) {
 	pe := mustFail(t, `a: [x]`)
-	wantCode(t, pe, CodeParseBareWord)
+	wantCode(t, pe, omnist.CodeParseBareWord)
 }
 
 // --- issue #33: string-literal error positions anchor to the opening
@@ -843,7 +845,7 @@ func TestControlCharacterInStringAnchorsToOpeningQuote(t *testing.T) {
 	// control character; the diagnostic anchors to the opening '"' (col
 	// 4), per oml-grammar/errors/literal-control-character-in-string-is-an-error.
 	pe := mustFail(t, "a: \"hi\nthere\"\n")
-	wantCode(t, pe, CodeParseControlCharacter)
+	wantCode(t, pe, omnist.CodeParseControlCharacter)
 	if pe.Line != 1 || pe.Col != 4 {
 		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
 	}
@@ -851,7 +853,7 @@ func TestControlCharacterInStringAnchorsToOpeningQuote(t *testing.T) {
 
 func TestUnrecognizedEscapeAnchorsToOpeningQuote(t *testing.T) {
 	pe := mustFail(t, `a: "\q"`)
-	wantCode(t, pe, CodeParseInvalidEscape)
+	wantCode(t, pe, omnist.CodeParseInvalidEscape)
 	if pe.Line != 1 || pe.Col != 4 {
 		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
 	}
@@ -859,7 +861,7 @@ func TestUnrecognizedEscapeAnchorsToOpeningQuote(t *testing.T) {
 
 func TestUnpairedHighSurrogateAnchorsToOpeningQuote(t *testing.T) {
 	pe := mustFail(t, `a: "\ud800"`)
-	wantCode(t, pe, CodeParseUnpairedSurrogate)
+	wantCode(t, pe, omnist.CodeParseUnpairedSurrogate)
 	if pe.Line != 1 || pe.Col != 4 {
 		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
 	}
@@ -870,7 +872,7 @@ func TestUnpairedHighSurrogateAnchorsToOpeningQuote(t *testing.T) {
 
 func TestNewlineInsideArrayReportsPositionAfterNewline(t *testing.T) {
 	pe := mustFail(t, "b: [1\n2]\n")
-	wantCode(t, pe, CodeParseSeparatorInArray)
+	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
 	if pe.Line != 2 || pe.Col != 1 {
 		t.Errorf("got %d:%d, want 2:1", pe.Line, pe.Col)
 	}
@@ -881,50 +883,50 @@ func TestNewlineInsideArrayReportsPositionAfterNewline(t *testing.T) {
 
 func TestDateThenNonTimeSuffixIsTrailingContent(t *testing.T) {
 	pe := mustFail(t, "a: 2024-01-01T99\n")
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 	if pe.Line != 1 || pe.Col != 14 {
 		t.Errorf("got %d:%d, want 1:14", pe.Line, pe.Col)
 	}
 }
 
 // --- issue #33: document.limit.depth/nodes diagnostics carry the "$"
-// Document-path fallback (spec §8.4), never a text-position path ---
+// omnist.Document-path fallback (spec §8.4), never a text-position path ---
 
 func TestBracedNodeDepthLimitUsesDollarPath(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxDepth = 1
-	_, err := ReadOML(`a: { b: { c: 1 } }`, limits)
+	_, err := Read(`a: { b: { c: 1 } }`, limits)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
-		t.Fatalf("error is not *ParseError: %T %v", err, err)
+		t.Fatalf("error is not *omnist.ParseError: %T %v", err, err)
 	}
-	if pe.Code != CodeDocumentLimitDepth {
-		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitDepth)
+	if pe.Code != omnist.CodeDocumentLimitDepth {
+		t.Errorf("code = %q, want %q", pe.Code, omnist.CodeDocumentLimitDepth)
 	}
 	if pe.Path != "$" {
 		t.Errorf("path = %q, want %q", pe.Path, "$")
 	}
 }
 
-// --- issue #33: document.limit.int-digits carries the Document path of
+// --- issue #33: document.limit.int-digits carries the omnist.Document path of
 // the offending edge, e.g. "$.n", not a text-position path ---
 
 func TestIntDigitsLimitUsesDocumentPath(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxIntDigits = 3
-	_, err := ReadOML("n: 1000\n", limits)
+	_, err := Read("n: 1000\n", limits)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
-		t.Fatalf("error is not *ParseError: %T %v", err, err)
+		t.Fatalf("error is not *omnist.ParseError: %T %v", err, err)
 	}
-	if pe.Code != CodeDocumentLimitIntDigits {
-		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitIntDigits)
+	if pe.Code != omnist.CodeDocumentLimitIntDigits {
+		t.Errorf("code = %q, want %q", pe.Code, omnist.CodeDocumentLimitIntDigits)
 	}
 	if pe.Path != "$.n" {
 		t.Errorf("path = %q, want %q", pe.Path, "$.n")
@@ -932,18 +934,18 @@ func TestIntDigitsLimitUsesDocumentPath(t *testing.T) {
 }
 
 // --- issue #33: an in-bounds int-digits value nested inside a brace still
-// gets a nested Document path ---
+// gets a nested omnist.Document path ---
 
 func TestIntDigitsLimitUsesNestedDocumentPath(t *testing.T) {
-	limits := DefaultLimits()
+	limits := omnist.DefaultLimits()
 	limits.MaxIntDigits = 3
-	_, err := ReadOML("a: { n: 1000 }", limits)
+	_, err := Read("a: { n: 1000 }", limits)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
-		t.Fatalf("error is not *ParseError: %T %v", err, err)
+		t.Fatalf("error is not *omnist.ParseError: %T %v", err, err)
 	}
 	if pe.Path != "$.a.n" {
 		t.Errorf("path = %q, want %q", pe.Path, "$.a.n")

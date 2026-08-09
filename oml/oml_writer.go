@@ -1,4 +1,4 @@
-package omnist
+package oml
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // reOMLBareLabel matches a label text eligible for bare (unquoted)
@@ -24,7 +26,7 @@ var omlQuotedLabelWords = map[string]bool{
 	"null": true, "true": true, "false": true, "nan": true, "inf": true,
 }
 
-// WriteOML renders d as OML text (spec ch.4): §4.4's label-quoting rule
+// Write renders d as OML text (spec ch.4): §4.4's label-quoting rule
 // and §4.5's string-escaping rule are both followed exactly, since those
 // are the two areas spec chapter 4 states as normative MUST/MUST NOT
 // rules for the canonical writer.
@@ -41,7 +43,7 @@ var omlQuotedLabelWords = map[string]bool{
 // reasonable, deterministic, self-consistent choice, documented here per
 // the issue's instruction to flag this as a judgment call rather than a
 // spec requirement.
-func WriteOML(d Document, compact bool) string {
+func Write(d omnist.Document, compact bool) string {
 	var b strings.Builder
 	if d.IsNode {
 		if compact {
@@ -64,12 +66,12 @@ func WriteOML(d Document, compact bool) string {
 	return b.String()
 }
 
-// WriteOMLCompact is a convenience wrapper for WriteOML(d, true).
-func WriteOMLCompact(d Document) string { return WriteOML(d, true) }
+// WriteCompact is a convenience wrapper for Write(d, true).
+func WriteCompact(d omnist.Document) string { return Write(d, true) }
 
 const omlIndentUnit = "  "
 
-func writeOMLNodeEdgesPretty(b *strings.Builder, n *Node, level int) {
+func writeOMLNodeEdgesPretty(b *strings.Builder, n *omnist.Node, level int) {
 	indent := strings.Repeat(omlIndentUnit, level)
 	for i, e := range n.Edges {
 		if i > 0 {
@@ -82,7 +84,7 @@ func writeOMLNodeEdgesPretty(b *strings.Builder, n *Node, level int) {
 	}
 }
 
-func writeOMLTargetPretty(b *strings.Builder, t Target, level int) {
+func writeOMLTargetPretty(b *strings.Builder, t omnist.Target, level int) {
 	if node, ok := t.Node(); ok {
 		if len(node.Edges) == 0 {
 			b.WriteString("{}")
@@ -99,7 +101,7 @@ func writeOMLTargetPretty(b *strings.Builder, t Target, level int) {
 	writeOMLValue(b, v)
 }
 
-func writeOMLNodeEdgesCompact(b *strings.Builder, n *Node) {
+func writeOMLNodeEdgesCompact(b *strings.Builder, n *omnist.Node) {
 	for i, e := range n.Edges {
 		if i > 0 {
 			b.WriteString("; ")
@@ -110,7 +112,7 @@ func writeOMLNodeEdgesCompact(b *strings.Builder, n *Node) {
 	}
 }
 
-func writeOMLTargetCompact(b *strings.Builder, t Target) {
+func writeOMLTargetCompact(b *strings.Builder, t omnist.Target) {
 	if node, ok := t.Node(); ok {
 		if len(node.Edges) == 0 {
 			b.WriteString("{}")
@@ -136,7 +138,7 @@ func writeOMLLabel(b *strings.Builder, label string) {
 	b.WriteByte('"')
 }
 
-func writeOMLValue(b *strings.Builder, v Value) {
+func writeOMLValue(b *strings.Builder, v omnist.Value) {
 	if v.IsNull {
 		b.WriteString("null")
 		return
@@ -144,33 +146,33 @@ func writeOMLValue(b *strings.Builder, v Value) {
 	writeOMLScalar(b, v.Scalar)
 }
 
-// writeOMLScalar renders a Scalar's canonical text. For KindInteger, s.Int
-// is assumed non-nil: every Scalar of that kind reaching this function was
-// either built by NewIntegerScalar (which always copies a non-nil
-// *big.Int) or produced by ReadOML/osd.Read, neither of which ever leaves
-// Int nil for KindInteger. This mirrors the same trusted-precondition
+// writeOMLScalar renders an omnist.Scalar's canonical text. For omnist.KindInteger, s.Int
+// is assumed non-nil: every omnist.Scalar of that kind reaching this function was
+// either built by omnist.NewIntegerScalar (which always copies a non-nil
+// *big.Int) or produced by Read/osd.Read, neither of which ever leaves
+// Int nil for omnist.KindInteger. This mirrors the same trusted-precondition
 // convention temporal.go's temporal decoders already use.
-func writeOMLScalar(b *strings.Builder, s Scalar) {
+func writeOMLScalar(b *strings.Builder, s omnist.Scalar) {
 	switch s.Kind {
-	case KindString:
+	case omnist.KindString:
 		b.WriteByte('"')
 		b.WriteString(escapeOMLString(s.Str))
 		b.WriteByte('"')
-	case KindInteger:
+	case omnist.KindInteger:
 		b.WriteString(s.Int.String())
-	case KindNumber:
+	case omnist.KindNumber:
 		b.WriteString(formatOMLNumber(s.Num))
-	case KindBoolean:
+	case omnist.KindBoolean:
 		if s.Bool {
 			b.WriteString("true")
 		} else {
 			b.WriteString("false")
 		}
-	case KindDate:
+	case omnist.KindDate:
 		b.WriteString(formatOMLDate(s.Date))
-	case KindTime:
+	case omnist.KindTime:
 		b.WriteString(formatOMLTime(s.Time))
-	case KindDateTime:
+	case omnist.KindDateTime:
 		b.WriteString(formatOMLDate(s.DateTime.Date))
 		b.WriteByte('T')
 		b.WriteString(formatOMLTime(s.DateTime.Time))
@@ -200,28 +202,28 @@ func formatOMLNumber(f float64) string {
 	return s
 }
 
-func formatOMLDate(d DateValue) string {
+func formatOMLDate(d omnist.DateValue) string {
 	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
 }
 
-// formatOMLTime renders a TimeValue per the TIME production (spec §4.2's
-// ISOTimeRegexp). Seconds are emitted only when Second or Nanosecond is nonzero,
-// and the fractional part only when Nanosecond is nonzero — the Document
+// formatOMLTime renders a omnist.TimeValue per the TIME production (spec §4.2's
+// omnist.ISOTimeRegexp). Seconds are emitted only when Second or Nanosecond is nonzero,
+// and the fractional part only when Nanosecond is nonzero — the omnist.Document
 // model does not distinguish "seconds explicitly written as :00" from
 // "seconds omitted", so omitting a zero seconds/fraction component is a
 // reasonable, round-trip-safe canonicalization rather than a spec
 // requirement.
-// formatOMLTime renders a TimeValue per the canonical OML writer. Seconds
-// are always emitted, even when zero (":00"): the Document model does not
+// formatOMLTime renders a omnist.TimeValue per the canonical OML writer. Seconds
+// are always emitted, even when zero (":00"): the omnist.Document model does not
 // distinguish "seconds explicitly written in the source" from "seconds
-// defaulted to zero" (TimeValue carries no such flag), so omitting a zero
+// defaulted to zero" (omnist.TimeValue carries no such flag), so omitting a zero
 // second field would silently drop information the value may have
 // genuinely had — confirmed by
 // formats-oml/basic/genuine-time-writes-bare, which pins "12:00:00" (not
-// "12:00") as the canonical spelling for an exact-noon TimeValue. The
+// "12:00") as the canonical spelling for an exact-noon omnist.TimeValue. The
 // fractional part is still omitted when Nanosecond is zero, since a
 // fraction has no analogous "always show" convention to pin against.
-func formatOMLTime(t TimeValue) string {
+func formatOMLTime(t omnist.TimeValue) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%02d:%02d:%02d", t.Hour, t.Minute, t.Second)
 	if t.Nanosecond != 0 {

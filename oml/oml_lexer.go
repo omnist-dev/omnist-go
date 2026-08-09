@@ -1,4 +1,4 @@
-package omnist
+package oml
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // tokenKind identifies the lexical category of a token, per spec §4.2's
@@ -31,7 +33,7 @@ const (
 )
 
 // token is one lexical token, carrying enough decoded value to build a
-// Document leaf directly, plus position info for ParseError.
+// omnist.Document leaf directly, plus position info for omnist.ParseError.
 type token struct {
 	kind tokenKind
 	text string // raw source text (identifier/label text, or number's raw digits)
@@ -52,9 +54,9 @@ type token struct {
 	intVal      *big.Int
 	intDigits   int
 	numVal      float64
-	dateVal     DateValue
-	timeVal     TimeValue
-	dateTimeVal DateTimeValue
+	dateVal     omnist.DateValue
+	timeVal     omnist.TimeValue
+	dateTimeVal omnist.DateTimeValue
 }
 
 // lexer turns OML source text into a stream of tokens per spec §4.2's
@@ -73,24 +75,24 @@ type lexer struct {
 	line int
 	col  int
 
-	limits *LimitChecker
+	limits *omnist.LimitChecker
 
-	// valuePath is the Document path (spec §8.4) of the edge value the
+	// valuePath is the omnist.Document path (spec §8.4) of the edge value the
 	// parser is about to tokenize, e.g. "$.n" — set by the parser right
 	// before it calls advance() to read a value token, and used only to
 	// path a document.limit.int-digits diagnostic correctly (that code is
-	// document.*, so per §8.4 it MUST carry a Document path, never the
+	// document.*, so per §8.4 it MUST carry an omnist.Document path, never the
 	// text-position path every other diagnostic in this file uses; a
 	// parse.* diagnostic never consults this field). Left empty when no
 	// value is pending (e.g. while reading a label or punctuation), in
 	// which case CheckIntDigits falls back to a text-position path — this
 	// only matters for a lone top-level integer with no enclosing label,
 	// which document.limit.int-digits cannot presently pin an example of
-	// a Document path for since there's no label to name.
+	// an omnist.Document path for since there's no label to name.
 	valuePath string
 }
 
-func newLexer(text string, limits *LimitChecker) *lexer {
+func newLexer(text string, limits *omnist.LimitChecker) *lexer {
 	return &lexer{src: []rune(text), pos: 0, line: 1, col: 1, limits: limits}
 }
 
@@ -178,9 +180,9 @@ func (l *lexer) remainingString() string {
 	return string(l.src[l.pos:])
 }
 
-// next returns the next token, or a *ParseError. It is the single entry
+// next returns the next token, or a *omnist.ParseError. It is the single entry
 // point implementing §4.2's priority order.
-func (l *lexer) next() (token, *ParseError) {
+func (l *lexer) next() (token, *omnist.ParseError) {
 	sawSep, sepLine, sepCol := l.skipTrivia()
 	startLine, startCol := l.line, l.col
 
@@ -210,21 +212,21 @@ func (l *lexer) next() (token, *ParseError) {
 	rest := l.remainingString()
 
 	// Rule 3: DATETIME.
-	if m := ISODateTimeRegexp.FindString(rest); m != "" {
+	if m := omnist.ISODateTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDateTime, text: m, dateTimeVal: ParseISODateTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDateTime, text: m, dateTimeVal: omnist.ParseISODateTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 4: DATE (not followed by a valid DATETIME, already excluded above).
-	if m := ISODateRegexp.FindString(rest); m != "" {
+	if m := omnist.ISODateRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDate, text: m, dateVal: ParseISODate(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDate, text: m, dateVal: omnist.ParseISODate(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 5: TIME.
-	if m := ISOTimeRegexp.FindString(rest); m != "" {
+	if m := omnist.ISOTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokTime, text: m, timeVal: ParseISOTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokTime, text: m, timeVal: omnist.ParseISOTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 6: NUMBER (decimal or exponent form).
@@ -252,7 +254,7 @@ func (l *lexer) next() (token, *ParseError) {
 			digitPath = l.valuePath
 		}
 		if diag := l.limits.CheckIntDigits(digitPath, digits); diag != nil {
-			return token{}, &ParseError{Line: startLine, Col: startCol, Path: digitPath, Code: diag.Code, Message: diag.Message}
+			return token{}, &omnist.ParseError{Line: startLine, Col: startCol, Path: digitPath, Code: diag.Code, Message: diag.Message}
 		}
 		bi, _ := new(big.Int).SetString(m, 10)
 		return token{kind: tokInteger, text: m, intVal: bi, intDigits: digits, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
@@ -264,10 +266,10 @@ func (l *lexer) next() (token, *ParseError) {
 		return token{kind: tokIdent, text: m, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
-	return token{}, &ParseError{
+	return token{}, &omnist.ParseError{
 		Line: startLine, Col: startCol,
 		Path:    fmt.Sprintf("%d:%d", startLine, startCol),
-		Code:    CodeParseUnexpectedToken,
+		Code:    omnist.CodeParseUnexpectedToken,
 		Message: fmt.Sprintf("unexpected character %q", r),
 	}
 }
@@ -319,7 +321,7 @@ func matchReservedFloat(rest string) (matched string, val float64, ok bool) {
 
 // --- string scanning ---
 
-func (l *lexer) scanString() (token, *ParseError) {
+func (l *lexer) scanString() (token, *omnist.ParseError) {
 	if l.peekRune() == '\'' {
 		return l.scanRawString()
 	}
@@ -330,17 +332,17 @@ func (l *lexer) scanString() (token, *ParseError) {
 	return l.scanDQuoteString()
 }
 
-func (l *lexer) errAt(line, col int, code Code, msg string) *ParseError {
-	return &ParseError{Line: line, Col: col, Path: fmt.Sprintf("%d:%d", line, col), Code: code, Message: msg}
+func (l *lexer) errAt(line, col int, code omnist.Code, msg string) *omnist.ParseError {
+	return &omnist.ParseError{Line: line, Col: col, Path: fmt.Sprintf("%d:%d", line, col), Code: code, Message: msg}
 }
 
-func (l *lexer) scanRawString() (token, *ParseError) {
+func (l *lexer) scanRawString() (token, *omnist.ParseError) {
 	startLine, startCol := l.line, l.col
 	l.advance() // opening '
 	var b strings.Builder
 	for {
 		if l.atEOF() {
-			return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated raw string")
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated raw string")
 		}
 		r := l.advance()
 		if r == '\'' {
@@ -350,13 +352,13 @@ func (l *lexer) scanRawString() (token, *ParseError) {
 	}
 }
 
-func (l *lexer) scanDQuoteString() (token, *ParseError) {
+func (l *lexer) scanDQuoteString() (token, *omnist.ParseError) {
 	startLine, startCol := l.line, l.col
 	l.advance() // opening "
 	var b strings.Builder
 	for {
 		if l.atEOF() {
-			return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 		}
 		r := l.advance()
 		switch {
@@ -364,20 +366,20 @@ func (l *lexer) scanDQuoteString() (token, *ParseError) {
 			return token{kind: tokString, strVal: b.String()}, nil
 		case r == '\\':
 			if l.atEOF() {
-				return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
+				return token{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 			}
 			if err := l.scanEscape(&b, startLine, startCol); err != nil {
 				return token{}, err
 			}
 		case r < 0x20:
-			return token{}, l.errAt(startLine, startCol, CodeParseControlCharacter, "control character in string")
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseControlCharacter, "control character in string")
 		default:
 			b.WriteRune(r)
 		}
 	}
 }
 
-func (l *lexer) scanEscape(b *strings.Builder, escLine, escCol int) *ParseError {
+func (l *lexer) scanEscape(b *strings.Builder, escLine, escCol int) *omnist.ParseError {
 	e := l.advance()
 	switch e {
 	case '"':
@@ -405,7 +407,7 @@ func (l *lexer) scanEscape(b *strings.Builder, escLine, escCol int) *ParseError 
 		case cp >= 0xD800 && cp <= 0xDBFF:
 			// High surrogate: must be immediately followed by \uXXXX low surrogate.
 			if l.peekRune() != '\\' || l.peekRuneAt(1) != 'u' {
-				return l.errAt(escLine, escCol, CodeParseUnpairedSurrogate, "unpaired surrogate escape")
+				return l.errAt(escLine, escCol, omnist.CodeParseUnpairedSurrogate, "unpaired surrogate escape")
 			}
 			l.advance() // backslash
 			l.advance() // u
@@ -414,30 +416,30 @@ func (l *lexer) scanEscape(b *strings.Builder, escLine, escCol int) *ParseError 
 				return err
 			}
 			if low < 0xDC00 || low > 0xDFFF {
-				return l.errAt(escLine, escCol, CodeParseUnpairedSurrogate, "unpaired surrogate escape")
+				return l.errAt(escLine, escCol, omnist.CodeParseUnpairedSurrogate, "unpaired surrogate escape")
 			}
 			combined := 0x10000 + (cp-0xD800)*0x400 + (low - 0xDC00)
 			b.WriteRune(rune(combined))
 		case cp >= 0xDC00 && cp <= 0xDFFF:
 			// Lone low surrogate.
-			return l.errAt(escLine, escCol, CodeParseUnpairedSurrogate, "unpaired surrogate escape")
+			return l.errAt(escLine, escCol, omnist.CodeParseUnpairedSurrogate, "unpaired surrogate escape")
 		default:
 			b.WriteRune(rune(cp))
 		}
 	default:
-		return l.errAt(escLine, escCol, CodeParseInvalidEscape, fmt.Sprintf("invalid escape \\%c", e))
+		return l.errAt(escLine, escCol, omnist.CodeParseInvalidEscape, fmt.Sprintf("invalid escape \\%c", e))
 	}
 	return nil
 }
 
-func (l *lexer) scanHex4(errLine, errCol int) (int, *ParseError) {
+func (l *lexer) scanHex4(errLine, errCol int) (int, *omnist.ParseError) {
 	if l.pos+4 > len(l.src) {
-		return 0, l.errAt(errLine, errCol, CodeParseUnterminatedString, "unterminated \\u escape")
+		return 0, l.errAt(errLine, errCol, omnist.CodeParseUnterminatedString, "unterminated \\u escape")
 	}
 	digits := string(l.src[l.pos : l.pos+4])
 	v, err := strconv.ParseUint(digits, 16, 32)
 	if err != nil {
-		return 0, l.errAt(errLine, errCol, CodeParseInvalidEscape, "invalid \\u escape")
+		return 0, l.errAt(errLine, errCol, omnist.CodeParseInvalidEscape, "invalid \\u escape")
 	}
 	l.consumeRunes(4)
 	return int(v), nil
@@ -449,7 +451,7 @@ func (l *lexer) scanHex4(errLine, errCol int) (int, *ParseError) {
 // for the scanner to re-tokenize (this is what makes the four-quote
 // worked example in §4.8 produce an unterminated-string error rather than
 // consuming a fourth literal quote character).
-func (l *lexer) scanMultilineString() (token, *ParseError) {
+func (l *lexer) scanMultilineString() (token, *omnist.ParseError) {
 	startLine, startCol := l.line, l.col
 	l.advance()
 	l.advance()
@@ -465,7 +467,7 @@ func (l *lexer) scanMultilineString() (token, *ParseError) {
 	var b strings.Builder
 	for {
 		if l.atEOF() {
-			return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated multiline string")
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated multiline string")
 		}
 		cLine, cCol := l.line, l.col
 		r := l.peekRune()
@@ -488,6 +490,6 @@ func (l *lexer) scanMultilineString() (token, *ParseError) {
 			b.WriteRune(l.advance())
 			continue
 		}
-		return token{}, l.errAt(cLine, cCol, CodeParseControlCharacter, "control character in multiline string")
+		return token{}, l.errAt(cLine, cCol, omnist.CodeParseControlCharacter, "control character in multiline string")
 	}
 }
