@@ -146,3 +146,59 @@ func fracToNanos(digits string) int {
 	n, _ := strconv.Atoi(padded)
 	return n
 }
+
+// FormatISODate renders a DateValue per ISO-8601's calendar-date form
+// (YYYY-MM-DD). Promoted here (issue #45) from json_writer.go, which
+// originally defined it privately as formatISODate; yaml_writer.go,
+// toml_writer.go, and xml_writer.go all called that same private
+// function directly (a real, load-bearing cross-codec dependency this
+// project's package-restructuring plan had described as not existing —
+// discovered while moving JSON into its own formats/json package, since
+// that move is what first made the dependency across package boundaries
+// visible). oml_writer.go's formatOMLDate is a separate, OML-specific
+// copy and is deliberately not merged into this one: OML's writer lives
+// in its own already-moved package and duplicating one four-line
+// function is preferable to adding a needless production dependency from
+// oml on the root package's temporal.go beyond what it already uses.
+func FormatISODate(d DateValue) string {
+	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
+}
+
+// FormatISOTime renders a TimeValue per ISO-8601's time-of-day form.
+// Seconds are emitted only when Second or Nanosecond is nonzero, and the
+// fractional part only when Nanosecond is nonzero. Promoted here (issue
+// #45) alongside FormatISODate, for the same cross-codec reason.
+func FormatISOTime(t TimeValue) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%02d:%02d", t.Hour, t.Minute)
+	if t.Second != 0 || t.Nanosecond != 0 {
+		fmt.Fprintf(&b, ":%02d", t.Second)
+		if t.Nanosecond != 0 {
+			b.WriteByte('.')
+			b.WriteString(FormatISOFraction(t.Nanosecond))
+		}
+	}
+	if t.HasOffset {
+		off := t.OffsetSeconds
+		sign := byte('+')
+		if off < 0 {
+			sign = '-'
+			off = -off
+		}
+		fmt.Fprintf(&b, "%c%02d:%02d", sign, off/3600, (off/60)%60)
+	}
+	return b.String()
+}
+
+// FormatISOFraction converts a Nanosecond field to the shortest 1-6 digit
+// fraction string that reproduces it. Nanosecond is always a product of
+// fracToNanos above, which right-pads to 9 digits, so it is always an
+// exact multiple of 1000, and trimming trailing zeros from its 6-digit
+// microsecond form can never trim down to nothing given the caller's
+// guard that Nanosecond != 0. Promoted here (issue #45) alongside
+// FormatISODate/FormatISOTime, for the same cross-codec reason.
+func FormatISOFraction(ns int) string {
+	micros := ns / 1000
+	s := fmt.Sprintf("%06d", micros)
+	return strings.TrimRight(s, "0")
+}

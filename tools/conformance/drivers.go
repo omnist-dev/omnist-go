@@ -1,10 +1,11 @@
 package conformance
 
 import (
-	"encoding/json"
+	encjson "encoding/json"
 	"fmt"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/formats/json"
 	"github.com/omnist-dev/omnist-go/oml"
 	"github.com/omnist-dev/omnist-go/osd"
 )
@@ -42,7 +43,7 @@ func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, e
 	case "oml":
 		return oml.Read(text, limits)
 	case "json":
-		return omnist.ReadJSON(text, limits)
+		return json.Read(text, limits)
 	case "yaml":
 		return omnist.ReadYAML(text, limits)
 	case "toml":
@@ -56,7 +57,7 @@ func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, e
 
 func runParse(v Vector) Result {
 	var in parseInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -105,7 +106,7 @@ type parseSchemaInput struct {
 
 func runParseSchema(v Vector) Result {
 	var in parseSchemaInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -138,13 +139,13 @@ func runParseSchema(v Vector) Result {
 // --- validate ---
 
 type validateInput struct {
-	Schema   string          `json:"schema"`
-	Document json.RawMessage `json:"document"`
+	Schema   string             `json:"schema"`
+	Document encjson.RawMessage `json:"document"`
 }
 
 func runValidate(v Vector) Result {
 	var in validateInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -184,13 +185,13 @@ func runValidate(v Vector) Result {
 // materializeInput mirrors validateInput -- §8.5.3's table gives
 // materialize the same {schema, document} input shape as validate.
 type materializeInput struct {
-	Schema   string          `json:"schema"`
-	Document json.RawMessage `json:"document"`
+	Schema   string             `json:"schema"`
+	Document encjson.RawMessage `json:"document"`
 }
 
 func runMaterialize(v Vector) Result {
 	var in materializeInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -242,14 +243,14 @@ func runMaterialize(v Vector) Result {
 // --- write ---
 
 type writeInput struct {
-	Format   string          `json:"format"`
-	Document json.RawMessage `json:"document"`
-	Strict   bool            `json:"strict"`
+	Format   string             `json:"format"`
+	Document encjson.RawMessage `json:"document"`
+	Strict   bool               `json:"strict"`
 }
 
 func runWrite(v Vector) Result {
 	var in writeInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -266,9 +267,9 @@ func runWrite(v Vector) Result {
 	switch in.Format {
 	case "json":
 		if in.Strict {
-			text, werr = omnist.WriteJSONStrict(doc)
+			text, werr = json.WriteStrict(doc)
 		} else {
-			text, werr = omnist.WriteJSON(doc)
+			text, werr = json.Write(doc)
 		}
 	case "oml":
 		text = oml.Write(doc, false)
@@ -319,7 +320,7 @@ func runWrite(v Vector) Result {
 		return pass(v)
 	}
 	var wantTextStr string
-	if err := json.Unmarshal(wantText, &wantTextStr); err != nil {
+	if err := encjson.Unmarshal(wantText, &wantTextStr); err != nil {
 		return fail(v, "decode expect.text: %v", err)
 	}
 	if text != wantTextStr {
@@ -337,7 +338,7 @@ type abInput struct {
 
 func runCompatibleWith(v Vector) Result {
 	var in abInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	a, aerr := osd.Read(in.A)
@@ -354,7 +355,7 @@ func runCompatibleWith(v Vector) Result {
 
 func runEquivalent(v Vector) Result {
 	var in abInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	a, aerr := osd.Read(in.A)
@@ -379,7 +380,7 @@ func compareBoolResult(v Vector, got bool) Result {
 		return fail(v, "expect has no \"result\" field")
 	}
 	var want bool
-	if err := json.Unmarshal(raw, &want); err != nil {
+	if err := encjson.Unmarshal(raw, &want); err != nil {
 		return fail(v, "decode expect.result: %v", err)
 	}
 	if got != want {
@@ -396,7 +397,7 @@ type schemaOnlyInput struct {
 
 func runNormalize(v Vector) Result {
 	var in schemaOnlyInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	s, serr := osd.Read(in.Schema)
@@ -409,7 +410,7 @@ func runNormalize(v Vector) Result {
 
 func runPrune(v Vector) Result {
 	var in schemaOnlyInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	s, serr := osd.Read(in.Schema)
@@ -435,7 +436,7 @@ func compareCanonicalSchemaText(v Vector, got string) Result {
 		return fail(v, "expect has no \"schema\" field")
 	}
 	var want string
-	if err := json.Unmarshal(raw, &want); err != nil {
+	if err := encjson.Unmarshal(raw, &want); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
 	if got != want {
@@ -448,7 +449,7 @@ func compareCanonicalSchemaText(v Vector, got string) Result {
 
 func runIsEmpty(v Vector) Result {
 	var in schemaOnlyInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	s, serr := osd.Read(in.Schema)
@@ -465,7 +466,7 @@ func runIsEmpty(v Vector) Result {
 		return fail(v, "expect has no \"empty\" field")
 	}
 	var want bool
-	if err := json.Unmarshal(raw, &want); err != nil {
+	if err := encjson.Unmarshal(raw, &want); err != nil {
 		return fail(v, "decode expect.empty: %v", err)
 	}
 	if got != want {
@@ -483,7 +484,7 @@ type extractInput struct {
 
 func runExtract(v Vector) Result {
 	var in extractInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -523,7 +524,7 @@ func runExtract(v Vector) Result {
 		return fail(v, "expect has no \"schema\" field")
 	}
 	var wantText string
-	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
+	if err := encjson.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
 	wantSchema, werr := osd.Read(wantText)
@@ -561,7 +562,7 @@ func inferSampleDocs(samples []string) ([]omnist.Document, error) {
 
 func runInfer(v Vector) Result {
 	var in inferInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -597,7 +598,7 @@ func runInfer(v Vector) Result {
 		return fail(v, "expect has no \"schema\" field")
 	}
 	var wantText string
-	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
+	if err := encjson.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
 	wantSchema, werr := osd.Read(wantText)
@@ -620,7 +621,7 @@ type fallbackExpect struct {
 
 func runInferWithReport(v Vector) Result {
 	var in inferInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -656,7 +657,7 @@ func runInferWithReport(v Vector) Result {
 		return fail(v, "expect has no \"schema\" field")
 	}
 	var wantText string
-	if err := json.Unmarshal(wantRaw, &wantText); err != nil {
+	if err := encjson.Unmarshal(wantRaw, &wantText); err != nil {
 		return fail(v, "decode expect.schema: %v", err)
 	}
 	wantSchema, werr := osd.Read(wantText)
@@ -677,7 +678,7 @@ func runInferWithReport(v Vector) Result {
 		return fail(v, "expect has no \"fallbacks\" field")
 	}
 	var wantFallbacks []fallbackExpect
-	if err := json.Unmarshal(fbRaw, &wantFallbacks); err != nil {
+	if err := encjson.Unmarshal(fbRaw, &wantFallbacks); err != nil {
 		return fail(v, "decode expect.fallbacks: %v", err)
 	}
 	if len(fallbacks) != len(wantFallbacks) {
@@ -701,7 +702,7 @@ func runInferWithReport(v Vector) Result {
 
 func runLint(v Vector) Result {
 	var in schemaOnlyInput
-	if err := json.Unmarshal(v.Input, &in); err != nil {
+	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
 	}
 	expect, err := decodeExpect(v)
@@ -734,7 +735,7 @@ func runLint(v Vector) Result {
 		return fail(v, "expect has no \"findings\" field")
 	}
 	var wantFindings []findingExpect
-	if err := json.Unmarshal(wantRaw, &wantFindings); err != nil {
+	if err := encjson.Unmarshal(wantRaw, &wantFindings); err != nil {
 		return fail(v, "decode expect.findings: %v", err)
 	}
 	if len(findings) != len(wantFindings) {

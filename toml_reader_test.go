@@ -105,40 +105,6 @@ price = 9.99
 	}
 }
 
-func TestTOMLCrossFormatStructuralEqualityWithJSON(t *testing.T) {
-	src := `[order]
-id = "A1"
-status = "shipped"
-total = 29.97
-
-[order.address]
-street = "1 Main"
-city = "London"
-
-[[order.items]]
-sku = "W"
-qty = 3
-price = 9.99
-
-[[order.items]]
-sku = "G"
-qty = 1
-price = 9.99
-`
-	td, err := ReadTOML(src, DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	jsonSrc := `{"order":{"id":"A1","status":"shipped","total":29.97,"address":{"street":"1 Main","city":"London"},"items":[{"sku":"W","qty":3,"price":9.99},{"sku":"G","qty":1,"price":9.99}]}}`
-	jd, err := ReadJSON(jsonSrc, DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !docEqual(td, jd) {
-		t.Errorf("TOML and JSON documents differ:\nTOML: %+v\nJSON: %+v", td, jd)
-	}
-}
-
 // --- native temporal literals ---
 
 func TestTOMLNativeDate(t *testing.T) {

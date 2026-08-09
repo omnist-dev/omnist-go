@@ -217,7 +217,7 @@ func writeTOMLScalar(b *strings.Builder, s Scalar) {
 			b.WriteString("false")
 		}
 	case KindDate:
-		b.WriteString(formatISODate(s.Date))
+		b.WriteString(FormatISODate(s.Date))
 	case KindTime:
 		// TOML's local-time literal (partial-time in its grammar) has no
 		// offset field at all — only a full datetime can carry one. No
@@ -232,9 +232,9 @@ func writeTOMLScalar(b *strings.Builder, s Scalar) {
 		// preserve it in).
 		t := s.Time
 		t.HasOffset = false
-		b.WriteString(formatISOTime(t))
+		b.WriteString(FormatISOTime(t))
 	default: // KindDateTime
-		b.WriteString(formatISODate(s.DateTime.Date) + "T" + formatISOTime(s.DateTime.Time))
+		b.WriteString(FormatISODate(s.DateTime.Date) + "T" + FormatISOTime(s.DateTime.Time))
 	}
 }
 

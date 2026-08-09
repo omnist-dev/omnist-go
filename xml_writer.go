@@ -194,11 +194,11 @@ func writeXMLScalarText(s Scalar) string {
 		}
 		return "false"
 	case KindDate:
-		return formatISODate(s.Date)
+		return FormatISODate(s.Date)
 	case KindTime:
-		return formatISOTime(s.Time)
+		return FormatISOTime(s.Time)
 	default: // KindDateTime
-		return formatISODate(s.DateTime.Date) + "T" + formatISOTime(s.DateTime.Time)
+		return FormatISODate(s.DateTime.Date) + "T" + FormatISOTime(s.DateTime.Time)
 	}
 }
 

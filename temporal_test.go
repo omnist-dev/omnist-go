@@ -21,3 +21,24 @@ func TestParseISOTimeNegativeOffset(t *testing.T) {
 		t.Errorf("ParseISOTime(%q) = %+v, want %+v", "10:30:00-05:30", got, want)
 	}
 }
+
+// TestFormatISOTimeNegativeOffset exercises FormatISOTime's negative-
+// offset branch (off < 0) directly, for the same reason
+// TestParseISOTimeNegativeOffset above exists: before issue #45 moved
+// json_writer_test.go into the separate formats/json package, this
+// branch was covered incidentally by that file's "with negative offset"
+// case (OffsetSeconds: -1800), the only writer test in the repo that
+// exercised a negative UTC offset (yaml_writer_test.go and
+// toml_writer_test.go's own offset cases are both positive). Once
+// json_writer_test.go's coverage stopped counting toward this package's
+// own coverage number (same per-package attribution rule the comment
+// above explains), this branch dropped below 100% -- caught by the
+// per-function coverage check issue #45 called for, the same class of
+// regression issue #43 found on the parse side.
+func TestFormatISOTimeNegativeOffset(t *testing.T) {
+	got := FormatISOTime(TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: -1800})
+	want := "01:02-00:30"
+	if got != want {
+		t.Errorf("FormatISOTime(...) = %q, want %q", got, want)
+	}
+}

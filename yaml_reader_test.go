@@ -71,16 +71,6 @@ func TestYAMLWorkedExample(t *testing.T) {
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
-
-	// "Byte-for-byte identical to the Document JSON produces."
-	jsrc := `{"order":{"id":"A1","status":"shipped","total":29.97,"address":{"street":"1 Main","city":"London"},"items":[{"sku":"W","qty":3,"price":9.99},{"sku":"G","qty":1,"price":9.99}]}}`
-	jd, err := ReadJSON(jsrc, DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !docEqual(d, jd) {
-		t.Errorf("YAML and JSON documents differ:\nYAML: %+v\nJSON: %+v", d, jd)
-	}
 }
 
 // TestYAMLWorkedExampleStatusNo confirms the worked example's first
@@ -739,19 +729,5 @@ func TestYAMLNodeDepthLimitUsesDollarPath(t *testing.T) {
 	}
 	if pe.Path != "$" {
 		t.Errorf("path = %q, want %q", pe.Path, "$")
-	}
-}
-
-func TestYAMLCrossFormatStructuralEqualityWithJSON(t *testing.T) {
-	yd, err := ReadYAML("a: 1\nb: \"two\"\nc:\n  d: true\n", DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	jd, err := ReadJSON(`{"a":1,"b":"two","c":{"d":true}}`, DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !docEqual(yd, jd) {
-		t.Errorf("YAML and JSON documents differ:\nYAML: %+v\nJSON: %+v", yd, jd)
 	}
 }

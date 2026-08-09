@@ -1,13 +1,15 @@
-package omnist
+package json
 
 import (
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// WriteJSON renders d as JSON text (spec §7.3, docs/formats/json.md),
+// Write renders d as JSON text (spec §7.3, docs/formats/json.md),
 // schema-free: a writer MUST NOT accept a schema (§7.3), and this one
 // doesn't. It applies §7.3's two rules (grouping by label, the count-1
 // bare-value-vs-list rule) via writeJSONNode/writeJSONGroup below, plus
@@ -28,23 +30,23 @@ import (
 // elsewhere in this repo yet to hook into) — this is called out explicitly
 // per the issue's instruction not to silently drop the requirement.
 //
-// See WriteJSONStrict for the spec's optional MAY: failing instead of
+// See WriteStrict for the spec's optional MAY: failing instead of
 // substituting.
-func WriteJSON(d Document) (string, error) {
+func Write(d omnist.Document) (string, error) {
 	return writeJSONDocument(d, false)
 }
 
-// WriteJSONStrict renders d as JSON text like WriteJSON, except a
+// WriteStrict renders d as JSON text like Write, except a
 // NaN/Infinity leaf is a hard failure instead of a `null` substitution —
 // the strict mode docs/formats/json.md's "no NaN or Infinity" rule
 // describes as a spec MAY ("A strict mode MAY instead fail"). The
-// returned error is a Diagnostic (code write.unsupported-value, spec
-// §8.3.9), positioned by the Document path to the offending leaf.
-func WriteJSONStrict(d Document) (string, error) {
+// returned error is a omnist.Diagnostic (code write.unsupported-value, spec
+// §8.3.9), positioned by the omnist.Document path to the offending leaf.
+func WriteStrict(d omnist.Document) (string, error) {
 	return writeJSONDocument(d, true)
 }
 
-func writeJSONDocument(d Document, strict bool) (string, error) {
+func writeJSONDocument(d omnist.Document, strict bool) (string, error) {
 	var b strings.Builder
 	if d.IsNode {
 		if err := writeJSONNode(&b, d.Node, "$", strict); err != nil {
@@ -64,14 +66,14 @@ func writeJSONDocument(d Document, strict bool) (string, error) {
 // order.
 type jsonGroup struct {
 	label    string
-	children []Target
+	children []omnist.Target
 }
 
 // writeJSONNode implements §7.3.1's write(node, format) for the JSON
 // format: group edges sharing a label (grouping rule), then render each
 // group as a bare value when it has exactly one child or as a list
 // otherwise (count-1 rule).
-func writeJSONNode(b *strings.Builder, n *Node, path string, strict bool) error {
+func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool) error {
 	groups := groupJSONEdges(n)
 
 	b.WriteByte('{')
@@ -109,7 +111,7 @@ func writeJSONNode(b *strings.Builder, n *Node, path string, strict bool) error 
 // each label's own children in their original edge order. Cross-label
 // interleaving (e.g. [(m,A),(x,X),(m,B)]) is lost here, exactly as §7.3
 // states JSON must ("no format in the JSON family can express it").
-func groupJSONEdges(n *Node) []jsonGroup {
+func groupJSONEdges(n *omnist.Node) []jsonGroup {
 	var groups []jsonGroup
 	index := make(map[string]int, len(n.Edges))
 	for _, e := range n.Edges {
@@ -118,12 +120,12 @@ func groupJSONEdges(n *Node) []jsonGroup {
 			continue
 		}
 		index[e.Label] = len(groups)
-		groups = append(groups, jsonGroup{label: e.Label, children: []Target{e.Target}})
+		groups = append(groups, jsonGroup{label: e.Label, children: []omnist.Target{e.Target}})
 	}
 	return groups
 }
 
-func writeJSONTarget(b *strings.Builder, t Target, path string, strict bool) error {
+func writeJSONTarget(b *strings.Builder, t omnist.Target, path string, strict bool) error {
 	if node, ok := t.Node(); ok {
 		return writeJSONNode(b, node, path, strict)
 	}
@@ -131,7 +133,7 @@ func writeJSONTarget(b *strings.Builder, t Target, path string, strict bool) err
 	return writeJSONValue(b, v, path, strict)
 }
 
-func writeJSONValue(b *strings.Builder, v Value, path string, strict bool) error {
+func writeJSONValue(b *strings.Builder, v omnist.Value, path string, strict bool) error {
 	if v.IsNull {
 		b.WriteString("null")
 		return nil
@@ -144,30 +146,30 @@ func writeJSONValue(b *strings.Builder, v Value, path string, strict bool) error
 // KindDateTime), and NaN/Infinity (KindNumber only — JSON's only floating
 // kind) substitute to `null` unless strict, in which case they fail
 // instead. For KindInteger, s.Int is assumed non-nil, mirroring
-// oml_writer.go's writeOMLScalar precondition: every Scalar of that kind
-// reaching this function was built by NewIntegerScalar (which always
+// oml_writer.go's writeOMLScalar precondition: every omnist.Scalar of that kind
+// reaching this function was built by omnist.NewIntegerScalar (which always
 // copies a non-nil *big.Int) or produced by ReadJSON, neither of which
 // ever leaves Int nil for KindInteger.
-func writeJSONScalar(b *strings.Builder, s Scalar, path string, strict bool) error {
+func writeJSONScalar(b *strings.Builder, s omnist.Scalar, path string, strict bool) error {
 	switch s.Kind {
-	case KindString:
+	case omnist.KindString:
 		writeJSONString(b, s.Str)
-	case KindInteger:
+	case omnist.KindInteger:
 		b.WriteString(s.Int.String())
-	case KindNumber:
+	case omnist.KindNumber:
 		return writeJSONNumber(b, s.Num, path, strict)
-	case KindBoolean:
+	case omnist.KindBoolean:
 		if s.Bool {
 			b.WriteString("true")
 		} else {
 			b.WriteString("false")
 		}
-	case KindDate:
-		writeJSONString(b, formatISODate(s.Date))
-	case KindTime:
-		writeJSONString(b, formatISOTime(s.Time))
-	case KindDateTime:
-		writeJSONString(b, formatISODate(s.DateTime.Date)+"T"+formatISOTime(s.DateTime.Time))
+	case omnist.KindDate:
+		writeJSONString(b, omnist.FormatISODate(s.Date))
+	case omnist.KindTime:
+		writeJSONString(b, omnist.FormatISOTime(s.Time))
+	case omnist.KindDateTime:
+		writeJSONString(b, omnist.FormatISODate(s.DateTime.Date)+"T"+omnist.FormatISOTime(s.DateTime.Time))
 	}
 	return nil
 }
@@ -183,11 +185,11 @@ func writeJSONScalar(b *strings.Builder, s Scalar, path string, strict bool) err
 func writeJSONNumber(b *strings.Builder, f float64, path string, strict bool) error {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		if strict {
-			return Diagnostic{
+			return omnist.Diagnostic{
 				Path:     path,
-				Code:     CodeWriteUnsupportedValue,
+				Code:     omnist.CodeWriteUnsupportedValue,
 				Message:  "NaN/Infinity has no JSON representation",
-				Severity: SeverityError,
+				Severity: omnist.SeverityError,
 			}
 		}
 		b.WriteString("null")
@@ -199,58 +201,6 @@ func writeJSONNumber(b *strings.Builder, f float64, path string, strict bool) er
 	}
 	b.WriteString(s)
 	return nil
-}
-
-// formatISODate renders a DateValue per ISO-8601's calendar-date form
-// (YYYY-MM-DD), matching oml_writer.go's formatOMLDate exactly — the same
-// spelling is both OML's canonical date form and ISO-8601's, so there is
-// no JSON-specific variation to introduce.
-func formatISODate(d DateValue) string {
-	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
-}
-
-// formatISOTime renders a TimeValue per ISO-8601's time-of-day form.
-// Seconds are emitted only when Second or Nanosecond is nonzero, and the
-// fractional part only when Nanosecond is nonzero, mirroring
-// oml_writer.go's formatOMLTime — the Document model doesn't distinguish
-// "seconds explicitly written as :00" from "seconds omitted" for either
-// format, so this is the same reasonable, round-trip-safe
-// canonicalization, not a spec requirement, applied consistently with
-// OML's writer.
-func formatISOTime(t TimeValue) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%02d:%02d", t.Hour, t.Minute)
-	if t.Second != 0 || t.Nanosecond != 0 {
-		fmt.Fprintf(&b, ":%02d", t.Second)
-		if t.Nanosecond != 0 {
-			b.WriteByte('.')
-			b.WriteString(formatISOFraction(t.Nanosecond))
-		}
-	}
-	if t.HasOffset {
-		off := t.OffsetSeconds
-		sign := byte('+')
-		if off < 0 {
-			sign = '-'
-			off = -off
-		}
-		fmt.Fprintf(&b, "%c%02d:%02d", sign, off/3600, (off/60)%60)
-	}
-	return b.String()
-}
-
-// formatISOFraction converts a Nanosecond field to the shortest 1-6 digit
-// fraction string that reproduces it, mirroring oml_writer.go's
-// formatOMLFraction. Nanosecond is always a product of a source fraction
-// decoder that right-pads to 9 digits (temporal.go's fracToNanos is the
-// only producer of TimeValue.Nanosecond in this repo), so it is always an
-// exact multiple of 1000, and trimming trailing zeros from its 6-digit
-// microsecond form can never trim down to nothing given the caller's
-// guard that Nanosecond != 0.
-func formatISOFraction(ns int) string {
-	micros := ns / 1000
-	s := fmt.Sprintf("%06d", micros)
-	return strings.TrimRight(s, "0")
 }
 
 // writeJSONString renders s as a JSON string literal, escaping exactly

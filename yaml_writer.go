@@ -211,11 +211,11 @@ func buildYAMLScalar(s Scalar) *yaml.Node {
 		}
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: v}
 	case KindDate:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: formatISODate(s.Date)}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: FormatISODate(s.Date)}
 	case KindTime:
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: formatISOTime(s.Time)}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Style: yaml.DoubleQuotedStyle, Value: FormatISOTime(s.Time)}
 	default: // KindDateTime
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: formatISODate(s.DateTime.Date) + "T" + formatISOTime(s.DateTime.Time)}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: FormatISODate(s.DateTime.Date) + "T" + FormatISOTime(s.DateTime.Time)}
 	}
 }
 
@@ -243,7 +243,8 @@ func buildYAMLNumber(f float64) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: s}
 }
 
-// formatISODate/formatISOTime are shared with json_writer.go; this file
-// does not redefine them, per the same don't-duplicate-a-format-neutral-
-// ISO-8601-renderer reasoning oml_writer.go and json_writer.go already
-// follow for each other.
+// FormatISODate/FormatISOTime are temporal.go's shared, exported
+// ISO-8601 renderers (promoted there in issue #45 once the move to
+// formats/json revealed json_writer.go's private copies were a real
+// cross-codec dependency, not the doc-comment-only kind issue #45
+// originally assumed); this file does not redefine them.

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/formats/json"
 	"github.com/omnist-dev/omnist-go/oml"
 )
 
@@ -18,7 +19,7 @@ type formatReaderFunc func(text string, limits omnist.Limits) (omnist.Document, 
 type formatWriterFunc func(d omnist.Document) (string, error)
 
 var formatReaders = map[string]formatReaderFunc{
-	"json": omnist.ReadJSON,
+	"json": json.Read,
 	"yaml": omnist.ReadYAML,
 	"toml": omnist.ReadTOML,
 	"xml":  omnist.ReadXML,
@@ -26,7 +27,7 @@ var formatReaders = map[string]formatReaderFunc{
 }
 
 var formatWriters = map[string]formatWriterFunc{
-	"json": omnist.WriteJSON,
+	"json": json.Write,
 	"yaml": omnist.WriteYAML,
 	"toml": omnist.WriteTOML,
 	"xml":  omnist.WriteXML,
