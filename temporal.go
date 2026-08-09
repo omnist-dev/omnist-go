@@ -62,6 +62,16 @@ const (
 // OML is the format whose native literal syntax the temporal scalar kinds
 // were designed around (§2.2.1/§4).
 func MatchesISOKind(s string, kind TemporalKind) bool {
+	// Found via fuzzing (issue #57): regexp.FindString returns "" both when
+	// there is no match and when the match itself is the empty string, so
+	// without this guard an empty s would spuriously "match" every kind
+	// (none of ISODateRegexp/ISOTimeRegexp/ISODateTimeRegexp can ever
+	// legitimately match "" — they all require at least a fixed run of
+	// digits). Reject it upfront rather than relying on that ambiguous
+	// equality check to happen to come out false.
+	if s == "" {
+		return false
+	}
 	var re *regexp.Regexp
 	switch kind {
 	case TemporalDate:

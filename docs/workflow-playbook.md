@@ -181,6 +181,24 @@ Per spec §9.5's recommended build order:
 Steps 1-6 are the useful core per the spec; a port that stops there is still
 worth having.
 
+Step 14 landed as issue #57: one `FuzzRead` per reader package (`oml`,
+`osd`, `formats/{json,yaml,toml,xml}`), seeded from this repo's own test
+literals plus vendored `omnist-spec` test-suite/conformance-fixture text.
+Two real bugs surfaced immediately, both in `formats/toml`: go-toml/v2's
+unstable parser can tag a value node `Kind=LocalDate`/`LocalTime`/
+`LocalDateTime`/`DateTime` on text that does not actually have the full
+digit layout `ParseISODate`/`ParseISOTime` require as their documented
+precondition (e.g. bare `"00:"` reaching `Kind=LocalTime`), and
+`MatchesISOKind` itself had a latent bug where `regexp.FindString("")`'s
+ambiguity between "no match" and "an empty match" made it spuriously
+return true for an empty string against every kind. Both fixed (validate
+before calling the precondition-trusting parsers; reject `""` up front in
+`MatchesISOKind`), both covered by unit tests, not just the fuzz corpus.
+CI runs a short (10s/package, 60s total) `-fuzz` burst on every push,
+separate from — and much shorter than — the 30-60s-per-package local runs
+that found the above; see `.github/workflows/ci.yml`'s `fuzz` job for the
+regression-vs-exploration distinction.
+
 ## 4. Conformance harness — built early, interleaved
 
 Do not defer this to the end. Start it right after step 2 (OML) lands, and

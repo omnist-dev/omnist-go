@@ -660,3 +660,102 @@ func TestTOMLBooleans(t *testing.T) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
 }
+
+// --- malformed temporal literals (issue #57: found by fuzzing) ---
+//
+// go-toml/v2's unstable parser can tag a value node Kind=LocalDate/
+// LocalTime/LocalDateTime/DateTime on text that does not actually have
+// the full digit layout omnist.ParseISODate/omnist.ParseISOTime require
+// (their documented precondition) -- e.g. "00:" reaches Kind=LocalTime
+// even though it is not a complete time literal. These confirm the
+// reader now reports a *omnist.ParseError instead of panicking, for
+// every one of readScalar's and parseTOMLDateTime's new validation
+// branches.
+
+func TestTOMLMalformedLocalDateDoesNotPanic(t *testing.T) {
+	// go-toml tags this Kind=LocalDate with Data "2024-01-0" (one digit
+	// short of a complete day), confirmed empirically against the
+	// library's own unstable.Parser.
+	_, err := Read("d = 2024-01-0\n", omnist.DefaultLimits())
+	if err == nil {
+		t.Fatal("expected a parse error for a malformed date literal, got success")
+	}
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Errorf("error = %#v (%T), want *omnist.ParseError", err, err)
+	}
+}
+
+func TestTOMLMalformedLocalTimeDoesNotPanic(t *testing.T) {
+	// The exact input the fuzzer found (issue #57): go-toml tags this
+	// Kind=LocalTime with Data "00:", too short for ParseISOTime's
+	// precondition.
+	_, err := Read("d = 00:\n", omnist.DefaultLimits())
+	if err == nil {
+		t.Fatal("expected a parse error for a malformed time literal, got success")
+	}
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Errorf("error = %#v (%T), want *omnist.ParseError", err, err)
+	}
+}
+
+func TestTOMLMalformedLocalDateTimeDoesNotPanic(t *testing.T) {
+	// The exact input the fuzzer found for the LocalDateTime path (issue
+	// #57): go-toml tags this Kind=LocalDateTime with Data
+	// "2024-01-01T", an empty time portion.
+	_, err := Read("d = 2024-01-01T\n", omnist.DefaultLimits())
+	if err == nil {
+		t.Fatal("expected a parse error for a malformed datetime literal, got success")
+	}
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Errorf("error = %#v (%T), want *omnist.ParseError", err, err)
+	}
+}
+
+func TestTOMLMalformedDateTimeWithBadOffsetSuffixDoesNotPanic(t *testing.T) {
+	// go-toml tags this Kind=DateTime with Data "2024-01-01Tz": the
+	// offset marker is present but the time body before it is empty.
+	// Exercises parseTOMLDateTime's Z/z-suffix branch with an invalid
+	// body, distinct from the plain-suffix branch above.
+	_, err := Read("d = 2024-01-01Tz\n", omnist.DefaultLimits())
+	if err == nil {
+		t.Fatal("expected a parse error, got success")
+	}
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Errorf("error = %#v (%T), want *omnist.ParseError", err, err)
+	}
+}
+
+// TestParseTOMLDateTimeDirect white-box tests parseTOMLDateTime's
+// validation branches directly, including two (the too-short-length
+// guard and the invalid-separator guard) that -- as far as empirical
+// probing of go-toml/v2's unstable.Parser found -- it never actually
+// hands a LocalDateTime/DateTime node malformed enough to reach: TOML's
+// own tokenizer rejects a bad separator and never tags anything under 11
+// bytes with either kind. They stay as defense-in-depth against a
+// different or future go-toml version behaving more like the "00:"/
+// "2024-01-01T" cases above, and are exercised here directly since they
+// are otherwise unreachable through Read.
+func TestParseTOMLDateTimeDirect(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		ok   bool
+	}{
+		{"too short", "2024-01-01", false},
+		{"bad separator", "2024-01-01X00:00:00", false},
+		{"bad date part", "202X-01-01T00:00:00", false},
+		{"bad time part", "2024-01-01T00:00:0", false},
+		{"bad Z body", "2024-01-01Tz", false},
+		{"valid space-separated", "2024-01-01 00:00:00", true},
+		{"valid T-separated with Z", "2024-01-01T00:00:00Z", true},
+		{"valid t-separated", "2024-01-01t00:00:00", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, ok := parseTOMLDateTime(c.in)
+			if ok != c.ok {
+				t.Errorf("parseTOMLDateTime(%q) ok = %v, want %v", c.in, ok, c.ok)
+			}
+		})
+	}
+}

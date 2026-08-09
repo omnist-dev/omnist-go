@@ -485,11 +485,23 @@ func (r *tomlReader) readScalar(v *unstable.Node) (omnist.Value, error) {
 	case unstable.Float:
 		return omnist.ScalarValue(omnist.NewNumberScalar(parseTOMLFloat(string(v.Data)))), nil
 	case unstable.LocalDate:
-		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(string(v.Data)))), nil
+		data := string(v.Data)
+		if !omnist.MatchesISOKind(data, omnist.TemporalDate) {
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed date literal"}
+		}
+		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(data))), nil
 	case unstable.LocalTime:
-		return omnist.ScalarValue(omnist.NewTimeScalar(omnist.ParseISOTime(string(v.Data)))), nil
+		data := string(v.Data)
+		if !omnist.MatchesISOKind(data, omnist.TemporalTime) {
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed time literal"}
+		}
+		return omnist.ScalarValue(omnist.NewTimeScalar(omnist.ParseISOTime(data))), nil
 	default: // unstable.LocalDateTime, unstable.DateTime
-		return omnist.ScalarValue(omnist.NewDateTimeScalar(parseTOMLDateTime(string(v.Data)))), nil
+		dt, ok := parseTOMLDateTime(string(v.Data))
+		if !ok {
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed datetime literal"}
+		}
+		return omnist.ScalarValue(omnist.NewDateTimeScalar(dt)), nil
 	}
 }
 
@@ -555,16 +567,45 @@ func parseTOMLFloat(raw string) float64 {
 // omnist.ParseISODate/omnist.ParseISOTime (document-model-neutral, format-agnostic
 // field parsers temporal.go already defines) for the date and
 // (offset-less) time portions.
-func parseTOMLDateTime(s string) omnist.DateTimeValue {
+//
+// The go-toml/v2 unstable parser this reader is built on is not
+// guaranteed to only tag well-formed literals as LocalDateTime/DateTime
+// nodes on malformed input (found via fuzzing, issue #57: a bare "00:"
+// value was tagged Kind=LocalTime even though it is not a complete time
+// literal) -- so, exactly like readScalar's LocalDate/LocalTime cases,
+// this validates the date and time portions against
+// omnist.ISODateRegexp/omnist.ISOTimeRegexp (the same regexes
+// omnist.ParseISODate/omnist.ParseISOTime document as their precondition)
+// before calling either, rather than trusting the node's raw text
+// unconditionally. The second return value is false if that validation
+// fails; callers must treat that as a parse error, not a Document.
+func parseTOMLDateTime(s string) (omnist.DateTimeValue, bool) {
+	if len(s) < 11 {
+		return omnist.DateTimeValue{}, false
+	}
 	datePart := s[:10]
+	sep := s[10]
+	if sep != 'T' && sep != 't' && sep != ' ' {
+		return omnist.DateTimeValue{}, false
+	}
+	if !omnist.MatchesISOKind(datePart, omnist.TemporalDate) {
+		return omnist.DateTimeValue{}, false
+	}
 	timePart := s[11:]
 	var tv omnist.TimeValue
 	if n := len(timePart); n > 0 && (timePart[n-1] == 'Z' || timePart[n-1] == 'z') {
-		tv = omnist.ParseISOTime(timePart[:n-1])
+		body := timePart[:n-1]
+		if !omnist.MatchesISOKind(body, omnist.TemporalTime) {
+			return omnist.DateTimeValue{}, false
+		}
+		tv = omnist.ParseISOTime(body)
 		tv.HasOffset = true
 		tv.OffsetSeconds = 0
 	} else {
+		if !omnist.MatchesISOKind(timePart, omnist.TemporalTime) {
+			return omnist.DateTimeValue{}, false
+		}
 		tv = omnist.ParseISOTime(timePart)
 	}
-	return omnist.DateTimeValue{Date: omnist.ParseISODate(datePart), Time: tv}
+	return omnist.DateTimeValue{Date: omnist.ParseISODate(datePart), Time: tv}, true
 }
