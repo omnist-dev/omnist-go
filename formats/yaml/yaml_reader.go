@@ -369,15 +369,19 @@ func (r *yamlReader) readScalar(n *yamllib.Node) (omnist.Value, error) {
 // documented escape hatch (docs/formats/yaml.md: "Quoting the key (\"on\":)
 // sidesteps the problem entirely").
 var (
-	// yamlBoolWords is YAML 1.1's bool type's exact word list
-	// (http://yaml.org/type/bool.html), reproduced here rather than
-	// sourced from either library (gopkg.in/yaml.v2 carries this same
-	// table internally, but it is unexported). This is the full list,
-	// including the single-letter y/n forms alongside the Norway
-	// problem's on/off/yes/no and the case variants of true/false.
+	// yamlBoolWords is the spec's exact six-word alias set (spec
+	// docs/formats/yaml.md: "This alias set is exactly these six words,
+	// not the raw YAML 1.1 specification's fuller list. ... only
+	// on/off/yes/no/true/false (case variants included) resolve as
+	// booleans."). The raw YAML 1.1 core-schema bool type
+	// (http://yaml.org/type/bool.html) also resolves bare y/Y/n/N, but
+	// the reference implementation's resolver deliberately does not
+	// (matching PyYAML's default SafeLoader) — confirmed live for
+	// n/N/y/Y in both key and value position, so those single-letter
+	// forms are intentionally absent here.
 	yamlBoolWords = map[string]bool{
-		"y": true, "Y": true, "yes": true, "Yes": true, "YES": true,
-		"n": false, "N": false, "no": false, "No": false, "NO": false,
+		"yes": true, "Yes": true, "YES": true,
+		"no": false, "No": false, "NO": false,
 		"true": true, "True": true, "TRUE": true,
 		"false": false, "False": false, "FALSE": false,
 		"on": true, "On": true, "ON": true,

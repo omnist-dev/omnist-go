@@ -227,8 +227,8 @@ func TestYAMLNorwayWordsAsValues(t *testing.T) {
 		text string
 		want bool
 	}{
-		{"y", true}, {"Y", true}, {"yes", true}, {"Yes", true}, {"YES", true},
-		{"n", false}, {"N", false}, {"no", false}, {"No", false}, {"NO", false},
+		{"yes", true}, {"Yes", true}, {"YES", true},
+		{"no", false}, {"No", false}, {"NO", false},
 		{"true", true}, {"True", true}, {"TRUE", true},
 		{"false", false}, {"False", false}, {"FALSE", false},
 		{"on", true}, {"On", true}, {"ON", true},
@@ -243,6 +243,38 @@ func TestYAMLNorwayWordsAsValues(t *testing.T) {
 		if v.Scalar.Kind != omnist.KindBoolean || v.Scalar.Bool != c.want {
 			t.Errorf("%q: got %+v, want boolean %v", c.text, v.Scalar, c.want)
 		}
+	}
+}
+
+// TestYAMLBareSingleLetterYNStayStrings confirms spec docs/formats/yaml.md's
+// resolution of omnist-spec#40: "This alias set is exactly these six words,
+// not the raw YAML 1.1 specification's fuller list." The raw YAML 1.1 core
+// schema also resolves bare y/Y/n/N as booleans, but the reference
+// implementation's resolver deliberately does not (matching PyYAML's
+// default SafeLoader) -- confirmed live for n/N/y/Y in both key and value
+// position, so a bare y/Y/n/N stays an ordinary string label here, not a
+// Norway-problem case.
+func TestYAMLBareSingleLetterYNStayStrings(t *testing.T) {
+	for _, text := range []string{"y", "Y", "n", "N"} {
+		t.Run("value/"+text, func(t *testing.T) {
+			d, err := Read("v: "+text+"\n", omnist.DefaultLimits())
+			if err != nil {
+				t.Fatalf("%q: unexpected error: %v", text, err)
+			}
+			v, _ := d.Node.Edges[0].Target.Value()
+			if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != text {
+				t.Errorf("%q: got %+v, want string %q", text, v.Scalar, text)
+			}
+		})
+		t.Run("key/"+text, func(t *testing.T) {
+			d, err := Read(text+": true\n", omnist.DefaultLimits())
+			if err != nil {
+				t.Fatalf("%q key: unexpected error: %v", text, err)
+			}
+			if len(d.Node.Edges) != 1 || d.Node.Edges[0].Label != text {
+				t.Errorf("%q key: got edges %+v, want single edge labeled %q", text, d.Node.Edges, text)
+			}
+		})
 	}
 }
 

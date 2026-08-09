@@ -197,17 +197,50 @@ func TestJSONBareNestedArrayRejected(t *testing.T) {
 	}
 }
 
-func TestJSONEmptyArrayRejected(t *testing.T) {
-	_, err := Read(`{"m":[]}`, omnist.DefaultLimits())
-	if err == nil {
-		t.Fatal("Read(`{\"m\":[]}`) succeeded, want a rejection error")
+// TestJSONEmptyArrayReadsToZeroEdges confirms spec docs/formats/json.md's
+// resolution of omnist-spec#38: "{\"m\":[]}" reads to zero `m` edges — the
+// label simply doesn't appear in the result, the same as if the key were
+// absent entirely. This is JSON-specific and does not extend to OML's
+// `[...]` sugar, which correctly keeps rejecting a zero-length run
+// (see oml_parser_test.go for that coverage).
+func TestJSONEmptyArrayReadsToZeroEdges(t *testing.T) {
+	got, err := Read(`{"m":[]}`, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("Read(`{\"m\":[]}`) = error %v, want success", err)
 	}
-	pe, ok := err.(*omnist.ParseError)
-	if !ok {
-		t.Fatalf("error is %T, want *omnist.ParseError", err)
+	want := omnist.NodeDocument(omnist.NewNode())
+	if !docEqual(got, want) {
+		t.Errorf("Read(`{\"m\":[]}`) = %+v, want %+v (structurally equal to {})", got, want)
 	}
-	if pe.Code != omnist.CodeParseEmptyArray {
-		t.Errorf("error code = %s, want %s", pe.Code, omnist.CodeParseEmptyArray)
+}
+
+// TestJSONEmptyArrayMatchesAbsentKey confirms the empty-array result is
+// structurally identical to the result of the key being entirely absent.
+func TestJSONEmptyArrayMatchesAbsentKey(t *testing.T) {
+	withEmptyArray, err := Read(`{"m":[]}`, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("Read(`{\"m\":[]}`) = error %v, want success", err)
+	}
+	withoutKey, err := Read(`{}`, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("Read(`{}`) = error %v, want success", err)
+	}
+	if !docEqual(withEmptyArray, withoutKey) {
+		t.Errorf("Read(`{\"m\":[]}`) = %+v, want structurally equal to Read(`{}`) = %+v", withEmptyArray, withoutKey)
+	}
+}
+
+// TestJSONEmptyArrayNestedReadsToZeroEdges confirms the same zero-edge
+// behavior for an empty array nested as an object member's value, not just
+// at the top level.
+func TestJSONEmptyArrayNestedReadsToZeroEdges(t *testing.T) {
+	got, err := Read(`{"outer":{"m":[]}}`, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("outer", omnist.NewNode()))
+	if !docEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 
