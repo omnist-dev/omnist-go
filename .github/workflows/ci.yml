@@ -84,7 +84,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      - name: Run conformance harness
+      - name: Run conformance harness (Track 2, JSON-vector)
         run: |
           if [ -d tools/conformance/cmd/conformance ]; then
             # Informational for now, not gating: as of issue #31 there are
@@ -95,4 +95,18 @@ jobs:
             go run ./tools/conformance/cmd/conformance || true
           else
             echo "conformance harness not yet built - skipping (tracked in workflow-playbook.md Sec4)"
+          fi
+      - name: Run conformance harness (Track 1, fixture-based)
+        run: |
+          if [ -d tools/conformance/cmd/conformance-fixtures ]; then
+            # Informational for now, not gating, same reasoning as Track 2
+            # above: issue #55 found one real, upstream fixture defect
+            # (lint/edge-case-unreachable-record's expected.json omits the
+            # "lint." code-namespace prefix every other lint code and
+            # Track 2's own vectors use) -- filed upstream, not something
+            # this repo can fix in a vendored submodule. CI gating lands
+            # once that's cleared.
+            go run ./tools/conformance/cmd/conformance-fixtures || true
+          else
+            echo "Track 1 conformance harness not yet built - skipping"
           fi
