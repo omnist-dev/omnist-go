@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/oml"
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
@@ -39,7 +40,7 @@ func limitsFromInput(in parseInput) omnist.Limits {
 func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, error) {
 	switch format {
 	case "oml":
-		return omnist.ReadOML(text, limits)
+		return oml.Read(text, limits)
 	case "json":
 		return omnist.ReadJSON(text, limits)
 	case "yaml":
@@ -270,7 +271,7 @@ func runWrite(v Vector) Result {
 			text, werr = omnist.WriteJSON(doc)
 		}
 	case "oml":
-		text = omnist.WriteOML(doc, false)
+		text = oml.Write(doc, false)
 	case "yaml":
 		text, werr = omnist.WriteYAML(doc)
 	case "toml":
@@ -549,7 +550,7 @@ type inferInput struct {
 func inferSampleDocs(samples []string) ([]omnist.Document, error) {
 	docs := make([]omnist.Document, len(samples))
 	for i, s := range samples {
-		d, err := omnist.ReadOML(s, omnist.DefaultLimits())
+		d, err := oml.Read(s, omnist.DefaultLimits())
 		if err != nil {
 			return nil, fmt.Errorf("sample %d: %w", i, err)
 		}

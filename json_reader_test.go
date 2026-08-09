@@ -318,24 +318,14 @@ func TestJSONNaNInfinityWriteThenReadBecomesNull(t *testing.T) {
 	}
 }
 
-// --- cross-format structural equality (JSON vs OML) ---
-
-func TestJSONCrossFormatStructuralEqualityWithOML(t *testing.T) {
-	omlText := `id: "A1"; total: 29.97; count: 3; ok: true; nothing: null; address: { street: "1 Main"; city: "London" }; items: "W"; items: "G"`
-	jsonText := `{"id":"A1","total":29.97,"count":3,"ok":true,"nothing":null,"address":{"street":"1 Main","city":"London"},"items":["W","G"]}`
-
-	omlDoc, err := ReadOML(omlText, DefaultLimits())
-	if err != nil {
-		t.Fatalf("ReadOML failed: %v", err)
-	}
-	jsonDoc, err := ReadJSON(jsonText, DefaultLimits())
-	if err != nil {
-		t.Fatalf("ReadJSON failed: %v", err)
-	}
-	if !docEqual(omlDoc, jsonDoc) {
-		t.Fatalf("format-independence violated:\nOML:  %#v\nJSON: %#v", omlDoc, jsonDoc)
-	}
-}
+// TestJSONCrossFormatStructuralEqualityWithOML moved to
+// json_reader_public_test.go (package omnist_test, issue #43): it is the
+// only test in this file that needs oml.Read, and an internal (package
+// omnist) test file cannot import oml without an import-cycle error in the
+// test build (oml imports omnist for Document/Node/etc.) — the same
+// constraint issue #41 already solved for OSD. Every other test here stays
+// put, since most also use the unexported offsetToLineCol/docEqual, which
+// isn't reachable from an external test package either.
 
 // --- limits (shared LimitChecker, same as OML) ---
 

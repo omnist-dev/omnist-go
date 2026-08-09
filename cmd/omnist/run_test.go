@@ -781,7 +781,7 @@ func TestCmdMaterializeWriterErrorMultipleRoots(t *testing.T) {
 
 func TestCmdParseToOML(t *testing.T) {
 	// Exercises the oml entry in formatWriters' shared table (format.go),
-	// whose closure wrapping WriteOML otherwise never runs.
+	// whose closure wrapping oml.Write otherwise never runs.
 	code, stdout, stderr := runCLI(t, []string{"parse", "--from", "json", "--to", "oml", "-"}, `{"a": 1}`)
 	if code != ExitOK {
 		t.Fatalf("exit = %d, stderr = %q", code, stderr)

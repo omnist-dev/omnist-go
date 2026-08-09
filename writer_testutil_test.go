@@ -14,6 +14,15 @@ import "math"
 // The Schema-shaped counterparts (typeEqual/fieldEqual/recordEqual/
 // schemaEqual) moved to osd/osd_testutil_test.go along with
 // osd_writer_test.go (issue #41) — they were only ever used there.
+//
+// This docEqual/valueEqual/scalarEqual/targetEqual/nodeEqual family stays
+// here rather than moving wholesale to oml/ (issue #43): unlike the Schema
+// helpers, it is also used by json_reader_test.go and the other
+// (xml/toml/yaml/json)_{reader,writer}_test.go cross-format tests, which
+// remain in this package. oml/oml_testutil_test.go holds its own qualified
+// copy for oml_writer_test.go's exclusive use, since an unexported helper
+// here is unreachable from the separate oml package regardless of import
+// direction.
 
 func valueEqual(a, b Value) bool {
 	if a.IsNull != b.IsNull {
