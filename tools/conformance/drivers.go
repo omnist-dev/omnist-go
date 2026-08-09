@@ -177,6 +177,66 @@ func runValidate(v Vector) Result {
 	return pass(v)
 }
 
+// --- materialize ---
+
+// materializeInput mirrors validateInput -- §8.5.3's table gives
+// materialize the same {schema, document} input shape as validate.
+type materializeInput struct {
+	Schema   string          `json:"schema"`
+	Document json.RawMessage `json:"document"`
+}
+
+func runMaterialize(v Vector) Result {
+	var in materializeInput
+	if err := json.Unmarshal(v.Input, &in); err != nil {
+		return fail(v, "decode input: %v", err)
+	}
+	expect, err := decodeExpect(v)
+	if err != nil {
+		return fail(v, "decode expect: %v", err)
+	}
+	schema, serr := omnist.ReadOSD(in.Schema)
+	if serr != nil {
+		return fail(v, "input schema failed to parse: %v", serr)
+	}
+	doc, derr := DecodeCanonicalDocument(in.Document)
+	if derr != nil {
+		return fail(v, "decode input.document: %v", derr)
+	}
+	got, diags, merr := omnist.Materialize(doc, schema)
+	if merr != nil {
+		return fail(v, "materialize: %v", merr)
+	}
+	wantOK := expectOK(expect)
+	gotPairs := diagsToPairs(diags)
+	if wantOK {
+		if len(diags) != 0 {
+			return fail(v, "expected ok, got diagnostics: %v", diagStrings(gotPairs))
+		}
+		wantDocRaw, ok := expect["document"]
+		if !ok {
+			return pass(v) // no document to compare
+		}
+		wantDoc, err := DecodeCanonicalDocument(wantDocRaw)
+		if err != nil {
+			return fail(v, "decode expect.document: %v", err)
+		}
+		if !omnist.DocumentsEqual(got, wantDoc) {
+			return fail(v, "document mismatch")
+		}
+		return pass(v)
+	}
+	wantDiags, err := decodeExpectDiagnostics(expect)
+	if err != nil {
+		return fail(v, "decode expect.diagnostics: %v", err)
+	}
+	want := expectDiagPairs(wantDiags)
+	if !diagnosticSetsEqual(gotPairs, want) {
+		return fail(v, "diagnostics mismatch: got %v want %v", diagStrings(gotPairs), diagStrings(want))
+	}
+	return pass(v)
+}
+
 // --- write ---
 
 type writeInput struct {

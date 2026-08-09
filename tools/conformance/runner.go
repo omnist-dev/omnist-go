@@ -65,10 +65,11 @@ type findingExpect struct {
 
 // RunVector dispatches one vector by its operation field (§8.5.3's table)
 // and compares the result against its "expect" per §8.5.2's rules. It
-// never panics on a vector it cannot execute -- an operation not yet
-// implemented (materialize) or a driver bug produces a Result, not a
-// crash, per the issue's "not yet implemented gets an honest skip, not a
-// crash or a forced pass" requirement.
+// never panics on a vector it cannot execute -- a driver bug produces a
+// Result, not a crash, per the issue's "not yet implemented gets an
+// honest skip, not a crash or a forced pass" requirement (no operation
+// currently falls into that not-yet-implemented bucket as of issue #35,
+// which wired up materialize, the last one).
 func RunVector(v Vector) Result {
 	switch v.Operation {
 	case "parse":
@@ -78,7 +79,7 @@ func RunVector(v Vector) Result {
 	case "validate":
 		return runValidate(v)
 	case "materialize":
-		return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: materialize (issue #31 explicitly excludes new operation implementations; tracked for a follow-up issue)"}
+		return runMaterialize(v)
 	case "write":
 		return runWrite(v)
 	case "compatible_with":
