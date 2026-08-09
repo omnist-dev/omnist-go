@@ -1,13 +1,15 @@
-package omnist_test
+package algebra_test
 
-// External "omnist_test" package: see referee_test.go's comment for why.
-// TestScalarSub (the one compatible_with.go test needing unexported
-// access) stayed behind in compatible_with_test.go.
+// External "algebra_test" package: see
+// algebra_external_test_helpers_test.go's comment for why. TestScalarSub
+// (the one compatible_with.go test needing unexported access) stayed
+// behind in compatible_with_test.go.
 
 import (
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // --- compatible_with / equivalent (§6.6, §6.7) ---
@@ -27,10 +29,10 @@ func TestCompatibleWithWorkedExample(t *testing.T) {
 		"name": string,
 	} root User`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false")
 	}
-	if !omnist.CompatibleWith(b, a) {
+	if !algebra.CompatibleWith(b, a) {
 		t.Error("compatible_with(B, A) = false, want true")
 	}
 }
@@ -46,7 +48,7 @@ func TestEquivalentWorkedExample(t *testing.T) {
 		"name": string,
 	} root User`)
 
-	if omnist.Equivalent(a, b) {
+	if algebra.Equivalent(a, b) {
 		t.Error("equivalent(A, B) = true, want false (only one direction holds)")
 	}
 }
@@ -55,7 +57,7 @@ func TestEquivalentBothDirections(t *testing.T) {
 	a := mustParseOSD(t, `record User { "id": string } root User`)
 	b := mustParseOSD(t, `record Person { "id": string } root Person`)
 
-	if !omnist.Equivalent(a, b) {
+	if !algebra.Equivalent(a, b) {
 		t.Error("equivalent(A, B) = false, want true (structurally identical, differing only in record name)")
 	}
 }
@@ -76,7 +78,7 @@ func TestCompatibleWithVacuousUnsatisfiableField(t *testing.T) {
 		root Root
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (A's mandatory field is unsatisfiable, so A vacuously emits nothing there)")
 	}
 }
@@ -100,7 +102,7 @@ func TestCompatibleWithVacuousOptionalUnsatisfiableField(t *testing.T) {
 		root Root
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (A's 'bad' field is optional and unsatisfiable, so A vacuously never emits it)")
 	}
 }
@@ -118,7 +120,7 @@ func TestCompatibleWithAnyAbsorbsOnRight(t *testing.T) {
 		root Root
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (B's any field absorbs any A-side shape)")
 	}
 }
@@ -136,7 +138,7 @@ func TestCompatibleWithAnyNotAbsorbedOnLeft(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (A's any field is not guaranteed to match B's specific shape)")
 	}
 }
@@ -153,7 +155,7 @@ func TestCompatibleWithRecursiveCompatible(t *testing.T) {
 		root NodeB
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (structurally identical recursive shapes)")
 	}
 }
@@ -171,7 +173,7 @@ func TestCompatibleWithRecursiveIncompatible(t *testing.T) {
 		root NodeB
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (A's recursive record emits an extra field B is closed against)")
 	}
 }
@@ -231,10 +233,10 @@ func TestCompatibleWithAliasing(t *testing.T) {
 		EnvOrder: []string{"Root", "Alias1", "Alias2"},
 	}
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (aliased refs, identical structure)")
 	}
-	if !omnist.Equivalent(a, b) {
+	if !algebra.Equivalent(a, b) {
 		t.Error("equivalent(A, B) = false, want true (aliased refs, identical structure)")
 	}
 }
@@ -254,7 +256,7 @@ func TestCompatibleWithValueVersusObject(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (A's field is a record, B's is a scalar)")
 	}
 }
@@ -272,7 +274,7 @@ func TestCompatibleWithFieldNeverEmitted(t *testing.T) {
 		root Root
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (A's 'dead' field has max 0, never emitted)")
 	}
 }
@@ -290,7 +292,7 @@ func TestCompatibleWithCardinalityBoundsTooNarrow(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (A may emit up to 5 tags, B only allows up to 2)")
 	}
 }
@@ -307,7 +309,7 @@ func TestCompatibleWithCardinalityMinTooHigh(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (B requires at least 1 tag, A guarantees only 0)")
 	}
 }
@@ -324,7 +326,7 @@ func TestRecordSubFailsPass1Only(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (pass 1: A emits 'extra', B is closed against it)")
 	}
 }
@@ -341,7 +343,7 @@ func TestRecordSubFailsPass2Only(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (pass 2: B requires 'id', A only guarantees it optionally)")
 	}
 }
@@ -359,7 +361,7 @@ func TestRecordSubFailsPass2FieldAbsent(t *testing.T) {
 		root Root
 	`)
 
-	if omnist.CompatibleWith(a, b) {
+	if algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = true, want false (B requires 'required', A doesn't declare it at all)")
 	}
 }
@@ -376,7 +378,7 @@ func TestRecordSubPassesBoth(t *testing.T) {
 		root Root
 	`)
 
-	if !omnist.CompatibleWith(a, b) {
+	if !algebra.CompatibleWith(a, b) {
 		t.Error("compatible_with(A, B) = false, want true (both fields allowed by B with adequate bounds, B requires only id, A guarantees it)")
 	}
 }

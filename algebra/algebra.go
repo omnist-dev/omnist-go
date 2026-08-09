@@ -1,4 +1,6 @@
-package omnist
+package algebra
+
+import "github.com/omnist-dev/omnist-go"
 
 // This file begins the schema algebra (spec ch.6): operations over Schema
 // alone (schema.go, issue #5's types), never over Document. This issue
@@ -38,7 +40,7 @@ func le(x uint64, xUnbounded bool, y uint64, yUnbounded bool) bool {
 // determinism requirement at the end of §6.4 and the issue #9 follow-up
 // comment directing every deterministic-iteration need in this issue to
 // EnvOrder rather than Go's (randomized) native map iteration.
-func SatisfiableSet(s Schema) map[string]bool {
+func SatisfiableSet(s omnist.Schema) map[string]bool {
 	sat := make(map[string]bool, len(s.EnvOrder))
 	for {
 		changed := false
@@ -59,12 +61,12 @@ func SatisfiableSet(s Schema) map[string]bool {
 }
 
 // recordSatisfiable implements §6.4's `record_satisfiable(rec, sat)`.
-func recordSatisfiable(rec *Record, sat map[string]bool) bool {
+func recordSatisfiable(rec *omnist.Record, sat map[string]bool) bool {
 	for _, f := range rec.Fields {
 		if f.Cardinality.Min < 1 {
 			continue // optional never blocks
 		}
-		if f.Type.Kind == TypeScalarKind || f.Type.Kind == TypeAnyKind {
+		if f.Type.Kind == omnist.TypeScalarKind || f.Type.Kind == omnist.TypeAnyKind {
 			continue
 		}
 		if !sat[f.Type.RefName] {
@@ -76,7 +78,7 @@ func recordSatisfiable(rec *Record, sat map[string]bool) bool {
 
 // IsEmpty implements §6.4's `is_empty(S)`: true when the root record is not
 // satisfiable, i.e. no finite Document can ever match S.
-func IsEmpty(s Schema) bool {
+func IsEmpty(s omnist.Schema) bool {
 	return !SatisfiableSet(s)[s.Root]
 }
 
@@ -90,7 +92,7 @@ func IsEmpty(s Schema) bool {
 // NOT pruned (they're exactly what makes it unsatisfiable; stripping them
 // would change the accepted language), and reachability from the root
 // follows every one of its fields rather than only the surviving ones.
-func Prune(s Schema) Schema {
+func Prune(s omnist.Schema) omnist.Schema {
 	sat := SatisfiableSet(s)
 	rootOK := sat[s.Root]
 	keep := reachableFromRoot(s, sat, rootOK)
@@ -99,7 +101,7 @@ func Prune(s Schema) Schema {
 	// implementation): the output order MUST come from iterating S.EnvOrder
 	// (declaration order) and filtering by keep, never from iterating keep
 	// itself, which as a map has no defined order.
-	newEnv := make(map[string]*Record, len(keep))
+	newEnv := make(map[string]*omnist.Record, len(keep))
 	newOrder := make([]string, 0, len(keep))
 	for _, name := range s.EnvOrder {
 		if !keep[name] {
@@ -112,29 +114,29 @@ func Prune(s Schema) Schema {
 		}
 		newOrder = append(newOrder, name)
 	}
-	return Schema{Root: s.Root, Env: newEnv, EnvOrder: newOrder}
+	return omnist.Schema{Root: s.Root, Env: newEnv, EnvOrder: newOrder}
 }
 
 // pruneRecord implements §6.5's `prune_record(rec, sat)`.
-func pruneRecord(rec *Record, sat map[string]bool) *Record {
-	kept := make([]Field, 0, len(rec.Fields))
+func pruneRecord(rec *omnist.Record, sat map[string]bool) *omnist.Record {
+	kept := make([]omnist.Field, 0, len(rec.Fields))
 	for _, f := range rec.Fields {
 		if !f.Cardinality.Unbounded && f.Cardinality.Max == 0 {
 			continue
 		}
-		if f.Cardinality.Min == 0 && f.Type.Kind == TypeRefKind && !sat[f.Type.RefName] {
+		if f.Cardinality.Min == 0 && f.Type.Kind == omnist.TypeRefKind && !sat[f.Type.RefName] {
 			continue
 		}
 		kept = append(kept, f)
 	}
-	return &Record{Name: rec.Name, Fields: kept}
+	return &omnist.Record{Name: rec.Name, Fields: kept}
 }
 
 // reachableFromRoot implements §6.5's `reachable(S, sat, root_ok)`: a walk
 // from the root following references through the fields that would survive
 // prune_record — except at an unsatisfiable root, where every field is
 // followed regardless (the root-unsatisfiable special case).
-func reachableFromRoot(s Schema, sat map[string]bool, rootOK bool) map[string]bool {
+func reachableFromRoot(s omnist.Schema, sat map[string]bool, rootOK bool) map[string]bool {
 	visited := make(map[string]bool)
 	var visit func(name string)
 	visit = func(name string) {
@@ -151,14 +153,14 @@ func reachableFromRoot(s Schema, sat map[string]bool, rootOK bool) map[string]bo
 			return
 		}
 
-		var fields []Field
+		var fields []omnist.Field
 		if name == s.Root && !rootOK {
 			fields = rec.Fields // unfiltered: the root-unsatisfiable exception
 		} else {
 			fields = pruneRecord(rec, sat).Fields
 		}
 		for _, f := range fields {
-			if f.Type.Kind == TypeRefKind {
+			if f.Type.Kind == omnist.TypeRefKind {
 				visit(f.Type.RefName)
 			}
 		}

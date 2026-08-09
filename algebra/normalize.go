@@ -1,6 +1,10 @@
-package omnist
+package algebra
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/omnist-dev/omnist-go"
+)
 
 // This file implements §6.8's normalize(S) (port-order step 7), the
 // paper's MinimizeSA: the canonical minimal schema equivalent to S. It
@@ -23,7 +27,7 @@ type localSig string
 // §6.8 step 2. Returned as a string so it's directly usable as a Go map
 // key (the issue's requirement: "usable as a Go map key or otherwise
 // comparable").
-func computeLocalSignature(rec *Record) localSig {
+func computeLocalSignature(rec *omnist.Record) localSig {
 	var b []byte
 	for _, f := range rec.Fields {
 		b = appendFieldSig(b, f)
@@ -35,7 +39,7 @@ func computeLocalSignature(rec *Record) localSig {
 // encoding to b, using '\x00'/'\x01' as field/component separators that
 // cannot appear in the numeric or boolean components and are escaped out
 // of the label so a crafted label can't forge a delimiter collision.
-func appendFieldSig(b []byte, f Field) []byte {
+func appendFieldSig(b []byte, f omnist.Field) []byte {
 	b = append(b, '\x00')
 	b = appendEscapedLabel(b, f.Label)
 	b = append(b, '\x01')
@@ -47,7 +51,7 @@ func appendFieldSig(b []byte, f Field) []byte {
 		b = appendUint(b, f.Cardinality.Max)
 	}
 	b = append(b, '\x01')
-	if f.Type.Kind == TypeRefKind {
+	if f.Type.Kind == omnist.TypeRefKind {
 		b = append(b, 'R')
 	} else {
 		b = append(b, 'S')
@@ -106,7 +110,7 @@ type refineFieldKey struct {
 // label, (label, min, max, block_of[target] if ref else none). Returned
 // as a comparable string so blocks can be grouped by it in a Go map, same
 // approach as localSig.
-func computeRefineKey(rec *Record, blockOf map[string]int) string {
+func computeRefineKey(rec *omnist.Record, blockOf map[string]int) string {
 	fields := make([]refineFieldKey, len(rec.Fields))
 	for i, f := range rec.Fields {
 		fields[i] = refineFieldKey{
@@ -114,10 +118,10 @@ func computeRefineKey(rec *Record, blockOf map[string]int) string {
 			Min:       f.Cardinality.Min,
 			Max:       f.Cardinality.Max,
 			Unbounded: f.Cardinality.Unbounded,
-			IsRef:     f.Type.Kind == TypeRefKind,
+			IsRef:     f.Type.Kind == omnist.TypeRefKind,
 			Block:     -1,
 		}
-		if f.Type.Kind == TypeRefKind {
+		if f.Type.Kind == omnist.TypeRefKind {
 			fields[i].Block = blockOf[f.Type.RefName]
 		}
 	}
@@ -156,7 +160,7 @@ func computeRefineKey(rec *Record, blockOf map[string]int) string {
 // deterministic (sorted-name) order, satisfying the spec's determinism
 // requirement that two conformant implementations produce identical
 // output, not merely equivalent output.
-func EquivalenceClasses(s Schema) [][]string {
+func EquivalenceClasses(s omnist.Schema) [][]string {
 	names := make([]string, len(s.EnvOrder))
 	copy(names, s.EnvOrder)
 	sort.Strings(names)
@@ -223,7 +227,7 @@ func indexBlocks(blocks [][]string) map[string]int {
 // smallest name as its representative, rewrite every reference (including
 // the root) to representatives, and keep only representatives in the new
 // env.
-func Normalize(s Schema) Schema {
+func Normalize(s omnist.Schema) omnist.Schema {
 	s = Prune(s)
 	if IsEmpty(s) {
 		return s
@@ -246,7 +250,7 @@ func Normalize(s Schema) Schema {
 	copy(names, s.EnvOrder)
 	sort.Strings(names)
 
-	newEnv := make(map[string]*Record, len(rep))
+	newEnv := make(map[string]*omnist.Record, len(rep))
 	newOrder := make([]string, 0, len(rep))
 	for _, name := range names {
 		if rep[name] != name {
@@ -255,19 +259,19 @@ func Normalize(s Schema) Schema {
 		newEnv[name] = remapRecord(s.Env[name], rep)
 		newOrder = append(newOrder, name)
 	}
-	return Schema{Root: rep[s.Root], Env: newEnv, EnvOrder: newOrder}
+	return omnist.Schema{Root: rep[s.Root], Env: newEnv, EnvOrder: newOrder}
 }
 
 // remapRecord rewrites every reference field in rec to its representative
 // per rep, implementing the remap(rec, rep) used by normalize's new_env
 // construction.
-func remapRecord(rec *Record, rep map[string]string) *Record {
-	fields := make([]Field, len(rec.Fields))
+func remapRecord(rec *omnist.Record, rep map[string]string) *omnist.Record {
+	fields := make([]omnist.Field, len(rec.Fields))
 	for i, f := range rec.Fields {
-		if f.Type.Kind == TypeRefKind {
-			f.Type = RefType(rep[f.Type.RefName])
+		if f.Type.Kind == omnist.TypeRefKind {
+			f.Type = omnist.RefType(rep[f.Type.RefName])
 		}
 		fields[i] = f
 	}
-	return &Record{Name: rec.Name, Fields: fields}
+	return &omnist.Record{Name: rec.Name, Fields: fields}
 }

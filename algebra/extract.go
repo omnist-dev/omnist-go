@@ -1,6 +1,10 @@
-package omnist
+package algebra
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/omnist-dev/omnist-go"
+)
 
 // This file implements §6.9's extract(S, keep) (port-order step 8): given a
 // set of permissible labels, the minimal subschema recognizing only
@@ -29,21 +33,21 @@ type firstBad struct {
 // On failure (the root ends up invalidated, step 4), the returned error is
 // a Diagnostic with code algebra.extract-invalidates-root naming the first
 // offending label and the record it invalidated.
-func Extract(s Schema, keep map[string]bool) (Schema, error) {
+func Extract(s omnist.Schema, keep map[string]bool) (omnist.Schema, error) {
 	trimmed, invalidated, bad := extractFilterFields(s, keep)
 	extractPropagate(s, trimmed, invalidated)
 
 	if invalidated[s.Root] {
-		return Schema{}, Diagnostic{
-			Path:    bad.record,
-			Code:    CodeAlgebraExtractInvalidatesRoot,
-			Message: fmt.Sprintf("removing label %q deletes a mandatory field of %s", bad.label, bad.record),
-			Severity: SeverityError,
+		return omnist.Schema{}, omnist.Diagnostic{
+			Path:     bad.record,
+			Code:     omnist.CodeAlgebraExtractInvalidatesRoot,
+			Message:  fmt.Sprintf("removing label %q deletes a mandatory field of %s", bad.label, bad.record),
+			Severity: omnist.SeverityError,
 		}
 	}
 
 	newEnv, newOrder := extractBuildEnv(s, trimmed, invalidated)
-	return Normalize(Prune(Schema{Root: s.Root, Env: newEnv, EnvOrder: newOrder})), nil
+	return Normalize(Prune(omnist.Schema{Root: s.Root, Env: newEnv, EnvOrder: newOrder})), nil
 }
 
 // extractFilterFields implements §6.9 steps 1+2: for every record (in
@@ -53,12 +57,12 @@ func Extract(s Schema, keep map[string]bool) (Schema, error) {
 // first_bad. Per the spec's normative "deleting a mandatory field is an
 // error, not a silent relaxation" rule, a deleted mandatory field is never
 // downgraded to optional — the record is invalidated outright instead.
-func extractFilterFields(s Schema, keep map[string]bool) (trimmed map[string]*Record, invalidated map[string]bool, bad firstBad) {
-	trimmed = make(map[string]*Record, len(s.EnvOrder))
+func extractFilterFields(s omnist.Schema, keep map[string]bool) (trimmed map[string]*omnist.Record, invalidated map[string]bool, bad firstBad) {
+	trimmed = make(map[string]*omnist.Record, len(s.EnvOrder))
 	invalidated = make(map[string]bool)
 	for _, name := range s.EnvOrder {
 		rec := s.Env[name]
-		kept := make([]Field, 0, len(rec.Fields))
+		kept := make([]omnist.Field, 0, len(rec.Fields))
 		for _, f := range rec.Fields {
 			if keep[f.Label] {
 				kept = append(kept, f)
@@ -71,7 +75,7 @@ func extractFilterFields(s Schema, keep map[string]bool) (trimmed map[string]*Re
 				invalidated[name] = true
 			}
 		}
-		trimmed[name] = &Record{Name: rec.Name, Fields: kept}
+		trimmed[name] = &omnist.Record{Name: rec.Name, Fields: kept}
 	}
 	return trimmed, invalidated, bad
 }
@@ -81,7 +85,7 @@ func extractFilterFields(s Schema, keep map[string]bool) (trimmed map[string]*Re
 // same repeat-until-no-change-over-EnvOrder shape as SatisfiableSet
 // (algebra.go) — the fixpoint condition differs (invalidation instead of
 // satisfiability), so the function isn't reused directly.
-func extractPropagate(s Schema, trimmed map[string]*Record, invalidated map[string]bool) {
+func extractPropagate(s omnist.Schema, trimmed map[string]*omnist.Record, invalidated map[string]bool) {
 	for {
 		changed := false
 		for _, name := range s.EnvOrder {
@@ -89,7 +93,7 @@ func extractPropagate(s Schema, trimmed map[string]*Record, invalidated map[stri
 				continue
 			}
 			for _, f := range trimmed[name].Fields {
-				if f.Cardinality.Min >= 1 && f.Type.Kind == TypeRefKind && invalidated[f.Type.RefName] {
+				if f.Cardinality.Min >= 1 && f.Type.Kind == omnist.TypeRefKind && invalidated[f.Type.RefName] {
 					invalidated[name] = true
 					changed = true
 					break
@@ -108,22 +112,22 @@ func extractPropagate(s Schema, trimmed map[string]*Record, invalidated map[stri
 // surviving record is left with a dangling reference. The result is
 // returned unpruned/unnormalized; Extract runs it through Prune then
 // Normalize itself.
-func extractBuildEnv(s Schema, trimmed map[string]*Record, invalidated map[string]bool) (map[string]*Record, []string) {
-	newEnv := make(map[string]*Record, len(s.EnvOrder))
+func extractBuildEnv(s omnist.Schema, trimmed map[string]*omnist.Record, invalidated map[string]bool) (map[string]*omnist.Record, []string) {
+	newEnv := make(map[string]*omnist.Record, len(s.EnvOrder))
 	newOrder := make([]string, 0, len(s.EnvOrder))
 	for _, name := range s.EnvOrder {
 		if invalidated[name] {
 			continue
 		}
 		rec := trimmed[name]
-		fields := make([]Field, 0, len(rec.Fields))
+		fields := make([]omnist.Field, 0, len(rec.Fields))
 		for _, f := range rec.Fields {
-			if f.Type.Kind == TypeRefKind && invalidated[f.Type.RefName] {
+			if f.Type.Kind == omnist.TypeRefKind && invalidated[f.Type.RefName] {
 				continue
 			}
 			fields = append(fields, f)
 		}
-		newEnv[name] = &Record{Name: name, Fields: fields}
+		newEnv[name] = &omnist.Record{Name: name, Fields: fields}
 		newOrder = append(newOrder, name)
 	}
 	return newEnv, newOrder

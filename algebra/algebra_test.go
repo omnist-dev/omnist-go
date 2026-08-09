@@ -1,4 +1,4 @@
-package omnist
+package algebra
 
 import "testing"
 

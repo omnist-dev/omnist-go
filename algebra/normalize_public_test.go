@@ -1,7 +1,8 @@
-package omnist_test
+package algebra_test
 
-// External "omnist_test" package: see referee_test.go's comment for why.
-// The normalize.go tests needing unexported access
+// External "algebra_test" package: see
+// algebra_external_test_helpers_test.go's comment for why. The
+// normalize.go tests needing unexported access
 // (computeLocalSignature/computeRefineKey/appendEscapedLabel/appendUint)
 // stayed behind in normalize_test.go.
 
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // --- normalize (§6.8) ---
@@ -26,7 +28,7 @@ func TestNormalizeWorkedExample(t *testing.T) {
 		record Top { "a": A, "b": B }
 		root Top
 	`)
-	got := omnist.Normalize(s)
+	got := algebra.Normalize(s)
 
 	if got.Root != "Top" {
 		t.Fatalf("root = %q, want Top", got.Root)
@@ -65,7 +67,7 @@ func TestNormalizeDeterministicRepresentative(t *testing.T) {
 	`
 	for i := 0; i < 5; i++ {
 		s := mustParseOSD(t, src)
-		got := omnist.Normalize(s)
+		got := algebra.Normalize(s)
 		if _, ok := got.Env["Alpha"]; !ok {
 			t.Fatalf("run %d: expected representative Alpha to survive, got env %v", i, got.EnvOrder)
 		}
@@ -93,7 +95,7 @@ func TestNormalizePrunesBeforeMerging(t *testing.T) {
 		record Top { "a": A }
 		root Top
 	`)
-	got := omnist.Normalize(s)
+	got := algebra.Normalize(s)
 
 	if _, ok := got.Env["Orphan"]; ok {
 		t.Fatalf("Orphan should have been pruned before normalization, still present")
@@ -112,12 +114,12 @@ func TestNormalizePrunesBeforeMerging(t *testing.T) {
 func TestNormalizeEmptyShortCircuit(t *testing.T) {
 	s := mustParseOSD(t, `record Node { "child": Node } root Node`)
 
-	pruned := omnist.Prune(s)
-	if !omnist.IsEmpty(pruned) {
+	pruned := algebra.Prune(s)
+	if !algebra.IsEmpty(pruned) {
 		t.Fatalf("test setup: expected pruned schema to be empty")
 	}
 
-	got := omnist.Normalize(s)
+	got := algebra.Normalize(s)
 	if !reflect.DeepEqual(got, pruned) {
 		t.Fatalf("Normalize(s) = %+v, want unchanged Prune(s) = %+v", got, pruned)
 	}
@@ -148,7 +150,7 @@ func TestNormalizeFixpointRefinementKeepsDivergentBlocksSeparate(t *testing.T) {
 		record Top { "l": LeftHolder, "r": RightHolder }
 		root Top
 	`)
-	got := omnist.Normalize(s)
+	got := algebra.Normalize(s)
 
 	// Nothing should have merged: 5 distinct records survive.
 	wantNames := []string{"LeftHolder", "LeftLeaf", "RightHolder", "RightLeaf", "Top"}
@@ -181,7 +183,7 @@ func TestNormalizeFixpointRefinementMergesTrulyEquivalentBlocks(t *testing.T) {
 		record Top { "l": LeftHolder2, "r": RightHolder2 }
 		root Top
 	`)
-	got := omnist.Normalize(s)
+	got := algebra.Normalize(s)
 
 	wantNames := []string{"LeftHolder2", "LeftLeaf2", "Top"}
 	gotNames := append([]string{}, got.EnvOrder...)
@@ -211,7 +213,7 @@ func TestEquivalenceClassesDoesNotPrune(t *testing.T) {
 		record Top { "a": A }
 		root Top
 	`)
-	blocks := omnist.EquivalenceClasses(s)
+	blocks := algebra.EquivalenceClasses(s)
 
 	found := false
 	for _, block := range blocks {
@@ -235,7 +237,7 @@ func TestEquivalenceClassesOrdering(t *testing.T) {
 		record Top { "z": Zeta, "a": Alpha }
 		root Top
 	`)
-	blocks := omnist.EquivalenceClasses(s)
+	blocks := algebra.EquivalenceClasses(s)
 
 	var flat []string
 	for _, block := range blocks {

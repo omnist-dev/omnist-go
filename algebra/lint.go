@@ -1,9 +1,11 @@
-package omnist
+package algebra
 
 import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/omnist-dev/omnist-go"
 )
 
 // This file implements §6.11's lint(S) (port-order step 9): schema
@@ -31,8 +33,8 @@ import (
 // comma-joined sorted list of names, or for any-field a
 // "RecordName.label" string), and a human-readable Message.
 type Finding struct {
-	Code     Code
-	Severity Severity
+	Code     omnist.Code
+	Severity omnist.Severity
 	Location string
 	Message  string
 }
@@ -43,7 +45,7 @@ type Finding struct {
 // intentionally not algebra.go's reachableFromRoot (used by Prune), which
 // computes a genuinely different, language-aware set — see the file
 // comment above.
-func reachablePlain(s Schema) map[string]bool {
+func reachablePlain(s omnist.Schema) map[string]bool {
 	seen := make(map[string]bool)
 	stack := []string{s.Root}
 	for len(stack) > 0 {
@@ -58,7 +60,7 @@ func reachablePlain(s Schema) map[string]bool {
 		}
 		seen[name] = true
 		for _, f := range rec.Fields {
-			if f.Type.Kind == TypeRefKind {
+			if f.Type.Kind == omnist.TypeRefKind {
 				stack = append(stack, f.Type.RefName)
 			}
 		}
@@ -70,7 +72,7 @@ func reachablePlain(s Schema) map[string]bool {
 // the order the pseudocode gives them, followed by a final deterministic
 // sort by (code, location). Lint never mutates s — it only reads Env,
 // EnvOrder, and Root.
-func Lint(s Schema) []Finding {
+func Lint(s omnist.Schema) []Finding {
 	findings := []Finding{}
 
 	reach := reachablePlain(s)
@@ -83,10 +85,10 @@ func Lint(s Schema) []Finding {
 	for _, name := range s.EnvOrder {
 		if reach[name] && !sat[name] {
 			findings = append(findings, Finding{
-				Code:     CodeLintUnsatisfiableRecord,
-				Severity: SeverityWarning,
+				Code:     omnist.CodeLintUnsatisfiableRecord,
+				Severity: omnist.SeverityWarning,
 				Location: name,
-				Message:  fmt.Sprintf("record %q is reachable from root but no finite Document can ever match it", name),
+				Message:  fmt.Sprintf("record %q is reachable from root but no finite omnist.Document can ever match it", name),
 			})
 		}
 	}
@@ -95,8 +97,8 @@ func Lint(s Schema) []Finding {
 	for _, name := range s.EnvOrder {
 		if !reach[name] {
 			findings = append(findings, Finding{
-				Code:     CodeLintUnreachableRecord,
-				Severity: SeverityWarning,
+				Code:     omnist.CodeLintUnreachableRecord,
+				Severity: omnist.SeverityWarning,
 				Location: name,
 				Message:  fmt.Sprintf("record %q is defined but not reachable from root by any reference", name),
 			})
@@ -116,8 +118,8 @@ func Lint(s Schema) []Finding {
 		keep := group[0]
 		others := strings.Join(group[1:], ", ")
 		findings = append(findings, Finding{
-			Code:     CodeLintDuplicateRecord,
-			Severity: SeverityWarning,
+			Code:     omnist.CodeLintDuplicateRecord,
+			Severity: omnist.SeverityWarning,
 			Location: location,
 			Message:  fmt.Sprintf("records %s are structurally identical to %q; merge them with normalize", others, keep),
 		})
@@ -128,10 +130,10 @@ func Lint(s Schema) []Finding {
 	for _, name := range s.EnvOrder {
 		rec := s.Env[name]
 		for _, f := range rec.Fields {
-			if f.Type.Kind == TypeAnyKind {
+			if f.Type.Kind == omnist.TypeAnyKind {
 				findings = append(findings, Finding{
-					Code:     CodeLintAnyField,
-					Severity: SeverityInfo,
+					Code:     omnist.CodeLintAnyField,
+					Severity: omnist.SeverityInfo,
 					Location: name + "." + f.Label,
 					Message:  fmt.Sprintf("field %q of record %q is `any`-typed", f.Label, name),
 				})

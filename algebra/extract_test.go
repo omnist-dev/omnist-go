@@ -1,10 +1,11 @@
-package omnist_test
+package algebra_test
 
-// External "omnist_test" package: extract_test.go only ever needed
+// External "algebra_test" package: extract_test.go only ever needed
 // exported API (Extract, Diagnostic, CodeAlgebraExtractInvalidatesRoot,
-// TypeRefKind) plus its own local keepSet/hasLabel helpers, so it moved
-// out to avoid the import cycle package osd would otherwise create (see
-// referee_test.go's comment for the full explanation).
+// TypeRefKind) plus its own local keepSet/hasLabel helpers, so it lives
+// here rather than in the internal "algebra" package (see
+// algebra_external_test_helpers_test.go's comment for the full
+// explanation of why the split is kept).
 
 import (
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 // orderSchemaOSD is the Root/Order/Address/LineItem schema from spec
@@ -57,9 +59,9 @@ func TestExtractSuccessDropsOptionalCoupon(t *testing.T) {
 	keep := keepSet("order", "id", "status", "total", "address", "street",
 		"city", "items", "sku", "qty", "price")
 
-	out, err := omnist.Extract(s, keep)
+	out, err := algebra.Extract(s, keep)
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success", err)
+		t.Fatalf("algebra.Extract() error = %v, want success", err)
 	}
 
 	order := out.Env["Order"]
@@ -90,9 +92,9 @@ func TestExtractFailureReportsFirstBadInDeclarationOrder(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order", "id", "status", "street", "city", "sku", "qty", "price")
 
-	_, err := omnist.Extract(s, keep)
+	_, err := algebra.Extract(s, keep)
 	if err == nil {
-		t.Fatalf("omnist.Extract() succeeded, want algebra.extract-invalidates-root error")
+		t.Fatalf("algebra.Extract() succeeded, want algebra.extract-invalidates-root error")
 	}
 	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
@@ -122,9 +124,9 @@ func TestExtractFirstBadCrossRecordDeclarationOrderBeatsOrder(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order")
 
-	_, err := omnist.Extract(s, keep)
+	_, err := algebra.Extract(s, keep)
 	if err == nil {
-		t.Fatalf("omnist.Extract() succeeded, want algebra.extract-invalidates-root error")
+		t.Fatalf("algebra.Extract() succeeded, want algebra.extract-invalidates-root error")
 	}
 	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
@@ -152,9 +154,9 @@ func TestExtractMandatoryDeletionInvalidatesNotRelaxes(t *testing.T) {
 	// Drop "a", a mandatory field of Leaf; Leaf's own field is optional in
 	// Root so Root itself should survive, but Leaf must be genuinely gone
 	// from the output — never present with "a" downgraded to optional.
-	out, err := omnist.Extract(s, keepSet("leaf", "b"))
+	out, err := algebra.Extract(s, keepSet("leaf", "b"))
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success (Root.leaf is optional)", err)
+		t.Fatalf("algebra.Extract() error = %v, want success (Root.leaf is optional)", err)
 	}
 	if _, ok := out.Env["Leaf"]; ok {
 		t.Errorf("Leaf should be invalidated and absent, got env = %+v", out.Env)
@@ -176,9 +178,9 @@ func TestExtractPropagatesThroughMultipleHops(t *testing.T) {
 	`)
 	// Drop "v", invalidating Leaf directly; that must propagate Leaf -> Mid
 	// -> Top -> Root, three hops of mandatory-ref propagation.
-	_, err := omnist.Extract(s, keepSet("top", "mid", "leaf"))
+	_, err := algebra.Extract(s, keepSet("top", "mid", "leaf"))
 	if err == nil {
-		t.Fatalf("omnist.Extract() succeeded, want root invalidated via 3-hop propagation")
+		t.Fatalf("algebra.Extract() succeeded, want root invalidated via 3-hop propagation")
 	}
 	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
@@ -203,7 +205,7 @@ func TestExtractFirstBadIsDeclarationOrderNotAlphabeticalOrShortest(t *testing.T
 	// All three fields of R are dropped; "zeta" is declared first, so it
 	// must be the reported offender even though it's neither alphabetically
 	// first ("alpha") nor shortest ("beta"/"alpha" tie length before zeta).
-	_, err := omnist.Extract(s, keepSet("r"))
+	_, err := algebra.Extract(s, keepSet("r"))
 	var d omnist.Diagnostic
 	if !errors.As(err, &d) {
 		t.Fatalf("error = %v (%T), want omnist.Diagnostic", err, err)
@@ -232,9 +234,9 @@ func TestExtractDropsSurvivingFieldPointingAtInvalidatedRecord(t *testing.T) {
 	// is optional so filtering alone doesn't invalidate Root, and Root
 	// survives (via Root.sibling) but must lose the "doomed" field itself,
 	// not keep it dangling at a record no longer in env.
-	out, err := omnist.Extract(s, keepSet("doomed", "sibling", "x"))
+	out, err := algebra.Extract(s, keepSet("doomed", "sibling", "x"))
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success", err)
+		t.Fatalf("algebra.Extract() error = %v, want success", err)
 	}
 	if _, ok := out.Env["Doomed"]; ok {
 		t.Errorf("Doomed should be invalidated and absent, got env = %+v", out.Env)
@@ -262,9 +264,9 @@ func TestExtractSuccessRunsPruneAndNormalize(t *testing.T) {
 	// Unreachable is never referenced from Root; extract's intermediate
 	// schema (steps 1-4) would still contain it verbatim since nothing
 	// about the keep-set filtering touches it. Only prune removes it.
-	out, err := omnist.Extract(s, keepSet("a"))
+	out, err := algebra.Extract(s, keepSet("a"))
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success", err)
+		t.Fatalf("algebra.Extract() error = %v, want success", err)
 	}
 	if _, ok := out.Env["Unreachable"]; ok {
 		t.Errorf("Unreachable should have been pruned, got env = %+v", out.Env)
@@ -280,9 +282,9 @@ func TestExtractSuccessNormalizesStructurallyIdenticalRecords(t *testing.T) {
 	`)
 	// Dropping "extra" from B (optional, so no invalidation) leaves A and B
 	// structurally identical. Only normalize would merge them.
-	out, err := omnist.Extract(s, keepSet("a", "b", "v"))
+	out, err := algebra.Extract(s, keepSet("a", "b", "v"))
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success", err)
+		t.Fatalf("algebra.Extract() error = %v, want success", err)
 	}
 	aRef := out.Env["Root"].Fields
 	names := map[string]bool{}
@@ -302,9 +304,9 @@ func TestExtractKeepEverythingSucceeds(t *testing.T) {
 	s := mustParseOSD(t, orderSchemaOSD)
 	keep := keepSet("order", "id", "status", "total", "address", "street",
 		"city", "items", "sku", "qty", "price", "coupon")
-	out, err := omnist.Extract(s, keep)
+	out, err := algebra.Extract(s, keep)
 	if err != nil {
-		t.Fatalf("omnist.Extract() error = %v, want success", err)
+		t.Fatalf("algebra.Extract() error = %v, want success", err)
 	}
 	if !hasLabel(out.Env["Order"], "coupon") {
 		t.Errorf("coupon should survive when kept, got fields = %+v", out.Env["Order"].Fields)

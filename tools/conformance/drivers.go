@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 	"github.com/omnist-dev/omnist-go/formats/json"
 	"github.com/omnist-dev/omnist-go/formats/toml"
 	"github.com/omnist-dev/omnist-go/formats/xml"
@@ -352,7 +353,7 @@ func runCompatibleWith(v Vector) Result {
 	if berr != nil {
 		return fail(v, "input.b failed to parse: %v", berr)
 	}
-	got := omnist.CompatibleWith(a, b)
+	got := algebra.CompatibleWith(a, b)
 	return compareBoolResult(v, got)
 }
 
@@ -369,7 +370,7 @@ func runEquivalent(v Vector) Result {
 	if berr != nil {
 		return fail(v, "input.b failed to parse: %v", berr)
 	}
-	got := omnist.Equivalent(a, b)
+	got := algebra.Equivalent(a, b)
 	return compareBoolResult(v, got)
 }
 
@@ -407,7 +408,7 @@ func runNormalize(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := osd.Write(omnist.Normalize(s), false)
+	got := osd.Write(algebra.Normalize(s), false)
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -420,7 +421,7 @@ func runPrune(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := osd.Write(omnist.Prune(s), false)
+	got := osd.Write(algebra.Prune(s), false)
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -459,7 +460,7 @@ func runIsEmpty(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := omnist.IsEmpty(s)
+	got := algebra.IsEmpty(s)
 	expect, err := decodeExpect(v)
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
@@ -502,7 +503,7 @@ func runExtract(v Vector) Result {
 	for _, k := range in.Keep {
 		keep[k] = true
 	}
-	result, eerr := omnist.Extract(s, keep)
+	result, eerr := algebra.Extract(s, keep)
 	wantOK := expectOK(expect)
 	if eerr != nil {
 		if wantOK {
@@ -576,7 +577,7 @@ func runInfer(v Vector) Result {
 	if derr != nil {
 		return fail(v, "decode input.samples: %v", derr)
 	}
-	result, ierr := omnist.Infer(docs, "Root", in.AllowAny)
+	result, ierr := algebra.Infer(docs, "Root", in.AllowAny)
 	wantOK := expectOK(expect)
 	if ierr != nil {
 		if wantOK {
@@ -635,7 +636,7 @@ func runInferWithReport(v Vector) Result {
 	if derr != nil {
 		return fail(v, "decode input.samples: %v", derr)
 	}
-	result, fallbacks, ierr := omnist.InferWithReport(docs, "Root", in.AllowAny)
+	result, fallbacks, ierr := algebra.InferWithReport(docs, "Root", in.AllowAny)
 	wantOK := expectOK(expect)
 	if ierr != nil {
 		if wantOK {
@@ -716,7 +717,7 @@ func runLint(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	findings := omnist.Lint(s)
+	findings := algebra.Lint(s)
 	// lint.json's own vectors establish: ok is false iff any finding has
 	// a severity other than info (lint/any-field-is-informational-not-a-
 	// warning expects ok:true despite a nonempty findings list, since its
