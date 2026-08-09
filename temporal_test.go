@@ -80,3 +80,19 @@ func TestParseISOTimeFraction(t *testing.T) {
 		t.Errorf("ParseISOTime(%q) = %+v, want %+v", "10:30:00.5", got, want)
 	}
 }
+
+// TestFormatISODate exercises FormatISODate directly. Before issue #45
+// moved every one of json/yaml/toml/xml_writer_test.go into their own
+// formats/* packages, FormatISODate was covered incidentally by each of
+// their own date-rendering test cases; once all four writer test files
+// moved out in the same issue, none of this packages own tests called
+// FormatISODate anymore -- the same class of regression as this files
+// other Test<Something>ISO* tests above, just delayed until the fourth
+// (and last) codec moved rather than caught by an earlier one.
+func TestFormatISODate(t *testing.T) {
+	got := FormatISODate(DateValue{Year: 2024, Month: 1, Day: 2})
+	want := "2024-01-02"
+	if got != want {
+		t.Errorf("FormatISODate(...) = %q, want %q", got, want)
+	}
+}

@@ -1,13 +1,15 @@
-package omnist
+package xml
 
 import (
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // --- interleaving preservation: the highest-priority test in this issue ---
 
 func TestReadXMLPreservesInterleaving(t *testing.T) {
-	d, err := ReadXML(`<root><m/><x/><m/></root>`, DefaultLimits())
+	d, err := Read(`<root><m/><x/><m/></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,15 +33,15 @@ func TestReadXMLPreservesInterleaving(t *testing.T) {
 func TestReadXMLInterleavingNotRegrouped(t *testing.T) {
 	// A grouping reader (like WriteJSON's write side) would produce
 	// [(m,[A,B]),(x,X)] — 2 edges. This must stay 3 edges in source order.
-	d, err := ReadXML(`<root><m>A</m><x>X</x><m>B</m></root>`, DefaultLimits())
+	d, err := Read(`<root><m>A</m><x>X</x><m>B</m></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	node, _ := d.Node.Edges[0].Target.Node()
-	want := NewNode().
-		AddValue("m", ScalarValue(NewStringScalar("A"))).
-		AddValue("x", ScalarValue(NewStringScalar("X"))).
-		AddValue("m", ScalarValue(NewStringScalar("B")))
+	want := omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B")))
 	if !nodeEqual(node, want) {
 		t.Errorf("got %+v, want %+v", node, want)
 	}
@@ -56,29 +58,29 @@ func TestReadXMLWorkedExampleStage1Untyped(t *testing.T) {
   <items><sku>W</sku><qty>3</qty><price>9.99</price></items>
   <items><sku>G</sku><qty>1</qty><price>9.99</price></items>
 </order>`
-	d, err := ReadXML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	address := NewNode().
-		AddValue("street", ScalarValue(NewStringScalar("1 Main"))).
-		AddValue("city", ScalarValue(NewStringScalar("London")))
-	items1 := NewNode().
-		AddValue("sku", ScalarValue(NewStringScalar("W"))).
-		AddValue("qty", ScalarValue(NewStringScalar("3"))).
-		AddValue("price", ScalarValue(NewStringScalar("9.99")))
-	items2 := NewNode().
-		AddValue("sku", ScalarValue(NewStringScalar("G"))).
-		AddValue("qty", ScalarValue(NewStringScalar("1"))).
-		AddValue("price", ScalarValue(NewStringScalar("9.99")))
-	order := NewNode().
-		AddValue("id", ScalarValue(NewStringScalar("A1"))).
-		AddValue("status", ScalarValue(NewStringScalar("shipped"))).
-		AddValue("total", ScalarValue(NewStringScalar("29.97"))). // stage 1: string, not number
+	address := omnist.NewNode().
+		AddValue("street", omnist.ScalarValue(omnist.NewStringScalar("1 Main"))).
+		AddValue("city", omnist.ScalarValue(omnist.NewStringScalar("London")))
+	items1 := omnist.NewNode().
+		AddValue("sku", omnist.ScalarValue(omnist.NewStringScalar("W"))).
+		AddValue("qty", omnist.ScalarValue(omnist.NewStringScalar("3"))).
+		AddValue("price", omnist.ScalarValue(omnist.NewStringScalar("9.99")))
+	items2 := omnist.NewNode().
+		AddValue("sku", omnist.ScalarValue(omnist.NewStringScalar("G"))).
+		AddValue("qty", omnist.ScalarValue(omnist.NewStringScalar("1"))).
+		AddValue("price", omnist.ScalarValue(omnist.NewStringScalar("9.99")))
+	order := omnist.NewNode().
+		AddValue("id", omnist.ScalarValue(omnist.NewStringScalar("A1"))).
+		AddValue("status", omnist.ScalarValue(omnist.NewStringScalar("shipped"))).
+		AddValue("total", omnist.ScalarValue(omnist.NewStringScalar("29.97"))). // stage 1: string, not number
 		AddNode("address", address).
 		AddNode("items", items1).
 		AddNode("items", items2)
-	want := NodeDocument(NewNode().AddNode("order", order))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("order", order))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -86,7 +88,7 @@ func TestReadXMLWorkedExampleStage1Untyped(t *testing.T) {
 	// per "Stage 1 output differs here" (docs/formats/xml.md).
 	qty := items1.Edges[1].Target
 	v, _ := qty.Value()
-	if v.Scalar.Kind != KindString || v.Scalar.Str != "3" {
+	if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "3" {
 		t.Fatalf("expected qty to be string \"3\" at stage 1, got %+v", v.Scalar)
 	}
 }
@@ -94,7 +96,7 @@ func TestReadXMLWorkedExampleStage1Untyped(t *testing.T) {
 // --- repeated elements -> repeated labels, no wrapper ---
 
 func TestReadXMLRepeatedElementsNoWrapper(t *testing.T) {
-	d, err := ReadXML(`<root><items>a</items><items>b</items><items>c</items></root>`, DefaultLimits())
+	d, err := Read(`<root><items>a</items><items>b</items><items>c</items></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,23 +118,23 @@ func TestReadXMLRepeatedElementsNoWrapper(t *testing.T) {
 // --- attribute dropping: silent, no diagnostic ---
 
 func TestReadXMLDropsAttributesSilently(t *testing.T) {
-	d, err := ReadXML(`<a x="1"><b>hi</b></a>`, DefaultLimits())
+	d, err := Read(`<a x="1"><b>hi</b></a>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("expected a clean nil error, got %v", err)
 	}
-	b := NewNode().AddValue("b", ScalarValue(NewStringScalar("hi")))
-	want := NodeDocument(NewNode().AddNode("a", b))
+	b := omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("hi")))
+	want := omnist.NodeDocument(omnist.NewNode().AddNode("a", b))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v (attribute must leave no trace)", d, want)
 	}
 }
 
 func TestReadXMLDropsMultipleAttributesSilently(t *testing.T) {
-	d, err := ReadXML(`<a x="1" y="2" z="3"/>`, DefaultLimits())
+	d, err := Read(`<a x="1" y="2" z="3"/>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("expected a clean nil error, got %v", err)
 	}
-	want := NodeDocument(NewNode().AddValue("a", ScalarValue(NewStringScalar(""))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewStringScalar(""))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -141,7 +143,7 @@ func TestReadXMLDropsMultipleAttributesSilently(t *testing.T) {
 // --- namespace-prefix dropping ---
 
 func TestReadXMLDropsNamespacePrefix(t *testing.T) {
-	d, err := ReadXML(`<root xmlns:ns="http://example.com/ns"><ns:b>hi</ns:b></root>`, DefaultLimits())
+	d, err := Read(`<root xmlns:ns="http://example.com/ns"><ns:b>hi</ns:b></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +156,7 @@ func TestReadXMLDropsNamespacePrefix(t *testing.T) {
 func TestReadXMLDropsUndeclaredNamespacePrefix(t *testing.T) {
 	// A prefix with no matching xmlns declaration must still resolve to
 	// the local name only.
-	d, err := ReadXML(`<ns:b>hi</ns:b>`, DefaultLimits())
+	d, err := Read(`<ns:b>hi</ns:b>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +169,7 @@ func TestReadXMLDropsUndeclaredNamespacePrefix(t *testing.T) {
 
 func TestReadXMLTextAlwaysString(t *testing.T) {
 	src := `<root><d>2024-01-15</d><i>42</i><b>true</b></root>`
-	d, err := ReadXML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,8 +179,8 @@ func TestReadXMLTextAlwaysString(t *testing.T) {
 		if !ok {
 			t.Fatalf("edge %q: expected a value target", e.Label)
 		}
-		if v.Scalar.Kind != KindString {
-			t.Errorf("edge %q: got kind %v, want KindString (zero auto-typing)", e.Label, v.Scalar.Kind)
+		if v.Scalar.Kind != omnist.KindString {
+			t.Errorf("edge %q: got kind %v, want omnist.KindString (zero auto-typing)", e.Label, v.Scalar.Kind)
 		}
 	}
 }
@@ -186,12 +188,12 @@ func TestReadXMLTextAlwaysString(t *testing.T) {
 // --- self-closing / empty leaf ---
 
 func TestReadXMLSelfClosingElementIsEmptyString(t *testing.T) {
-	d, err := ReadXML(`<a/>`, DefaultLimits())
+	d, err := Read(`<a/>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, ok := d.Node.Edges[0].Target.Value()
-	if !ok || v.Scalar.Kind != KindString || v.Scalar.Str != "" {
+	if !ok || v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "" {
 		t.Fatalf("got %+v, want empty string leaf", d.Node.Edges[0].Target)
 	}
 }
@@ -200,11 +202,11 @@ func TestReadXMLSelfClosingElementIsEmptyString(t *testing.T) {
 
 func TestReadXMLSkipsPrologAndComments(t *testing.T) {
 	src := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- a comment -->\n<a>hi</a>\n"
-	d, err := ReadXML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("a", ScalarValue(NewStringScalar("hi"))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewStringScalar("hi"))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -213,28 +215,28 @@ func TestReadXMLSkipsPrologAndComments(t *testing.T) {
 // --- multiple top-level elements are rejected on read (not well-formed) ---
 
 func TestReadXMLRejectsMultipleTopLevelElements(t *testing.T) {
-	_, err := ReadXML(`<a/><b/>`, DefaultLimits())
+	_, err := Read(`<a/><b/>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for multiple top-level elements")
 	}
-	pe, ok := err.(*ParseError)
+	pe, ok := err.(*omnist.ParseError)
 	if !ok {
-		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+		t.Fatalf("expected *omnist.ParseError, got %T: %v", err, err)
 	}
-	if pe.Code != CodeParseTrailingContent {
-		t.Errorf("got code %v, want %v", pe.Code, CodeParseTrailingContent)
+	if pe.Code != omnist.CodeParseTrailingContent {
+		t.Errorf("got code %v, want %v", pe.Code, omnist.CodeParseTrailingContent)
 	}
 }
 
 func TestReadXMLRejectsTextBeforeRoot(t *testing.T) {
-	_, err := ReadXML(`stray text<a/>`, DefaultLimits())
+	_, err := Read(`stray text<a/>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for text before the root element")
 	}
 }
 
 func TestReadXMLRejectsStrayEndElementBeforeRoot(t *testing.T) {
-	_, err := ReadXML(`</a>`, DefaultLimits())
+	_, err := Read(`</a>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for a stray closing tag before any root element")
 	}
@@ -244,14 +246,14 @@ func TestReadXMLSkipsCommentAndProcInstInsideElementBody(t *testing.T) {
 	// A comment/processing instruction interleaved with actual child
 	// elements must be ignored without disturbing sibling order.
 	src := "<a><b/><!-- c --><?pi d?><e/></a>"
-	d, err := ReadXML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	node, _ := d.Node.Edges[0].Target.Node()
-	want := NewNode().
-		AddValue("b", ScalarValue(NewStringScalar(""))).
-		AddValue("e", ScalarValue(NewStringScalar("")))
+	want := omnist.NewNode().
+		AddValue("b", omnist.ScalarValue(omnist.NewStringScalar(""))).
+		AddValue("e", omnist.ScalarValue(omnist.NewStringScalar("")))
 	if !nodeEqual(node, want) {
 		t.Errorf("got %+v, want %+v", node, want)
 	}
@@ -259,11 +261,11 @@ func TestReadXMLSkipsCommentAndProcInstInsideElementBody(t *testing.T) {
 
 func TestReadXMLSkipsCommentAndProcInstAfterRoot(t *testing.T) {
 	src := "<a/>\n<!-- trailing comment -->\n<?pi data?>\n"
-	d, err := ReadXML(src, DefaultLimits())
+	d, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := NodeDocument(NewNode().AddValue("a", ScalarValue(NewStringScalar(""))))
+	want := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewStringScalar(""))))
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
@@ -273,28 +275,28 @@ func TestReadXMLRejectsMalformedContentAfterRoot(t *testing.T) {
 	// Unterminated element after the root closes: a genuine decoder error,
 	// not just a trailing-content shape violation, must surface from
 	// checkTrailing too.
-	_, err := ReadXML(`<a/><b`, DefaultLimits())
+	_, err := Read(`<a/><b`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for malformed content after the root element")
 	}
-	if _, ok := err.(*ParseError); !ok {
-		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Fatalf("expected *omnist.ParseError, got %T: %v", err, err)
 	}
 }
 
 func TestReadXMLRejectsTextAfterRoot(t *testing.T) {
-	_, err := ReadXML(`<a/>stray`, DefaultLimits())
+	_, err := Read(`<a/>stray`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for text after the root element")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeParseTrailingContent {
-		t.Fatalf("got %v (%T), want CodeParseTrailingContent", err, err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseTrailingContent {
+		t.Fatalf("got %v (%T), want omnist.CodeParseTrailingContent", err, err)
 	}
 }
 
 func TestReadXMLRejectsEmptyInput(t *testing.T) {
-	_, err := ReadXML(``, DefaultLimits())
+	_, err := Read(``, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for empty input")
 	}
@@ -304,56 +306,56 @@ func TestReadXMLRejectsEmptyInput(t *testing.T) {
 
 func TestReadXMLEnforcesMaxDepth(t *testing.T) {
 	src := "<a><b><c><d>x</d></c></b></a>"
-	limits := Limits{MaxDepth: 2, MaxNodes: 1_000_000, MaxIntDigits: 4300}
-	_, err := ReadXML(src, limits)
+	limits := omnist.Limits{MaxDepth: 2, MaxNodes: 1_000_000, MaxIntDigits: 4300}
+	_, err := Read(src, limits)
 	if err == nil {
 		t.Fatal("expected a depth-limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitDepth {
-		t.Fatalf("got %v (%T), want CodeDocumentLimitDepth", err, err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
+		t.Fatalf("got %v (%T), want omnist.CodeDocumentLimitDepth", err, err)
 	}
 }
 
 func TestReadXMLEnforcesMaxNodes(t *testing.T) {
 	src := "<a><b/><c/><d/></a>"
-	limits := Limits{MaxDepth: 200, MaxNodes: 2, MaxIntDigits: 4300}
-	_, err := ReadXML(src, limits)
+	limits := omnist.Limits{MaxDepth: 200, MaxNodes: 2, MaxIntDigits: 4300}
+	_, err := Read(src, limits)
 	if err == nil {
 		t.Fatal("expected a node-count-limit error")
 	}
-	pe, ok := err.(*ParseError)
-	if !ok || pe.Code != CodeDocumentLimitNodes {
-		t.Fatalf("got %v (%T), want CodeDocumentLimitNodes", err, err)
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeDocumentLimitNodes {
+		t.Fatalf("got %v (%T), want omnist.CodeDocumentLimitNodes", err, err)
 	}
 }
 
 // --- malformed XML surfaces a parse error, not a panic ---
 
 func TestReadXMLMalformedInputReturnsParseError(t *testing.T) {
-	_, err := ReadXML(`<a><b></a>`, DefaultLimits())
+	_, err := Read(`<a><b></a>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for mismatched tags")
 	}
-	if _, ok := err.(*ParseError); !ok {
-		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Fatalf("expected *omnist.ParseError, got %T: %v", err, err)
 	}
 }
 
 func TestReadXMLUnterminatedElementReturnsParseError(t *testing.T) {
-	_, err := ReadXML(`<a><b>`, DefaultLimits())
+	_, err := Read(`<a><b>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for unterminated element")
 	}
-	if _, ok := err.(*ParseError); !ok {
-		t.Fatalf("expected *ParseError, got %T: %v", err, err)
+	if _, ok := err.(*omnist.ParseError); !ok {
+		t.Fatalf("expected *omnist.ParseError, got %T: %v", err, err)
 	}
 }
 
 // --- mixed content: narrow/cosmetic, elements win over stray text ---
 
 func TestReadXMLMixedContentDiscardsStrayText(t *testing.T) {
-	d, err := ReadXML(`<a>hello<b>x</b>world</a>`, DefaultLimits())
+	d, err := Read(`<a>hello<b>x</b>world</a>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +363,7 @@ func TestReadXMLMixedContentDiscardsStrayText(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected a as a node")
 	}
-	want := NewNode().AddValue("b", ScalarValue(NewStringScalar("x")))
+	want := omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("x")))
 	if !nodeEqual(node, want) {
 		t.Errorf("got %+v, want %+v", node, want)
 	}

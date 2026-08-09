@@ -7,6 +7,7 @@ import (
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/formats/json"
 	"github.com/omnist-dev/omnist-go/formats/toml"
+	"github.com/omnist-dev/omnist-go/formats/xml"
 	"github.com/omnist-dev/omnist-go/formats/yaml"
 	"github.com/omnist-dev/omnist-go/oml"
 	"github.com/omnist-dev/omnist-go/osd"
@@ -51,7 +52,7 @@ func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, e
 	case "toml":
 		return toml.Read(text, limits)
 	case "xml":
-		return omnist.ReadXML(text, limits)
+		return xml.Read(text, limits)
 	default:
 		return omnist.Document{}, fmt.Errorf("unrecognized format %q", format)
 	}
@@ -283,7 +284,7 @@ func runWrite(v Vector) Result {
 		}
 		text, werr = toml.Write(doc)
 	case "xml":
-		text, werr = omnist.WriteXML(doc)
+		text, werr = xml.Write(doc)
 	default:
 		return fail(v, "unrecognized format %q", in.Format)
 	}
