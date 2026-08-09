@@ -527,17 +527,65 @@ func buildNesting(n int) string {
 }
 
 func TestNestingDepthBoundaryOK(t *testing.T) {
-	// 200 '{' levels, per §4.7's boundary table.
-	src := buildNesting(200)
+	// Depth is counted from the Document root (spec §2.4): the implicit
+	// top-level node is level 1, so 199 explicit '{' levels plus the root
+	// is exactly the default 200-level limit, per §4.7's boundary table.
+	src := buildNesting(199)
 	if _, err := Read(src, omnist.DefaultLimits()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestNestingDepthExceeded(t *testing.T) {
-	src := buildNesting(201)
+	// 200 explicit '{' levels plus the root is 201 -- one past the limit.
+	src := buildNesting(200)
 	pe := mustFail(t, src)
 	wantCode(t, pe, omnist.CodeDocumentLimitDepth)
+}
+
+// TestRootNodeCountsTowardDepthAndNodeLimits pins the off-by-one fix
+// directly (beyond the boundary tests above, which only exercise it
+// indirectly through the default 200-level limit): the implicit
+// top-level node itself must count as one level of depth and one node,
+// matching spec §2.4's "counted from the Document root". Regression
+// vectors: document-model/limits/{depth,node-count}-one-past-declared-
+// limit-fails.
+func TestRootNodeCountsTowardDepthAndNodeLimits(t *testing.T) {
+	limits := omnist.DefaultLimits()
+	limits.MaxDepth = 3
+	if _, err := Read("a: { b: { c: 1 } }", limits); err != nil {
+		t.Fatalf("depth exactly at limit: unexpected error: %v", err)
+	}
+	pe := mustFailWithLimits(t, "a: { b: { c: { d: 1 } } }", limits)
+	wantCode(t, pe, omnist.CodeDocumentLimitDepth)
+
+	nodeLimits := omnist.DefaultLimits()
+	nodeLimits.MaxNodes = 1
+	pe = mustFailWithLimits(t, "a: { b: 1 }", nodeLimits)
+	wantCode(t, pe, omnist.CodeDocumentLimitNodes)
+}
+
+// TestRootNodeItselfExceedsDepthLimit exercises parseDocument's EnterNode
+// error branch directly: with MaxDepth=0, even the implicit top-level
+// node (before any explicit '{') already exceeds the limit.
+func TestRootNodeItselfExceedsDepthLimit(t *testing.T) {
+	limits := omnist.DefaultLimits()
+	limits.MaxDepth = 0
+	pe := mustFailWithLimits(t, "a: 1", limits)
+	wantCode(t, pe, omnist.CodeDocumentLimitDepth)
+}
+
+func mustFailWithLimits(t *testing.T, src string, limits omnist.Limits) *omnist.ParseError {
+	t.Helper()
+	_, err := Read(src, limits)
+	if err == nil {
+		t.Fatalf("Read(%q) expected error, got none", src)
+	}
+	pe, ok := err.(*omnist.ParseError)
+	if !ok {
+		t.Fatalf("Read(%q) error is not *omnist.ParseError: %T %v", src, err, err)
+	}
+	return pe
 }
 
 func TestCustomLimits(t *testing.T) {
