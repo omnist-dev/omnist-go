@@ -41,30 +41,28 @@ jobs:
           # of its branches are per-operation drivers that only make sense
           # exercised against real vectors, not synthesized in isolation.
           #
-          # cmd/omnist/** is also excluded (issue #37, same reasoning
-          # cited by that issue for possibly needing this treatment):
-          # main() itself calls os.Exit and can't be driven from a normal
-          # Go test without terminating the test binary, so it's verified
-          # instead by real subprocess invocations of the built binary
-          # (cmd/omnist/subprocess_test.go) rather than unit coverage.
-          # Every actual command-logic function in cmd/omnist reached
-          # 97-100% line coverage from run_test.go's in-process tests
-          # before this exclusion was added (99.2% package-wide with only
-          # main() and one now-dead error branch in cmdMaterialize
-          # uncovered -- Materialize's err return is documented in
-          # materialize.go as "always nil today", kept only for future
-          # signature stability, so there is currently no way to make
-          # that branch return a non-nil error to exercise it). A
-          # regression that drops real command-logic coverage in this
-          # package won't be caught by this gate; watch it the same way
-          # tools/conformance/** is watched, by review rather than CI.
-          uncovered=$(go tool cover -func=coverage.out | grep -v '^total:' | grep -v '100.0%$' | grep -v '^github.com/omnist-dev/omnist-go/tools/conformance/' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/' || true)
+          # Two specific functions in cmd/omnist are excluded (issue #37),
+          # scoped tightly rather than excluding the whole package -- every
+          # other function in cmd/omnist holds the normal 100% bar via
+          # run_test.go's in-process tests, so a regression anywhere else
+          # in that package still fails this gate:
+          #   - app.go's main(): calls os.Exit, can't be driven from a
+          #     normal `go test` without terminating the test binary.
+          #     Verified instead by real subprocess invocations of the
+          #     built binary (cmd/omnist/subprocess_test.go).
+          #   - cmd_materialize.go's cmdMaterialize (97.1%): one branch
+          #     handling a non-nil error from Materialize, which
+          #     materialize.go's own doc comment says is "always nil
+          #     today" (kept only for future signature stability) -- there
+          #     is currently no way to make that branch return a non-nil
+          #     error to exercise it.
+          uncovered=$(go tool cover -func=coverage.out | grep -v '^total:' | grep -v '100.0%$' | grep -v '^github.com/omnist-dev/omnist-go/tools/conformance/' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/app.go:.*[[:space:]]main[[:space:]]' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/cmd_materialize.go:.*[[:space:]]cmdMaterialize[[:space:]]' || true)
           if [ -n "$uncovered" ]; then
             echo "The following functions are not fully covered:"
             echo "$uncovered"
             exit 1
           fi
-          echo "100% line coverage confirmed (tools/conformance/** and cmd/omnist/** excluded, see comment)."
+          echo "100% line coverage confirmed (tools/conformance/** and two cmd/omnist functions excluded, see comment)."
 
   lint:
     runs-on: ubuntu-latest
