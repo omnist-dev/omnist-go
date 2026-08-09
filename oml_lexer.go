@@ -74,6 +74,20 @@ type lexer struct {
 	col  int
 
 	limits *LimitChecker
+
+	// valuePath is the Document path (spec §8.4) of the edge value the
+	// parser is about to tokenize, e.g. "$.n" — set by the parser right
+	// before it calls advance() to read a value token, and used only to
+	// path a document.limit.int-digits diagnostic correctly (that code is
+	// document.*, so per §8.4 it MUST carry a Document path, never the
+	// text-position path every other diagnostic in this file uses; a
+	// parse.* diagnostic never consults this field). Left empty when no
+	// value is pending (e.g. while reading a label or punctuation), in
+	// which case CheckIntDigits falls back to a text-position path — this
+	// only matters for a lone top-level integer with no enclosing label,
+	// which document.limit.int-digits cannot presently pin an example of
+	// a Document path for since there's no label to name.
+	valuePath string
 }
 
 func newLexer(text string, limits *LimitChecker) *lexer {
@@ -119,24 +133,28 @@ func (l *lexer) skipTrivia() (sawSep bool, sepLine, sepCol int) {
 		case ' ', '\t':
 			l.advance()
 		case '\r':
-			// CRLF or lone CR both count as a newline separator.
-			if !sawSep {
-				sawSep, sepLine, sepCol = true, l.line, l.col
-			}
+			// CRLF or lone CR both count as a newline separator. The
+			// reported position is where valid content would have had to
+			// start instead of the separator — i.e. just past it, not the
+			// separator character's own position — per the conformance
+			// vector oml-grammar/arrays/newline-inside-array-is-an-error.
 			l.advance()
 			if l.peekRune() == '\n' {
 				l.advance()
 			}
+			if !sawSep {
+				sawSep, sepLine, sepCol = true, l.line, l.col
+			}
 		case '\n':
+			l.advance()
 			if !sawSep {
 				sawSep, sepLine, sepCol = true, l.line, l.col
 			}
-			l.advance()
 		case ';':
+			l.advance()
 			if !sawSep {
 				sawSep, sepLine, sepCol = true, l.line, l.col
 			}
-			l.advance()
 		case '#':
 			for !l.atEOF() && l.peekRune() != '\n' {
 				l.advance()
@@ -232,8 +250,12 @@ func (l *lexer) next() (token, *ParseError) {
 		if strings.HasPrefix(m, "-") {
 			digits--
 		}
-		if diag := l.limits.CheckIntDigits(fmt.Sprintf("%d:%d", startLine, startCol), digits); diag != nil {
-			return token{}, &ParseError{Line: startLine, Col: startCol, Path: fmt.Sprintf("%d:%d", startLine, startCol), Code: diag.Code, Message: diag.Message}
+		digitPath := fmt.Sprintf("%d:%d", startLine, startCol)
+		if l.valuePath != "" {
+			digitPath = l.valuePath
+		}
+		if diag := l.limits.CheckIntDigits(digitPath, digits); diag != nil {
+			return token{}, &ParseError{Line: startLine, Col: startCol, Path: digitPath, Code: diag.Code, Message: diag.Message}
 		}
 		bi, _ := new(big.Int).SetString(m, 10)
 		return token{kind: tokInteger, text: m, intVal: bi, intDigits: digits, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
@@ -403,7 +425,6 @@ func (l *lexer) scanDQuoteString() (token, *ParseError) {
 		if l.atEOF() {
 			return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
 		}
-		cLine, cCol := l.line, l.col
 		r := l.advance()
 		switch {
 		case r == '"':
@@ -412,11 +433,11 @@ func (l *lexer) scanDQuoteString() (token, *ParseError) {
 			if l.atEOF() {
 				return token{}, l.errAt(startLine, startCol, CodeParseUnterminatedString, "unterminated string")
 			}
-			if err := l.scanEscape(&b, cLine, cCol); err != nil {
+			if err := l.scanEscape(&b, startLine, startCol); err != nil {
 				return token{}, err
 			}
 		case r < 0x20:
-			return token{}, l.errAt(cLine, cCol, CodeParseControlCharacter, "control character in string")
+			return token{}, l.errAt(startLine, startCol, CodeParseControlCharacter, "control character in string")
 		default:
 			b.WriteRune(r)
 		}

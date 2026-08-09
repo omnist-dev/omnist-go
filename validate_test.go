@@ -140,6 +140,33 @@ func TestValidateWrongScalarKind(t *testing.T) {
 	}
 }
 
+// TestValidateIntegerDoesNotSatisfyNumberTypedField pins issue #33's
+// Category E finding: validate.go's conformScalar is a bare kind-equality
+// check (spec §3.6.1's conform_scalar/matches_kind), deliberately with no
+// integer<:number allowance. That allowance exists only for schema-level
+// subtyping (§6.3, compatible_with.go) and for materialize's try_upgrade
+// table (§7.2, "1 -> number: Yes") — a genuinely different operation from
+// validate ("Validation checks, it never converts", §3.6). Conformance
+// vector validate/scalar-kinds/integer-satisfies-number-typed-field
+// expects this to succeed, which contradicts both of those spec sections
+// read together; this repo treats that vector as a defect (it tests
+// materialize's allowance against validate's stricter rule) rather than
+// weakening validate to match it. See the issue report for the full
+// spec trace.
+func TestValidateIntegerDoesNotSatisfyNumberTypedField(t *testing.T) {
+	rec := &Record{
+		Name:   "R",
+		Fields: []Field{{Label: "n", Type: ScalarType(KindNumber, false), Cardinality: DefaultCardinality()}},
+	}
+	s := Schema{Root: "R", Env: map[string]*Record{"R": rec}}
+	n := NewNode()
+	n.AddValue("n", ScalarValue(NewIntegerScalar(big.NewInt(1))))
+	got := Validate(NodeDocument(n), s)
+	if len(got) != 1 || got[0].Code != CodeValidateTypeMismatch || got[0].Path != "$.n" {
+		t.Fatalf("Validate() = %+v, want single type-mismatch at $.n (integer must not satisfy a number-typed field at the validate layer)", got)
+	}
+}
+
 func TestValidateUndeclaredFieldNoDescent(t *testing.T) {
 	s := personSchema()
 	n := validPerson()

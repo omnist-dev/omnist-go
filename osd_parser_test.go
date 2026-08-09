@@ -191,8 +191,12 @@ func TestWorkedCapitalizedAnyUnknown(t *testing.T) {
 // --- §5.2 quoting rule ---
 
 func TestQuotedStringInTypePositionIsError(t *testing.T) {
+	// Per osd-grammar/labels/quoted-string-in-type-position-is-rejected
+	// (spec §5.2's quoting rule, omnist-spec#35): a quoted string in type
+	// position is schema.quoted-type, the symmetric counterpart of
+	// schema.unquoted-label, pathed to the enclosing record ("R").
 	err := mustFailOSD(t, `record R { "a": "string" } root R`)
-	wantParseErrCode(t, err, CodeParseUnexpectedToken)
+	wantDiag(t, err, CodeSchemaQuotedType, "R")
 }
 
 // --- §5.3.1 string unescaping ---
@@ -328,8 +332,12 @@ func TestS4DuplicateRecordName(t *testing.T) {
 
 // S-5: unique field labels per record.
 func TestS5DuplicateFieldLabel(t *testing.T) {
+	// Per osd-grammar/records/duplicate-field-label-in-one-record-is-an-error
+	// the path is the record itself ("R"), a Schema record-level path, not
+	// "R.a" — this is a record-level diagnostic (two fields sharing one
+	// label), not a field-level one.
 	err := mustFailOSD(t, `record R { "a": string, "a": integer } root R`)
-	wantDiag(t, err, CodeSchemaDuplicateField, "R.a")
+	wantDiag(t, err, CodeSchemaDuplicateField, "R")
 }
 
 // S-6: dangling reference (already covered above for a field and for

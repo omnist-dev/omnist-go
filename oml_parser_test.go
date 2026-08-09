@@ -88,9 +88,15 @@ func TestWorkedMultilineFourClosingQuotes(t *testing.T) {
 
 func TestWorkedNanLabelError(t *testing.T) {
 	// nan is a NUMBER token and never reaches label position: the parser
-	// sees NUMBER, COLON — trailing content after the scalar-branch nan.
+	// sees NUMBER, COLON. Per
+	// oml-grammar/reserved/nan-bare-is-a-number-token-not-a-label, this is
+	// parse.unexpected-token, not parse.trailing-content — unlike the
+	// analogous null/true/false case (TestWorkedNullAtTopLevel below), a
+	// leftover ':' after a NUMBER was never a candidate for label
+	// position at all, so it is simply out of place rather than a
+	// continuation of an almost-valid construct.
 	pe := mustFail(t, `nan: 1`)
-	wantCode(t, pe, CodeParseTrailingContent)
+	wantCode(t, pe, CodeParseUnexpectedToken)
 }
 
 func TestWorkedQuotedNan(t *testing.T) {
@@ -312,10 +318,16 @@ func TestMultilineUnterminated(t *testing.T) {
 
 func TestMultilineFiveClosingQuotesLeavesTwoLiteralQuotes(t *testing.T) {
 	// first 3 close it; the remaining 2 quotes form a new (empty,
-	// well-formed) dquote-string token, which then has no separator
-	// before it -> "missing separator between edges", not unterminated.
+	// well-formed) dquote-string token, immediately following with no
+	// separator before it and nothing (EOF) after it — so, per the same
+	// §4.6.1-lookahead reasoning oml-grammar/temporals/
+	// date-then-non-time-suffix-is-date-plus-trailing-content pins for an
+	// analogous leftover IDENT, this reads as trailing content rather
+	// than a missing separator between two edges: the leftover token
+	// never goes on to look like a genuine second edge (it isn't followed
+	// by ':'), so there's no "edge" it could be missing a separator from.
 	pe := mustFail(t, "a: \"\"\"x\"\"\"\"\"")
-	wantCode(t, pe, CodeParseUnexpectedToken)
+	wantCode(t, pe, CodeParseTrailingContent)
 }
 
 // --- arrays ---
@@ -821,4 +833,119 @@ func TestArraySeparatorRightAfterOpenBracket(t *testing.T) {
 func TestArrayElementBareWordError(t *testing.T) {
 	pe := mustFail(t, `a: [x]`)
 	wantCode(t, pe, CodeParseBareWord)
+}
+
+// --- issue #33: string-literal error positions anchor to the opening
+// quote, not the byte that triggered the error ---
+
+func TestControlCharacterInStringAnchorsToOpeningQuote(t *testing.T) {
+	// a: "hi\nthere" -- the literal newline inside the string is the
+	// control character; the diagnostic anchors to the opening '"' (col
+	// 4), per oml-grammar/errors/literal-control-character-in-string-is-an-error.
+	pe := mustFail(t, "a: \"hi\nthere\"\n")
+	wantCode(t, pe, CodeParseControlCharacter)
+	if pe.Line != 1 || pe.Col != 4 {
+		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
+	}
+}
+
+func TestUnrecognizedEscapeAnchorsToOpeningQuote(t *testing.T) {
+	pe := mustFail(t, `a: "\q"`)
+	wantCode(t, pe, CodeParseInvalidEscape)
+	if pe.Line != 1 || pe.Col != 4 {
+		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
+	}
+}
+
+func TestUnpairedHighSurrogateAnchorsToOpeningQuote(t *testing.T) {
+	pe := mustFail(t, `a: "\ud800"`)
+	wantCode(t, pe, CodeParseUnpairedSurrogate)
+	if pe.Line != 1 || pe.Col != 4 {
+		t.Errorf("got %d:%d, want 1:4", pe.Line, pe.Col)
+	}
+}
+
+// --- issue #33: a newline inside an array reports the position just past
+// the newline, not the newline character's own column ---
+
+func TestNewlineInsideArrayReportsPositionAfterNewline(t *testing.T) {
+	pe := mustFail(t, "b: [1\n2]\n")
+	wantCode(t, pe, CodeParseSeparatorInArray)
+	if pe.Line != 2 || pe.Col != 1 {
+		t.Errorf("got %d:%d, want 2:1", pe.Line, pe.Col)
+	}
+}
+
+// --- issue #33: date-then-non-time-suffix is DATE + trailing content,
+// not a missing-separator error ---
+
+func TestDateThenNonTimeSuffixIsTrailingContent(t *testing.T) {
+	pe := mustFail(t, "a: 2024-01-01T99\n")
+	wantCode(t, pe, CodeParseTrailingContent)
+	if pe.Line != 1 || pe.Col != 14 {
+		t.Errorf("got %d:%d, want 1:14", pe.Line, pe.Col)
+	}
+}
+
+// --- issue #33: document.limit.depth/nodes diagnostics carry the "$"
+// Document-path fallback (spec §8.4), never a text-position path ---
+
+func TestBracedNodeDepthLimitUsesDollarPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxDepth = 1
+	_, err := ReadOML(`a: { b: { c: 1 } }`, limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentLimitDepth {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitDepth)
+	}
+	if pe.Path != "$" {
+		t.Errorf("path = %q, want %q", pe.Path, "$")
+	}
+}
+
+// --- issue #33: document.limit.int-digits carries the Document path of
+// the offending edge, e.g. "$.n", not a text-position path ---
+
+func TestIntDigitsLimitUsesDocumentPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxIntDigits = 3
+	_, err := ReadOML("n: 1000\n", limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Code != CodeDocumentLimitIntDigits {
+		t.Errorf("code = %q, want %q", pe.Code, CodeDocumentLimitIntDigits)
+	}
+	if pe.Path != "$.n" {
+		t.Errorf("path = %q, want %q", pe.Path, "$.n")
+	}
+}
+
+// --- issue #33: an in-bounds int-digits value nested inside a brace still
+// gets a nested Document path ---
+
+func TestIntDigitsLimitUsesNestedDocumentPath(t *testing.T) {
+	limits := DefaultLimits()
+	limits.MaxIntDigits = 3
+	_, err := ReadOML("a: { n: 1000 }", limits)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	pe, ok := err.(*ParseError)
+	if !ok {
+		t.Fatalf("error is not *ParseError: %T %v", err, err)
+	}
+	if pe.Path != "$.a.n" {
+		t.Errorf("path = %q, want %q", pe.Path, "$.a.n")
+	}
 }

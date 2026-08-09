@@ -43,6 +43,12 @@ const (
 	CodeSchemaUnquotedLabel         Code = "schema.unquoted-label"
 	CodeSchemaNullableRef           Code = "schema.nullable-ref"
 	CodeSchemaNullableAny           Code = "schema.nullable-any"
+	// CodeSchemaQuotedType is the reverse of CodeSchemaUnquotedLabel, per
+	// spec §5.2's quoting rule (added upstream via omnist-spec#35): a
+	// quoted string in type position is a data string and can never
+	// legally appear there, since type position only ever accepts a bare
+	// schema name (a scalar keyword, `any`, or a reference).
+	CodeSchemaQuotedType Code = "schema.quoted-type"
 )
 
 // validate.* — document against schema (spec §8.3.4).

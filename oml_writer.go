@@ -48,6 +48,15 @@ func WriteOML(d Document, compact bool) string {
 			writeOMLNodeEdgesCompact(&b, d.Node)
 		} else {
 			writeOMLNodeEdgesPretty(&b, d.Node, 0)
+			if len(d.Node.Edges) > 0 {
+				// The pretty-printed form is a text file, one edge per
+				// line (§4.1's own layout convention this writer
+				// follows) — a trailing newline after the last line is
+				// the conventional text-file terminator, confirmed by
+				// every one of this suite's formats-oml/basic/*-on-write
+				// vectors expecting one.
+				b.WriteByte('\n')
+			}
 		}
 		return b.String()
 	}
@@ -202,15 +211,22 @@ func formatOMLDate(d DateValue) string {
 // "seconds omitted", so omitting a zero seconds/fraction component is a
 // reasonable, round-trip-safe canonicalization rather than a spec
 // requirement.
+// formatOMLTime renders a TimeValue per the canonical OML writer. Seconds
+// are always emitted, even when zero (":00"): the Document model does not
+// distinguish "seconds explicitly written in the source" from "seconds
+// defaulted to zero" (TimeValue carries no such flag), so omitting a zero
+// second field would silently drop information the value may have
+// genuinely had — confirmed by
+// formats-oml/basic/genuine-time-writes-bare, which pins "12:00:00" (not
+// "12:00") as the canonical spelling for an exact-noon TimeValue. The
+// fractional part is still omitted when Nanosecond is zero, since a
+// fraction has no analogous "always show" convention to pin against.
 func formatOMLTime(t TimeValue) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%02d:%02d", t.Hour, t.Minute)
-	if t.Second != 0 || t.Nanosecond != 0 {
-		fmt.Fprintf(&b, ":%02d", t.Second)
-		if t.Nanosecond != 0 {
-			b.WriteByte('.')
-			b.WriteString(formatOMLFraction(t.Nanosecond))
-		}
+	fmt.Fprintf(&b, "%02d:%02d:%02d", t.Hour, t.Minute, t.Second)
+	if t.Nanosecond != 0 {
+		b.WriteByte('.')
+		b.WriteString(formatOMLFraction(t.Nanosecond))
 	}
 	if t.HasOffset {
 		off := t.OffsetSeconds
