@@ -88,6 +88,24 @@ func (p *parser) parseDocument() (omnist.Document, error) {
 	}
 
 	if p.looksLikeEdgeStart() {
+		// The implicit top-level node (no surrounding '{'/'}') is still a
+		// node for depth/node-count purposes -- spec Sec2.4's depth is
+		// "counted from the Document root", so the root itself is level 1,
+		// not level 0. parseBracedNode's EnterNode/LeaveNode pair (for
+		// every explicit '{...}') mirrors this same accounting; without an
+		// EnterNode call here, the root was silently uncounted, undercounting
+		// both depth and node count by exactly one relative to every nested
+		// node inside it -- found via a conformance-vector correction that
+		// exposed the off-by-one directly (document-model/limits/
+		// depth-one-past-declared-limit-fails and node-count-one-past-
+		// declared-limit-fails both expected a document.limit.* rejection
+		// this repo was not producing).
+		diag := p.checker.EnterNode("$")
+		if diag != nil {
+			return omnist.Document{}, &omnist.ParseError{Line: p.cur.line, Col: p.cur.col, Path: "$", Code: diag.Code, Message: diag.Message}
+		}
+		defer p.checker.LeaveNode()
+
 		// parseNodeEdges(tokEOF) only returns successfully once p.cur is
 		// tokEOF (that is its loop's own exit condition), so there is no
 		// separate trailing-content check to make here.
