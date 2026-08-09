@@ -1,0 +1,43 @@
+site_name: omnist-go
+site_description: A from-scratch, spec-first Go implementation of Omnist.
+site_url: https://go.omnist.dev/
+repo_url: https://github.com/omnist-dev/omnist-go
+repo_name: omnist-dev/omnist-go
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+markdown_extensions:
+  - tables
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - CLI: cli.md
+  - Workflow playbook: workflow-playbook.md
+  - Status & limitations: limitations.md
