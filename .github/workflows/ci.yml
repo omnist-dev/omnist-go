@@ -75,6 +75,46 @@ jobs:
         with:
           version: v2.5.0
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Fuzz the six format readers (issue #57)
+        run: |
+          # This step is deliberately short and time-boxed -- 10s per
+          # reader, 60s total -- not an unbounded fuzz run. Its job is
+          # twofold:
+          #
+          #  1. Regression protection: every one of the six FuzzRead
+          #     functions' testdata/fuzz/FuzzRead/* corpus (committed
+          #     whenever a local `go test -fuzz` run finds a crasher, per
+          #     Go's standard fuzzing convention) already runs as part of
+          #     the `test` job above via plain `go test ./...` -- that
+          #     alone re-checks every previously-found crasher on every
+          #     push. This job's own short -fuzz burst is additional,
+          #     exploratory coverage beyond the fixed corpus, not the
+          #     regression check itself.
+          #  2. A cheap tripwire for new crashers: readers are the one
+          #     class of code in this repo that consumes untrusted input
+          #     (see FuzzRead's doc comment in each package for why), so a
+          #     little continuous exploration on every push is worth 60s
+          #     of CI time even though it can never be exhaustive.
+          #
+          # A real, longer local fuzz run (30-60s per package) is how
+          # issue #57 itself was verified before committing -- this step
+          # is not a substitute for that, just an ongoing cheap check.
+          set -e
+          for pkg in ./oml ./osd ./formats/json ./formats/yaml ./formats/toml ./formats/xml; do
+            echo "::group::fuzz $pkg"
+            go test "$pkg" -run=FuzzRead -fuzz=FuzzRead -fuzztime=10s
+            echo "::endgroup::"
+          done
+
   conformance:
     runs-on: ubuntu-latest
     steps:

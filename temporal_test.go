@@ -96,3 +96,19 @@ func TestFormatISODate(t *testing.T) {
 		t.Errorf("FormatISODate(...) = %q, want %q", got, want)
 	}
 }
+
+// TestMatchesISOKindEmptyString exercises MatchesISOKind's empty-string
+// guard directly, for the same cross-package coverage-attribution reason
+// as the tests above: formats/toml's fuzz-found regression tests (issue
+// #57) call this guard by way of parseTOMLDateTime, but that only
+// instruments formats/toml's own coverage, not this package's. Found via
+// fuzzing: regexp.FindString("") == "" whether or not the regex actually
+// matched, so without this guard an empty string would spuriously
+// "match" every kind.
+func TestMatchesISOKindEmptyString(t *testing.T) {
+	for _, kind := range []TemporalKind{TemporalDate, TemporalTime, TemporalDateTime} {
+		if MatchesISOKind("", kind) {
+			t.Errorf("MatchesISOKind(\"\", %v) = true, want false", kind)
+		}
+	}
+}
