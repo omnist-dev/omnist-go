@@ -1,5 +1,6 @@
 # CLI reference
 
+<!-- doc-illustrative -->
 ```bash
 go install github.com/omnist-dev/omnist-go/cmd/omnist@latest
 ```
@@ -8,6 +9,7 @@ There's no spec-mandated CLI contract — `omnist-spec` documents Python's CLI s
 
 ## Commands
 
+<!-- doc-illustrative -->
 ```
 omnist parse --from FORMAT [--to FORMAT] [-o FILE] INPUT
 omnist validate --from FORMAT --schema SCHEMA INPUT
@@ -40,18 +42,21 @@ The three boolean schema commands (`compatible-with`, `equivalent`, `is-empty`) 
 
 Convert JSON to YAML:
 
+<!-- doc-illustrative -->
 ```bash
 echo '{"name": "Ann", "tags": ["a", "b"]}' | omnist parse --from json --to yaml -
 ```
 
 Validate a document against a schema:
 
+<!-- doc-illustrative -->
 ```bash
 omnist validate --from json --schema person.osd person.json
 ```
 
 Check whether a schema change is backward-compatible:
 
+<!-- doc-illustrative -->
 ```bash
 omnist schema compatible-with new.osd old.osd
 ```

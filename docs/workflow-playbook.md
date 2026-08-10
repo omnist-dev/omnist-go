@@ -73,6 +73,7 @@ representable without an extra indirection layer.
 **Decision**: a tagged struct with a `Kind` discriminant and one field per
 kind's Go-native representation:
 
+<!-- doc-illustrative -->
 ```go
 type ScalarKind int
 
@@ -136,6 +137,7 @@ in code.
 
 **Decision**: structured errors from day one —
 
+<!-- doc-illustrative -->
 ```go
 type ParseError struct {
     Line    int
@@ -282,3 +284,35 @@ sat undetected through several releases as a result.
   itself, not just in a PR description.
 - Don't trust a "this gate is just flaky" claim without checking the gate's
   actual current behavior first.
+
+## 7. Doc-example verification gate (issue #62)
+
+Every fenced code block in `docs/*.md` needs an HTML-comment marker
+directly above the block:
+
+- `<!-- verified-by: path/to/test.go::TestOrExampleName -->` -- there is a
+  real Go test (prefer a `godoc`-style `Example` function with a real
+  `// Output:` comment, since `go test` executes it directly) whose
+  assertions cover this exact block's literal displayed content, not just
+  a related code path.
+- `<!-- doc-illustrative -->` -- the block is conceptual/non-runnable (a
+  CLI transcript, a design-decision snapshot, a bare fragment) and
+  deliberately has no backing test. Don't force a test onto something that
+  isn't real runnable code just to satisfy the gate.
+
+`tools/check_doc_examples.go` (run as the CI job `doc-examples` in
+`.github/workflows/ci.yml`) diffs `docs/*.md` against `origin/main...HEAD`
+and fails if any *added or changed* code block lacks one of the two
+markers. It does not retroactively flag pre-existing unmarked blocks --
+but as of issue #62 there are none, so keep it that way going forward:
+mark every new or edited block when you touch a doc page.
+
+**Known trap**: a local run of the checker against uncommitted changes
+gives a false "passed", because it diffs against `origin/main`, not the
+working tree. Commit before trusting a local run.
+
+When writing `verified-by`, actually open the test and confirm it asserts
+the doc's literal displayed text/output -- a test whose name merely sounds
+related is not sufficient. (The Python port shipped a stale version-string
+doc example undetected for 5+ releases this way; the guarding test checked
+the live version constant, never the doc's own literal text.)

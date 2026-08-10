@@ -41,6 +41,13 @@ jobs:
           # of its branches are per-operation drivers that only make sense
           # exercised against real vectors, not synthesized in isolation.
           #
+          # tools/check_doc_examples/ is excluded the same way (issue #62):
+          # its primary verification is the `doc-examples` job below
+          # actually running it against real docs/*.md content (including
+          # the adversarial "does it fail on a deliberately-unmarked
+          # block" check performed when that job was built), not unit
+          # coverage of a small, single-purpose CLI tool.
+          #
           # Two specific functions in cmd/omnist are excluded (issue #37),
           # scoped tightly rather than excluding the whole package -- every
           # other function in cmd/omnist holds the normal 100% bar via
@@ -56,7 +63,7 @@ jobs:
           #     today" (kept only for future signature stability) -- there
           #     is currently no way to make that branch return a non-nil
           #     error to exercise it.
-          uncovered=$(go tool cover -func=coverage.out | grep -v '^total:' | grep -v '100.0%$' | grep -v '^github.com/omnist-dev/omnist-go/tools/conformance/' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/app.go:.*[[:space:]]main[[:space:]]' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/cmd_materialize.go:.*[[:space:]]cmdMaterialize[[:space:]]' || true)
+          uncovered=$(go tool cover -func=coverage.out | grep -v '^total:' | grep -v '100.0%$' | grep -v '^github.com/omnist-dev/omnist-go/tools/conformance/' | grep -v '^github.com/omnist-dev/omnist-go/tools/check_doc_examples/' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/app.go:.*[[:space:]]main[[:space:]]' | grep -v '^github.com/omnist-dev/omnist-go/cmd/omnist/cmd_materialize.go:.*[[:space:]]cmdMaterialize[[:space:]]' || true)
           if [ -n "$uncovered" ]; then
             echo "The following functions are not fully covered:"
             echo "$uncovered"
@@ -114,6 +121,27 @@ jobs:
             go test "$pkg" -run=FuzzRead -fuzz=FuzzRead -fuzztime=10s
             echo "::endgroup::"
           done
+
+  doc-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Verify docs/*.md code-block markers (issue #62)
+        run: |
+          # Every fenced code block in docs/*.md must carry a
+          # <!-- verified-by: ... --> or <!-- doc-illustrative --> marker
+          # for any block that's new or changed relative to origin/main.
+          # This is a doc-quality gate, not a judgment-call conformance
+          # gate (unlike the `conformance` job below) -- a missing marker
+          # is unambiguous, so this job is blocking. See
+          # docs/workflow-playbook.md Sec7 and tools/check_doc_examples/.
+          git fetch origin main
+          go run ./tools/check_doc_examples -base=origin/main
 
   conformance:
     runs-on: ubuntu-latest
