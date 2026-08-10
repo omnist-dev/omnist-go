@@ -171,6 +171,57 @@ func TestLocalSignatureRefVsScalarDiffers(t *testing.T) {
 	}
 }
 
+// TestLocalSignatureDistinguishesScalarKindsAndAny is the regression test
+// for issue #68: appendFieldSig used to collapse every non-Ref field type
+// (string, integer, ..., and even Any) into a single 'S' byte, so records
+// differing only in a field's scalar kind (or Any vs a concrete scalar)
+// wrongly shared a local signature. Per §6.8's shape_of, Any, Ref, and each
+// (kind, nullable) scalar pairing must all be distinct.
+func TestLocalSignatureDistinguishesScalarKindsAndAny(t *testing.T) {
+	stringRec := &omnist.Record{Name: "StringRec", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+	}}
+	integerRec := &omnist.Record{Name: "IntegerRec", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindInteger, false), Cardinality: omnist.DefaultCardinality()},
+	}}
+	anyRec := &omnist.Record{Name: "AnyRec", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.AnyType(), Cardinality: omnist.DefaultCardinality()},
+	}}
+
+	str := computeLocalSignature(stringRec)
+	integer := computeLocalSignature(integerRec)
+	any := computeLocalSignature(anyRec)
+
+	if str == integer {
+		t.Errorf("string and integer fields should have different local signatures, both got %q", str)
+	}
+	if str == any {
+		t.Errorf("string and any fields should have different local signatures, both got %q", str)
+	}
+	if integer == any {
+		t.Errorf("integer and any fields should have different local signatures, both got %q", integer)
+	}
+}
+
+// TestLocalSignatureDistinguishesNullability confirms a nullable scalar and
+// a non-nullable scalar of the same kind get different local signatures,
+// per §6.8's shape_of returning ("scalar", t.kind, t.nullable) — nullable
+// was previously dropped entirely, not just merged with other kinds.
+func TestLocalSignatureDistinguishesNullability(t *testing.T) {
+	nullableRec := &omnist.Record{Name: "Nullable", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, true), Cardinality: omnist.DefaultCardinality()},
+	}}
+	nonNullableRec := &omnist.Record{Name: "NonNullable", Fields: []omnist.Field{
+		{Label: "x", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+	}}
+
+	nullable := computeLocalSignature(nullableRec)
+	nonNullable := computeLocalSignature(nonNullableRec)
+	if nullable == nonNullable {
+		t.Errorf("nullable and non-nullable string fields should have different local signatures, both got %q", nullable)
+	}
+}
+
 // TestLocalSignatureIgnoresRefTarget confirms two records referencing
 // different (but at this stage un-refined) targets share a local
 // signature — the target-blindness the spec calls for in step 2, refined

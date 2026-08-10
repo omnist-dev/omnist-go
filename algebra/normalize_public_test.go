@@ -228,6 +228,74 @@ func TestEquivalenceClassesDoesNotPrune(t *testing.T) {
 	}
 }
 
+// TestEquivalenceClassesDistinguishesScalarKindsAndAny is the issue #68
+// repro at the EquivalenceClasses level: A/B/C all have a single field "x"
+// with the same label/cardinality but different type shapes (string,
+// integer, any respectively). Before the fix these all shared a local
+// signature and merged into one block; they must land in three separate
+// blocks, since they don't accept the same documents.
+func TestEquivalenceClassesDistinguishesScalarKindsAndAny(t *testing.T) {
+	s := mustParseOSD(t, `
+		record A { "x": string }
+		record B { "x": integer }
+		record C { "x": any }
+		record Top { "a": A, "b": B, "c": C }
+		root Top
+	`)
+	blocks := algebra.EquivalenceClasses(s)
+
+	blockOf := map[string]int{}
+	for i, block := range blocks {
+		for _, name := range block {
+			blockOf[name] = i
+		}
+	}
+	if blockOf["A"] == blockOf["B"] || blockOf["A"] == blockOf["C"] || blockOf["B"] == blockOf["C"] {
+		t.Fatalf("A, B, C should be in three separate equivalence-class blocks, got blocks = %v", blocks)
+	}
+}
+
+// TestEquivalenceClassesRefTargetBlindnessKeepsSameBlock is the positive
+// control for issue #68's fix: two records that differ ONLY in the target
+// name of a Ref field must still start out in the SAME initial block, since
+// local_signature is deliberately target-blind for Ref fields (only a
+// scalar's kind/nullable and Any-vs-scalar-vs-ref distinctions were added
+// by the fix; Ref target names remain excluded, left for the fixpoint
+// refinement step). LeftLeaf/RightLeaf are distinct but structurally
+// identical, so after full normalization HolderA/HolderB should merge too.
+func TestEquivalenceClassesRefTargetBlindnessKeepsSameBlock(t *testing.T) {
+	s := mustParseOSD(t, `
+		record LeafX { "v": string }
+		record LeafY { "v": string }
+		record HolderA { "target": LeafX }
+		record HolderB { "target": LeafY }
+		record Top { "a": HolderA, "b": HolderB }
+		root Top
+	`)
+	blocks := algebra.EquivalenceClasses(s)
+
+	blockOf := map[string]int{}
+	for i, block := range blocks {
+		for _, name := range block {
+			blockOf[name] = i
+		}
+	}
+	if blockOf["HolderA"] != blockOf["HolderB"] {
+		t.Fatalf("HolderA and HolderB should share an initial block (ref-target-blind local signature), got blocks = %v", blocks)
+	}
+
+	// Since LeafX/LeafY are themselves genuinely equivalent, the fixpoint
+	// should confirm the merge all the way through: normalize collapses
+	// both holder/leaf pairs.
+	got := algebra.Normalize(s)
+	wantNames := []string{"HolderA", "LeafX", "Top"}
+	gotNames := append([]string{}, got.EnvOrder...)
+	sort.Strings(gotNames)
+	if !reflect.DeepEqual(gotNames, wantNames) {
+		t.Fatalf("EnvOrder (sorted) = %v, want %v", gotNames, wantNames)
+	}
+}
+
 // TestEquivalenceClassesOrdering confirms blocks and names within blocks
 // come back in deterministic sorted order.
 func TestEquivalenceClassesOrdering(t *testing.T) {
