@@ -55,6 +55,17 @@ that don't belong to a specific codec or the algebra package.
   `NewNumberScalar`, `NewBooleanScalar`, `NewDateScalar`, `NewTimeScalar`,
   `NewDateTimeScalar`; compare with `Scalar.Equal`.
 
+  `NewIntegerScalar` takes a `*big.Int`, not a plain `int` — the one
+  constructor here that needs a concrete example, since `big.Int` isn't
+  the obvious first reach for a small literal:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_newIntegerScalar -->
+  ```go
+  s := omnist.NewIntegerScalar(big.NewInt(42))
+  fmt.Println(s.Kind, s.Int)
+  // integer 42
+  ```
+
 ### Schema model (`schema.go`)
 
 - **`Schema`** — an environment of named `Record`s plus a `Root` type
@@ -72,24 +83,104 @@ that don't belong to a specific codec or the algebra package.
   checks shape and cardinality against the schema. Never converts a
   value's type; a JSON string in a `date`-typed field fails, because
   validation checks what's already there.
+
+  A schema-typed `age: integer` field rejects a JSON string outright,
+  producing a real, populated `Diagnostic`:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_validate -->
+  ```go
+  schema, _ := osd.Read(`
+      record Person { "name": string, "age": integer }
+      root Person
+  `)
+  doc, _ := json.Read(`{"name": "Ann", "age": "42"}`, omnist.DefaultLimits())
+
+  diagnostics := omnist.Validate(doc, schema)
+  for _, d := range diagnostics {
+      fmt.Println(d.Path, d.Code, d.Severity)
+  }
+  // $.age validate.type-mismatch error
+  ```
+
 - **`Materialize(doc Document, s Schema) (Document, []Diagnostic, error)`**
   (`materialize.go`) — walks the document against the schema in one pass,
   upgrading leaf scalars to their schema-declared kind only when the
   conversion is value-exact (e.g. `"2024-01-01"` -> `date`, but never
   string -> number).
+
+  A JSON string that looks like a date becomes a real `date` scalar once
+  materialized against a schema that says so:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_materialize -->
+  ```go
+  schema, _ := osd.Read(`record Event { "when": date } root Event`)
+  doc, _ := json.Read(`{"when": "2024-01-01"}`, omnist.DefaultLimits())
+
+  result, diagnostics, err := omnist.Materialize(doc, schema)
+  if err != nil {
+      panic(err)
+  }
+  if len(diagnostics) != 0 {
+      panic("unexpected diagnostics")
+  }
+  v, _ := result.Node.Edges[0].Target.Value()
+  fmt.Println(v.Scalar.Kind, v.Scalar.Date)
+  // date {2024 1 1}
+  ```
+
 - **`DocumentsEqual`, `SchemasEqual`** (`referee.go`) — order-sensitive
   document equality and two schema-equality modes (`exact`: record names
   must match; `isomorphic`: same structure up to renaming), used by this
   repo's own conformance harness and available for any caller comparing
   documents/schemas the same way.
 
+  `DocumentsEqual` is order-sensitive — the same edges in a different
+  order are not equal:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_documentsEqual -->
+  ```go
+  a, _ := oml.Read("x: \"1\"\ny: \"2\"\n", omnist.DefaultLimits())
+  b, _ := oml.Read("y: \"2\"\nx: \"1\"\n", omnist.DefaultLimits())
+
+  fmt.Println(omnist.DocumentsEqual(a, a))
+  fmt.Println(omnist.DocumentsEqual(a, b))
+  // true
+  // false
+  ```
+
+  `SchemasEqual`'s two modes differ on record naming — `ModeExact`
+  requires matching names, `ModeIsomorphic` accepts the same structure
+  under any consistent renaming:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_schemasEqual -->
+  ```go
+  a, _ := osd.Read(`record Person { "id": string } root Person`)
+  b, _ := osd.Read(`record User { "id": string } root User`)
+
+  fmt.Println(omnist.SchemasEqual(a, b, omnist.ModeExact))
+  fmt.Println(omnist.SchemasEqual(a, b, omnist.ModeIsomorphic))
+  // false
+  // true
+  ```
+
 ### Diagnostics and errors (`errors.go`)
 
 - **`Diagnostic`** — `(Path, Code, Severity, Message)`, spec §8's
-  `(path, code, message)` error taxonomy plus a severity.
+  `(path, code, message)` error taxonomy plus a severity. See
+  `Validate`'s example above for one populated from a real failing call.
 - **`ParseError`** — the structured error a stage-1 (text to `Document`)
   reader reports: `(Line, Col, Path, Code, Message)`. A text-position path
   (`"14:8"`), since no `Document` exists yet when a parse error fires.
+
+  Triggering a real parse error shows the shape:
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_parseError -->
+  ```go
+  _, err := json.Read(`{"name": }`, omnist.DefaultLimits())
+  perr := err.(*omnist.ParseError)
+  fmt.Println(perr.Line, perr.Col, perr.Code)
+  // 1 10 parse.unexpected-token
+  ```
 
 ### Limits (`limits.go`)
 
@@ -153,6 +244,59 @@ stringified temporal value, a substituted `NaN`) as diagnostics rather than
 errors. See each package's doc comment for format-specific caveats (e.g.
 XML leaf-typing, YAML sexagesimal integers, TOML's native date/time
 kinds).
+
+`json`, round-tripping the shared reader/writer shape:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_jsonRoundTrip -->
+```go
+doc, err := json.Read(`{"name": "Ann"}`, omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+text, diagnostics, err := json.Write(doc)
+if err != nil {
+    panic(err)
+}
+if len(diagnostics) != 0 {
+    panic("unexpected diagnostics")
+}
+fmt.Print(text)
+// {"name": "Ann"}
+```
+
+`yaml`'s sexagesimal-integer sharp edge — YAML 1.1 resolves a bare
+`1:30:00` to the base-60 integer `5400`, not a time value, even though it
+looks like one:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_yamlSexagesimal -->
+```go
+doc, err := yaml.Read("n: 1:30:00\n", omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+v, _ := doc.Node.Edges[0].Target.Value()
+fmt.Println(v.Scalar.Kind, v.Scalar.Int)
+// integer 5400
+```
+
+`xml`'s leaf-typing caveat — XML carries no type information at all, so
+every leaf arrives as a string scalar, never resolved to an integer or
+other kind the way JSON/YAML/TOML would:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_xmlLeafTyping -->
+```go
+doc, err := xml.Read(`<root><age>42</age></root>`, omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+ageNode, _ := doc.Node.Edges[0].Target.Node()
+v, _ := ageNode.Edges[0].Target.Value()
+fmt.Println(v.Scalar.Kind, v.Scalar.Str)
+// string 42
+```
 
 A codec beyond JSON/YAML, showing the shared writer shape:
 
@@ -256,6 +400,54 @@ for _, f := range findings {
     fmt.Println(f.Code, f.Location)
 }
 // lint.unreachable-record Orphan
+```
+
+`Prune` — removes a never-emittable field (cardinality `[0,0]`) and, as a
+consequence, the now-unreachable record it alone referenced:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraPrune -->
+```go
+s, _ := osd.Read(`
+    record Root { "id": string, "dead" [0,0]: Orphan }
+    record Orphan { "note": string }
+    root Root
+`)
+
+pruned := algebra.Prune(s)
+root := pruned.Env[pruned.Root]
+fmt.Println(len(root.Fields))
+fmt.Println(len(pruned.Env))
+// 1
+// 1
+```
+
+`Equivalent` — strictly stronger than `CompatibleWith` in one direction:
+two schemas differing only in record naming and declaration order are
+equivalent even though they aren't structurally equal:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraEquivalent -->
+```go
+a, _ := osd.Read(`record Person { "id": string, "name": string } root Person`)
+b, _ := osd.Read(`record User { "id": string, "name": string } root User`)
+
+fmt.Println(algebra.Equivalent(a, b))
+// true
+```
+
+`Infer` — drafts a schema from sample documents; two samples that
+disagree on whether `tags` is present produce an optional `[0,1]` field:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraInfer -->
+```go
+s1, _ := json.Read(`{"name": "Ann", "tags": ["a"]}`, omnist.DefaultLimits())
+s2, _ := json.Read(`{"name": "Bo"}`, omnist.DefaultLimits())
+
+schema, err := algebra.Infer([]omnist.Document{s1, s2}, "", false)
+if err != nil {
+    panic(err)
+}
+fmt.Println(osd.Write(schema, true))
+// record Root { "name": string, "tags" [0,1]: string } root Root
 ```
 
 ## Command-line interface
