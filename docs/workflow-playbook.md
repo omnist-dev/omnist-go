@@ -320,3 +320,30 @@ the doc's literal displayed text/output -- a test whose name merely sounds
 related is not sufficient. (The Python port shipped a stale version-string
 doc example undetected for 5+ releases this way; the guarding test checked
 the live version constant, never the doc's own literal text.)
+
+## 8. Docs update in the same PR as the state they describe
+
+If a change touches a public API surface, a documented number (a version,
+a pass/fail/skip count, a coverage percentage), or an external-state claim
+(tag status, an upstream issue's status, pkg.go.dev's indexing state,
+anything else observable outside this repo), the docs describing it MUST
+be updated in the *same PR* -- not filed as a follow-up issue, not left
+for "next time someone notices."
+
+This is the second time in this repo's history a doc was found stale on
+exactly this pattern -- a claim about external state that was true when
+written and silently went false. The first was `docs/limitations.md`
+citing spec-vector defects that had already been fixed weeks earlier
+(issue #59). The second was `docs/reference.md`'s tag-status caveat, found
+stale within hours of `v0.1.0-alpha` landing (issue #64). Two instances of
+the same failure mode is a pattern, not a coincidence, which is why this
+is a standing rule now instead of a reminder left for the next person to
+rediscover.
+
+`doc-illustrative` (§7) is the deliberate exception for genuinely
+non-runnable content -- a CLI transcript, a bare fragment, a
+decision-record snapshot of a debate that's now settled. It is not the
+default for an entire page or section. If a code block is real, runnable
+Go (or another language with an equivalent test story), it gets a real
+test and a `verified-by` marker by default; reach for `doc-illustrative`
+only when there's genuinely nothing to run.
