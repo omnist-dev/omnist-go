@@ -40,23 +40,151 @@ The three boolean schema commands (`compatible-with`, `equivalent`, `is-empty`) 
 
 ## Examples
 
+Every example below shows the exact command and its exact captured
+output, backed by a real subprocess test that compiles and runs the
+actual `omnist` binary — see `cmd/omnist/doc_examples_cli_test.go`'s doc
+comment for why this differs mechanically from `reference.md`'s godoc
+`Example` functions (a CLI transcript is a stdout/stderr/exit-code
+triple, not a single `fmt.Println` value).
+
 Convert JSON to YAML:
 
-<!-- doc-illustrative -->
-```bash
-echo '{"name": "Ann", "tags": ["a", "b"]}' | omnist parse --from json --to yaml -
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleParseJSONToYAML -->
+```console
+$ echo '{"name": "Ann", "tags": ["a", "b"]}' | omnist parse --from json --to yaml -
+"name": "Ann"
+"tags":
+    - "a"
+    - "b"
 ```
 
-Validate a document against a schema:
+Validate a document against a schema (exit code `2`: validation ran and
+found a problem — `age` is a JSON string but the schema declares
+`integer`, and `Validate` never converts a value's type):
 
-<!-- doc-illustrative -->
-```bash
-omnist validate --from json --schema person.osd person.json
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleValidate -->
+```console
+$ omnist validate --from json --schema person.osd person.json
+$.age: validate.type-mismatch: value does not match declared kind
 ```
 
-Check whether a schema change is backward-compatible:
+Check whether a schema change is backward-compatible (`new.osd` adds an
+optional `nick` field `old.osd` doesn't have, so `new` may emit something
+`old`'s closed shape rejects):
 
-<!-- doc-illustrative -->
-```bash
-omnist schema compatible-with new.osd old.osd
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaCompatibleWith -->
+```console
+$ omnist schema compatible-with new.osd old.osd
+false
+```
+
+Materialize a document against a schema, upgrading a JSON string that
+looks like a date to TOML's native date kind:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleMaterialize -->
+```console
+$ omnist materialize --from json --schema event.osd --to toml event.json
+"when" = 2024-01-01
+```
+
+Normalize a schema, collapsing two structurally-identical records (`A`,
+`B`) into one shared shape:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaNormalize -->
+```console
+$ omnist schema normalize dup.osd
+record A {
+    "id": string,
+}
+record Root {
+    "a": A,
+    "b": A,
+}
+root Root
+```
+
+Prune a schema, removing a never-emittable field (`[0,0]`) and, as a
+consequence, the record it alone referenced:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaPrune -->
+```console
+$ omnist schema prune dead.osd
+record Root {
+    "id": string,
+}
+root Root
+```
+
+Extract a schema down to only the fields named by `--keep`:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaExtract -->
+```console
+$ omnist schema extract --keep keep extract.osd
+record Root {
+    "keep": string,
+}
+root Root
+```
+
+Check whether two schemas accept exactly the same documents, even though
+they name their records differently:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaEquivalent -->
+```console
+$ omnist schema equivalent person.osd user.osd
+true
+```
+
+Check whether a schema is unsatisfiable — here, a record whose only field
+requires itself at the OSD-default cardinality `[1,1]` can never be
+satisfied by any finite document:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaIsEmpty -->
+```console
+$ omnist schema is-empty empty.osd
+true
+```
+
+Infer a schema from sample documents — two samples disagreeing on
+whether `tags` is present produce an optional `[0,1]` field:
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleInfer -->
+```console
+$ omnist infer --from json s1.json s2.json
+record Root {
+    "name": string,
+    "tags" [0,1]: string,
+}
+root Root
+```
+
+`--allow-any`'s effect: without it, a label whose samples disagree on
+scalar kind is a hard failure (exit `2`):
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleInferAllowAny -->
+```console
+$ omnist infer --from json a1.json a2.json
+omnist infer: Root.val: algebra.infer-conflicting-scalars: label "val" has values of more than one scalar kind
+```
+
+With it, the field opens to `any` instead, and the CLI reports what it
+opened on stderr (exit `0`):
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleInferAllowAny -->
+```console
+$ omnist infer --from json --allow-any a1.json a2.json
+record Root {
+    "val": any,
+}
+root Root
+$ # stderr: Root.val: opened to any: values of more than one scalar kind (integer, string)
+```
+
+Lint a schema — an unreachable record is a warning-level finding, which
+also makes `lint`'s exit code `2` (an operation-reported problem):
+
+<!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleLint -->
+```console
+$ omnist lint orphan.osd
+Orphan: warning: lint.unreachable-record: record "Orphan" is defined but not reachable from root by any reference
 ```
