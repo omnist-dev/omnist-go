@@ -56,9 +56,17 @@ func (b codeBlock) spanLines() []int {
 	lines := []int{b.fenceStart, b.fenceEnd}
 	if b.markerLine != 0 {
 		lines = append(lines, b.markerLine)
-	} else if b.fenceStart > 1 {
+		return lines
+	}
+	// No marker found: a marker could legally be added either directly
+	// above the opening fence or directly below the closing fence, so
+	// both candidate lines count as part of this block's span -- a diff
+	// touching either one (e.g. a marker that was just deleted) must be
+	// caught.
+	if b.fenceStart > 1 {
 		lines = append(lines, b.fenceStart-1)
 	}
+	lines = append(lines, b.fenceEnd+1)
 	return lines
 }
 
