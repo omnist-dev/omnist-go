@@ -43,7 +43,7 @@ conformance harness (`tools/conformance/`) passes with zero real fails
 triggered by accumulated features or fixes alone.
 
 The spec version this repo targets is stated here and in every release:
-currently **omnist-spec v0.2.0-alpha** (pinned via `vendor/omnist-spec`
+currently **omnist-spec v0.2.1-alpha** (pinned via `vendor/omnist-spec`
 submodule). Ship pass/fail/skip counts alongside every release, per spec
 §10.3.
 

@@ -48,9 +48,12 @@ the version bump is a separate, deliberate step per
 
 ## Spec version targeted
 
-`omnist-spec` at commit `896e14e` (post-`v0.2.0-alpha`), pinned via the
+`omnist-spec` at commit `3c9cf96` (post-`v0.2.1-alpha`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does not track the spec's
 `main` branch — the pin is bumped deliberately, in its own commit.
+
+See `omnist-spec`'s own [§9.3 status table](https://github.com/omnist-dev/omnist-spec/blob/main/docs/09-divergence-ledger.md#93-status-table)
+for the cross-implementation divergence ledger this repo reports into.
 
 ## Divergences from the spec
 
