@@ -12,23 +12,32 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
-codecs (JSON/YAML/TOML/XML, read and write), and a CLI.
+codecs (JSON/YAML/TOML/XML, read and write), a CLI, both tracks of the
+conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
-The conformance harness ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
-run for real against `omnist-spec`'s own `test-suite/`) currently reports
-**147 pass / 3 fail / 1 skip** of 151 vectors. The 3 real fails are
-confirmed spec-vector defects (two rely on OML indentation-based nesting the
-grammar doesn't support; one conflates `materialize`'s upgrade rule with
-`validate`'s stricter check) — filed upstream, not `omnist-go` bugs. The 1
-skip needs a TOML strict-mode write parameter this repo hasn't built yet.
-
-Track 1 (fixture-based) conformance, CI gating on the conformance job, and a
-fuzz harness are not yet built.
+Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
+JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
+**149 pass / 1 fail / 1 skip** of 151 vectors. Track 1 (fixture-based,
+`conformance/fixtures/`) reports **18 pass / 1 fail / 0 skip** of 19
+fixtures. Both remaining fails are confirmed not `omnist-go` bugs — the
+Track 2 one is a genuine spec-vector defect at `test-suite/validate/
+basic_validate.json`'s `integer-satisfies-number-typed-field` case (the
+vector expects `validate` to accept an integer value against a
+`number`-typed field, conflating `materialize`'s §7.2 upgrade rule with
+`validate`'s stricter §3.6 kind-equality check — filed as
+[`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41));
+the Track 1 one is a fixture using an un-namespaced `lint.*` code
+(`unreachable-record` instead of `lint.unreachable-record`) in
+`conformance/fixtures/lint/edge-case-unreachable-record` — filed as
+[`omnist-spec#42`](https://github.com/omnist-dev/omnist-spec/issues/42).
+The one Track 2 skip needs a TOML strict-mode write parameter this repo
+hasn't built yet. Neither track's remaining item is CI-gating yet, per
+`docs/workflow-playbook.md` §4.
 
 ## Versioning
 
-Stays on `v0.0.x-alpha` until the conformance harness passes with zero real
-fails (skips permitted and cited) — the 3 current fails are spec-side, not
+Stays on `v0.0.x-alpha` until both conformance tracks pass with zero real
+fails (skips permitted and cited) — the 2 current fails are spec-side, not
 `omnist-go`'s to fix, so the bump is gated on upstream vector corrections
 landing and this repo's submodule pin catching up. See
 `docs/workflow-playbook.md` §1.
