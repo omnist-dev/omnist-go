@@ -12,12 +12,14 @@ This port is built directly from [omnist-spec](https://spec.omnist.dev), with no
 
 ## Install
 
+<!-- doc-illustrative -->
 ```bash
 go install github.com/omnist-dev/omnist-go/cmd/omnist@latest
 ```
 
 Or add the library to a module:
 
+<!-- doc-illustrative -->
 ```bash
 go get github.com/omnist-dev/omnist-go
 ```
