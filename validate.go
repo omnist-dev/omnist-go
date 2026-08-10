@@ -104,9 +104,26 @@ func conformScalar(target Target, r Resolved, path Path, result *[]Diagnostic) {
 		}
 		return // null is never checked against kind, matching kind or not.
 	}
-	if v.Scalar.Kind != r.ScalarKind {
+	if !matchesKind(v.Scalar.Kind, r.ScalarKind) {
 		addDiagnostic(result, path, CodeValidateTypeMismatch, "value does not match declared kind")
 	}
+}
+
+// matchesKind is `matches_kind(value, declared_kind)` from §3.6.1. A
+// value's own kind satisfies the declared kind either by exact match, or
+// via the one sanctioned scalar subtype relation (§6.3): an integer value
+// satisfies a number-typed field directly. This is not materialization --
+// no conversion happens, the value's own kind is simply a subtype of the
+// declared one. No other subtype relation exists; this relation is
+// one-directional (a number value does NOT satisfy an integer-typed field).
+func matchesKind(valueKind, declaredKind ScalarKind) bool {
+	if valueKind == declaredKind {
+		return true
+	}
+	if valueKind == KindInteger && declaredKind == KindNumber {
+		return true
+	}
+	return false
 }
 
 // conformRecord is `conform_record(node, S, rec, path, result)` from
