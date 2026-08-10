@@ -7,13 +7,15 @@ in this repo renders automatically, always in sync with the code. That's
 the idiomatic Go answer to "API reference": don't hand-maintain a second
 copy of `go doc`'s output here.
 
-**Not yet indexed.** As of this page, `omnist-go` has no tagged release
-(`git tag -l` is empty) — pkg.go.dev indexes tagged versions (and the
-`main` branch's latest commit as a pseudo-version) once a module has been
-`go get`-ed at least once from a public proxy. Until the first tag lands
-(tracked by `docs/workflow-playbook.md` §1's `v0.0.x-alpha` -> real version
-bump), treat this page's curated map below as authoritative, and use `go
-doc` locally for the mechanical dump:
+**Tagged, but pkg.go.dev hasn't indexed it yet.** `v0.1.0-alpha` is tagged
+and pushed, and the Go module proxy already knows about it —
+`curl https://proxy.golang.org/github.com/omnist-dev/omnist-go/@v/v0.1.0-alpha.info`
+returns a real result. pkg.go.dev itself, though, still 404s on
+`https://pkg.go.dev/github.com/omnist-dev/omnist-go` as of this page
+(indexing lags the proxy by anywhere from minutes to a few hours after
+the first `go get` of a new module path). Until that page comes up, treat
+this page's curated map below as authoritative, and use `go doc` locally
+for the mechanical dump:
 
 <!-- doc-illustrative -->
 ```bash
@@ -102,10 +104,42 @@ omnist.Limits) (omnist.Document, error)`, `Write(d omnist.Document, compact
 bool) (string, []omnist.Diagnostic)` (`WriteCompact` is a convenience
 wrapper for `Write(d, true)`). Round-trips Core and Extended OML per spec.
 
+<!-- verified-by: doc_examples_reference_test.go::Example_omlRoundTrip -->
+```go
+doc, err := oml.Read(`name: "Ann"
+tags: "a"
+tags: "b"
+`, omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+text, diagnostics := oml.WriteCompact(doc)
+if len(diagnostics) != 0 {
+    panic("unexpected diagnostics")
+}
+fmt.Println(text)
+// name: "Ann"; tags: "a"; tags: "b"
+```
+
 ## `osd` — `github.com/omnist-dev/omnist-go/osd`
 
 OSD (the schema definition format) reader and writer: `Read(text string)
 (omnist.Schema, error)`, `Write(s omnist.Schema, compact bool) string`.
+
+<!-- verified-by: doc_examples_reference_test.go::Example_osdRoundTrip -->
+```go
+schema, err := osd.Read(`
+    record Person { "name": string, "tags" [0,]: string }
+    root Person
+`)
+if err != nil {
+    panic(err)
+}
+
+fmt.Println(osd.Write(schema, true))
+// record Person { "name": string, "tags" [0,]: string } root Person
+```
 
 ## `formats/{json,yaml,toml,xml}`
 
@@ -120,6 +154,26 @@ errors. See each package's doc comment for format-specific caveats (e.g.
 XML leaf-typing, YAML sexagesimal integers, TOML's native date/time
 kinds).
 
+A codec beyond JSON/YAML, showing the shared writer shape:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_tomlWrite -->
+```go
+doc, err := oml.Read(`name: "Ann"`, omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+text, diagnostics, err := toml.Write(doc)
+if err != nil {
+    panic(err)
+}
+if len(diagnostics) != 0 {
+    panic("unexpected diagnostics")
+}
+fmt.Print(text)
+// "name" = "Ann"
+```
+
 ## `algebra` — `github.com/omnist-dev/omnist-go/algebra`
 
 The Schema Algebra operations (spec §6): `CompatibleWith`, `Equivalent`,
@@ -127,6 +181,82 @@ The Schema Algebra operations (spec §6): `CompatibleWith`, `Equivalent`,
 `omnist.Schema` values — no document, no I/O. See the package doc comment
 for the operation-by-operation contract (each mirrors its spec §6
 subsection).
+
+`CompatibleWith` — §6.6's own worked example: `A` has an optional `nick`
+field `B` doesn't, so `A` may emit something `B`'s closed shape rejects,
+but everything `B` emits, `A` accepts:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraCompatibleWith -->
+```go
+a, _ := osd.Read(`record User {
+    "id": string,
+    "name": string,
+    "nick" [0,1]: string,
+} root User`)
+b, _ := osd.Read(`record User {
+    "id": string,
+    "name": string,
+} root User`)
+
+fmt.Println(algebra.CompatibleWith(a, b))
+fmt.Println(algebra.CompatibleWith(b, a))
+// false
+// true
+```
+
+`Normalize` — collapses structurally-identical records (same fields,
+different names) into shared equivalence classes:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraNormalize -->
+```go
+s, _ := osd.Read(`
+    record A { "id": string }
+    record B { "id": string }
+    record Root { "a": A, "b": B }
+    root Root
+`)
+
+classes := algebra.EquivalenceClasses(algebra.Normalize(s))
+fmt.Println(len(classes))
+// 2
+```
+
+`Extract` — trims a schema down to only what's needed to keep a chosen
+field set, erroring if that would invalidate the root:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraExtract -->
+```go
+s, _ := osd.Read(`
+    record Root { "keep": string, "drop" [0,1]: string }
+    root Root
+`)
+
+out, err := algebra.Extract(s, map[string]bool{"keep": true})
+if err != nil {
+    panic(err)
+}
+root := out.Env[out.Root]
+fmt.Println(len(root.Fields))
+// 1
+```
+
+`Lint` — reports schema diagnostics such as an unreachable record no
+field ever references:
+
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraLint -->
+```go
+s, _ := osd.Read(`
+    record Root { "id": string }
+    record Orphan { "id": string, "note": string }
+    root Root
+`)
+
+findings := algebra.Lint(s)
+for _, f := range findings {
+    fmt.Println(f.Code, f.Location)
+}
+// lint.unreachable-record Orphan
+```
 
 ## Command-line interface
 
