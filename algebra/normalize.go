@@ -13,7 +13,9 @@ import (
 
 // localSig is the comparable value used as a map key for local_signature
 // (§6.8 step 2): a byte-encoding of each field's (label, min, max,
-// is-scalar-or-not), in declaration order. Record.Fields is already a
+// shape_of(type)) — shape_of distinguishes Any, Ref (target-blind), and
+// Scalar(kind, nullable), per §6.8's formal local_signature/shape_of
+// pseudocode — in declaration order. Record.Fields is already a
 // slice in declaration order (schema.go); two records with the same
 // fields in a different order are NOT the same local signature, matching
 // the spec's field-by-field tuple description — there is no sort here.
@@ -35,7 +37,7 @@ func computeLocalSignature(rec *omnist.Record) localSig {
 	return localSig(b)
 }
 
-// appendFieldSig appends one field's (label, min, max, is-scalar-or-not)
+// appendFieldSig appends one field's (label, min, max, shape_of(type))
 // encoding to b, using '\x00'/'\x01' as field/component separators that
 // cannot appear in the numeric or boolean components and are escaped out
 // of the label so a crafted label can't forge a delimiter collision.
@@ -51,10 +53,27 @@ func appendFieldSig(b []byte, f omnist.Field) []byte {
 		b = appendUint(b, f.Cardinality.Max)
 	}
 	b = append(b, '\x01')
-	if f.Type.Kind == omnist.TypeRefKind {
+	switch f.Type.Kind {
+	case omnist.TypeAnyKind:
+		b = append(b, 'A')
+	case omnist.TypeRefKind:
+		// Target name deliberately excluded here: refine_key resolves
+		// ref equivalence via the fixpoint step, not the local
+		// signature (§6.8's shape_of: `if t is Ref: return ("ref",)`).
 		b = append(b, 'R')
-	} else {
+	default: // omnist.TypeScalarKind
+		// §6.8's shape_of: `return ("scalar", t.kind, t.nullable)` —
+		// both the scalar kind and nullability are part of the
+		// signature, so distinct scalar kinds (and nullable vs
+		// non-nullable) never collapse into one bucket.
 		b = append(b, 'S')
+		b = append(b, byte(f.Type.ScalarKind))
+		b = append(b, '\x01')
+		if f.Type.Nullable {
+			b = append(b, 'N')
+		} else {
+			b = append(b, 'n')
+		}
 	}
 	return b
 }
