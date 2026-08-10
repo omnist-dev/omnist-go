@@ -393,14 +393,25 @@ func runFixtureLint(fc FixtureCase) Result {
 	if len(findings) != len(want.Findings) {
 		return fixFail(fc, "findings count mismatch: got %d want %d", len(findings), len(want.Findings))
 	}
+	// Findings' code field is compared code-agnostically (conformance-
+	// harness.md §8.5's lint paragraph, extending §8.5.2 rule 4's
+	// code-agnostic mode -- already used this way for Track 2's
+	// diagnostics -- to every operation whose fixture carries a code
+	// field, not lint alone): no implementation emits real §8.3-namespaced
+	// codes yet (§9.4 D-4), so a fixture's expected.json recorded against
+	// the reference implementation's still-bare codes (e.g.
+	// "unreachable-record") must not fail an implementation that has
+	// already adopted the namespaced form ahead of D-4 resolving (e.g.
+	// this repo's own "lint.unreachable-record"). severity and location
+	// are still compared exactly; only code is informational.
 	gotSet := map[string]int{}
 	for _, f := range findings {
-		gotSet[string(f.Code)+"\x00"+f.Severity.String()+"\x00"+f.Location]++
+		gotSet[f.Severity.String()+"\x00"+f.Location]++
 	}
 	for _, f := range want.Findings {
-		k := f.Code + "\x00" + f.Severity + "\x00" + f.Location
+		k := f.Severity + "\x00" + f.Location
 		if gotSet[k] == 0 {
-			return fixFail(fc, "findings mismatch: missing {code:%q severity:%q location:%q}", f.Code, f.Severity, f.Location)
+			return fixFail(fc, "findings mismatch: missing {severity:%q location:%q} (code %q compared informationally, not matched)", f.Severity, f.Location, f.Code)
 		}
 		gotSet[k]--
 	}

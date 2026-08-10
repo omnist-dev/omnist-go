@@ -17,29 +17,33 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**149 pass / 1 fail / 1 skip** of 151 vectors. Track 1 (fixture-based,
-`conformance/fixtures/`) reports **18 pass / 1 fail / 0 skip** of 19
-fixtures. Both remaining fails are confirmed not `omnist-go` bugs — the
-Track 2 one is a genuine spec-vector defect at `test-suite/validate/
-basic_validate.json`'s `integer-satisfies-number-typed-field` case (the
-vector expects `validate` to accept an integer value against a
-`number`-typed field, conflating `materialize`'s §7.2 upgrade rule with
-`validate`'s stricter §3.6 kind-equality check — filed as
-[`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41));
-the Track 1 one is a fixture using an un-namespaced `lint.*` code
-(`unreachable-record` instead of `lint.unreachable-record`) in
-`conformance/fixtures/lint/edge-case-unreachable-record` — filed as
-[`omnist-spec#42`](https://github.com/omnist-dev/omnist-spec/issues/42).
-The one Track 2 skip needs a TOML strict-mode write parameter this repo
-hasn't built yet. Neither track's remaining item is CI-gating yet, per
-`docs/workflow-playbook.md` §4.
+**150 pass / 0 fail / 1 skip** of 151 vectors. Track 1 (fixture-based,
+`conformance/fixtures/`) reports **19 pass / 0 fail / 0 skip** of 19
+fixtures. Both tracks are at zero real fails — the two prior fails, filed
+as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
+and [`omnist-spec#42`](https://github.com/omnist-dev/omnist-spec/issues/42),
+were independently verified by the spec maintainer against the reference
+implementation and found to be backwards diagnoses (issue #60): #41 was a
+genuine `omnist-go` bug, not a spec-vector defect — `validate.go`'s
+`conformScalar` did a bare kind-equality check with no `integer <:
+number` value-level exception, which omnist-spec's now-formalized
+`matches_kind` pseudocode (§3.6.1) confirms live against the Python
+reference implementation is wrong; `validate` on an integer value against
+a `number`-typed field must succeed. That's fixed. #42 needed no
+production code change — the `lint/edge-case-unreachable-record` fixture
+was always correct (the reference implementation genuinely emits the bare
+`unreachable-record`, not a namespaced form); what was missing was
+extending §8.5.2 rule 4's code-agnostic comparison (already used for
+Track 2's diagnostics) to Track 1's finding `code` field, done in
+`tools/conformance/fixtures.go`. The one Track 2 skip needs a TOML
+strict-mode write parameter this repo hasn't built yet. Not CI-gating yet,
+per `docs/workflow-playbook.md` §4.
 
 ## Versioning
 
 Stays on `v0.0.x-alpha` until both conformance tracks pass with zero real
-fails (skips permitted and cited) — the 2 current fails are spec-side, not
-`omnist-go`'s to fix, so the bump is gated on upstream vector corrections
-landing and this repo's submodule pin catching up. See
+fails (skips permitted and cited) — as of issue #60 that condition is met;
+the version bump is a separate, deliberate step per
 `docs/workflow-playbook.md` §1.
 
 ## Spec version targeted

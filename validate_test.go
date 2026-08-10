@@ -140,20 +140,21 @@ func TestValidateWrongScalarKind(t *testing.T) {
 	}
 }
 
-// TestValidateIntegerDoesNotSatisfyNumberTypedField pins issue #33's
-// Category E finding: validate.go's conformScalar is a bare kind-equality
-// check (spec §3.6.1's conform_scalar/matches_kind), deliberately with no
-// integer<:number allowance. That allowance exists only for schema-level
-// subtyping (§6.3, compatible_with.go) and for materialize's try_upgrade
-// table (§7.2, "1 -> number: Yes") — a genuinely different operation from
-// validate ("Validation checks, it never converts", §3.6). Conformance
-// vector validate/scalar-kinds/integer-satisfies-number-typed-field
-// expects this to succeed, which contradicts both of those spec sections
-// read together; this repo treats that vector as a defect (it tests
-// materialize's allowance against validate's stricter rule) rather than
-// weakening validate to match it. See the issue report for the full
-// spec trace.
-func TestValidateIntegerDoesNotSatisfyNumberTypedField(t *testing.T) {
+// TestValidateIntegerSatisfiesNumberTypedField pins the corrected reading
+// of issue #33's Category E finding: omnist-spec now formally defines
+// matches_kind (§3.6.1), added specifically because its previous absence
+// let this repo's conformScalar take a defensible-but-wrong strict-kind-
+// equality reading. matches_kind sanctions exactly one scalar subtype
+// relation at the value level, the same one that already applies at the
+// schema level (§6.3): an integer VALUE satisfies a number-typed field
+// directly. This is NOT materialization — no conversion happens, the
+// value's own kind already satisfies the declared kind, nothing is
+// upgraded — so it doesn't touch materialize.go's tryUpgrade at all.
+// Confirmed live against the Python reference implementation, and matches
+// conformance vector validate/scalar-kinds/integer-satisfies-number-typed-field.
+// See issue #60 for the full spec trace and the reversal of #33's original
+// diagnosis.
+func TestValidateIntegerSatisfiesNumberTypedField(t *testing.T) {
 	rec := &Record{
 		Name:   "R",
 		Fields: []Field{{Label: "n", Type: ScalarType(KindNumber, false), Cardinality: DefaultCardinality()}},
@@ -162,8 +163,44 @@ func TestValidateIntegerDoesNotSatisfyNumberTypedField(t *testing.T) {
 	n := NewNode()
 	n.AddValue("n", ScalarValue(NewIntegerScalar(big.NewInt(1))))
 	got := Validate(NodeDocument(n), s)
+	if len(got) != 0 {
+		t.Fatalf("Validate() = %+v, want empty (integer satisfies a number-typed field per matches_kind, §3.6.1/§6.3)", got)
+	}
+}
+
+// TestValidateNumberDoesNotSatisfyIntegerTypedField confirms the
+// integer<:number relation is genuinely one-directional: a number value
+// must NOT satisfy an integer-typed field. matches_kind sanctions only
+// "integer VALUE satisfies number-typed field", not the reverse.
+func TestValidateNumberDoesNotSatisfyIntegerTypedField(t *testing.T) {
+	rec := &Record{
+		Name:   "R",
+		Fields: []Field{{Label: "n", Type: ScalarType(KindInteger, false), Cardinality: DefaultCardinality()}},
+	}
+	s := Schema{Root: "R", Env: map[string]*Record{"R": rec}}
+	n := NewNode()
+	n.AddValue("n", ScalarValue(NewNumberScalar(1.5)))
+	got := Validate(NodeDocument(n), s)
 	if len(got) != 1 || got[0].Code != CodeValidateTypeMismatch || got[0].Path != "$.n" {
-		t.Fatalf("Validate() = %+v, want single type-mismatch at $.n (integer must not satisfy a number-typed field at the validate layer)", got)
+		t.Fatalf("Validate() = %+v, want single type-mismatch at $.n (number must not satisfy an integer-typed field)", got)
+	}
+}
+
+// TestValidateUnrelatedKindStillMismatches confirms matches_kind's
+// exception is scoped to exactly the integer<:number pair, not scalar
+// kinds in general: a string value against a number-typed field must
+// still fail.
+func TestValidateUnrelatedKindStillMismatches(t *testing.T) {
+	rec := &Record{
+		Name:   "R",
+		Fields: []Field{{Label: "n", Type: ScalarType(KindNumber, false), Cardinality: DefaultCardinality()}},
+	}
+	s := Schema{Root: "R", Env: map[string]*Record{"R": rec}}
+	n := NewNode()
+	n.AddValue("n", ScalarValue(NewStringScalar("1")))
+	got := Validate(NodeDocument(n), s)
+	if len(got) != 1 || got[0].Code != CodeValidateTypeMismatch || got[0].Path != "$.n" {
+		t.Fatalf("Validate() = %+v, want single type-mismatch at $.n (string must not satisfy a number-typed field)", got)
 	}
 }
 
