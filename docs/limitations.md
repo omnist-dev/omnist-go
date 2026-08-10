@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**Alpha.** Every core operation is implemented: the Document and Schema
+**`v0.1.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -41,14 +41,18 @@ per `docs/workflow-playbook.md` §4.
 
 ## Versioning
 
-Stays on `v0.0.x-alpha` until both conformance tracks pass with zero real
-fails (skips permitted and cited) — as of issue #60 that condition is met;
-the version bump is a separate, deliberate step per
-`docs/workflow-playbook.md` §1.
+**`v0.1.0-alpha`**, the maintainer sign-off bump past `0.0.x` described in
+`docs/workflow-playbook.md` §1: core document model, all four codecs, OML,
+OSD, and the CLI are implemented, both conformance tracks pass with zero
+real fails, the doc-example verification gate is CI-blocking (issue #62),
+and a source-audited self-check of the §2.4 resource caps (depth/node-count/
+integer-digit limits) against `omnist-spec`'s divergence ledger found no
+gap — see the ledger's Go `Resource caps` row (source-audited clean,
+`omnist-spec` commit `2af12e0`).
 
 ## Spec version targeted
 
-`omnist-spec` at commit `3c9cf96` (post-`v0.2.1-alpha`), pinned via the
+`omnist-spec` at commit `2af12e0` (`v0.2.2-alpha`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does not track the spec's
 `main` branch — the pin is bumped deliberately, in its own commit.
 

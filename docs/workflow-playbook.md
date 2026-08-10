@@ -35,15 +35,19 @@ a step-3 tie-breaker on a gap that already has a filed `omnist-spec` issue
 
 ## 1. Versioning
 
-`omnist-go` stays on `v0.0.x-alpha` until: core document model + all four
-codecs (JSON/YAML/TOML/XML) + OML + OSD + CLI are implemented, and our own
-conformance harness (`tools/conformance/`) passes with zero real fails
-(skips permitted and cited). This mirrors `omnist-rs`'s rule. The bump past
-`0.0.x` is a maintainer sign-off event, not a routine release mechanic — not
-triggered by accumulated features or fixes alone.
+`omnist-go` stayed on `v0.0.x-alpha` until: core document model + all four
+codecs (JSON/YAML/TOML/XML) + OML + OSD + CLI were implemented, and our own
+conformance harness (`tools/conformance/`) passed with zero real fails
+(skips permitted and cited). This mirrored `omnist-rs`'s rule. The bump past
+`0.0.x` was a maintainer sign-off event, not a routine release mechanic —
+not triggered by accumulated features or fixes alone, and it happened once,
+at `v0.1.0-alpha`, once both conformance tracks reached zero real fails, the
+doc-example gate (§7) was CI-blocking, and a source-audited self-check of
+the §2.4 resource caps against `omnist-spec`'s divergence ledger found no
+gap (issue #60/#62/#63, `omnist-spec` commit `2af12e0`).
 
 The spec version this repo targets is stated here and in every release:
-currently **omnist-spec v0.2.1-alpha** (pinned via `vendor/omnist-spec`
+currently **omnist-spec v0.2.2-alpha** (pinned via `vendor/omnist-spec`
 submodule). Ship pass/fail/skip counts alongside every release, per spec
 §10.3.
 
