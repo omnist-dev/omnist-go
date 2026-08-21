@@ -1,6 +1,8 @@
 package algebra
 
 import (
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/omnist-dev/omnist-go"
@@ -34,5 +36,48 @@ func TestScalarSub(t *testing.T) {
 				t.Errorf("scalarSub(%+v, %+v) = %v, want %v", c.a, c.b, got, c.want)
 			}
 		})
+	}
+}
+
+
+func BenchmarkCompatibleWithManyFields(b *testing.B) {
+	sizes := []int{50, 200, 1000}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			fieldsA := make([]omnist.Field, size)
+			fieldsB := make([]omnist.Field, size)
+			for i := 0; i < size; i++ {
+				label := fmt.Sprintf("field_%d", i)
+				fieldsA[i] = omnist.Field{Label: label, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()}
+				fieldsB[i] = omnist.Field{Label: label, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()}
+			}
+			recA := &omnist.Record{Name: "Rec", Fields: fieldsA}
+			recB := &omnist.Record{Name: "Rec", Fields: fieldsB}
+			schemaA := omnist.Schema{Root: "Rec", Env: map[string]*omnist.Record{"Rec": recA}, EnvOrder: []string{"Rec"}}
+			schemaB := omnist.Schema{Root: "Rec", Env: map[string]*omnist.Record{"Rec": recB}, EnvOrder: []string{"Rec"}}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = CompatibleWith(schemaA, schemaB)
+			}
+		})
+	}
+}
+
+func TestFieldByLabelHelper(t *testing.T) {
+	rec := &omnist.Record{
+		Name: "Test",
+		Fields: []omnist.Field{
+			{Label: "a", Type: omnist.ScalarType(omnist.KindString, false)},
+		},
+	}
+	if f, ok := fieldByLabel(rec, "a"); !ok || f.Label != "a" {
+		t.Errorf("expected field a, got %v, ok=%v", f, ok)
+	}
+	if _, ok := fieldByLabel(rec, "missing"); ok {
+		t.Errorf("expected not ok for missing field")
+	}
+	if _, ok := fieldByLabel(nil, "a"); ok {
+		t.Errorf("expected not ok for nil record")
 	}
 }

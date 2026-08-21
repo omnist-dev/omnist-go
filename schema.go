@@ -88,6 +88,30 @@ type Field struct {
 	Cardinality Cardinality
 }
 
+// FieldIndex maps field labels to *Field for O(1) lookups on a Record.
+type FieldIndex map[string]*Field
+
+// Index returns a FieldIndex mapping each declared field label to its *Field.
+// If r is nil, returns nil.
+func (r *Record) Index() FieldIndex {
+	if r == nil {
+		return nil
+	}
+	idx := make(FieldIndex, len(r.Fields))
+	for i := range r.Fields {
+		idx[r.Fields[i].Label] = &r.Fields[i]
+	}
+	return idx
+}
+
+// Field returns the *Field with the given label from the indexed view, or nil if not present.
+func (idx FieldIndex) Field(label string) *Field {
+	if idx == nil {
+		return nil
+	}
+	return idx[label]
+}
+
 // Record is a closed set of fields (spec §3.3, §3.1): only the labels
 // listed are allowed, and nothing else — there is no wildcard.
 type Record struct {

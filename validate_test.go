@@ -1,6 +1,7 @@
 package omnist
 
 import (
+	"strconv"
 	"math/big"
 	"testing"
 )
@@ -493,5 +494,74 @@ func TestValidateUnresolvableRef(t *testing.T) {
 	got := Validate(NodeDocument(root), s)
 	if len(got) != 1 || got[0].Code != CodeValidateUnexpectedField || got[0].Path != "$.ghost.x" {
 		t.Fatalf("Validate() = %+v, want single unexpected-field at $.ghost.x (unresolvable ref treated as empty closed record)", got)
+	}
+}
+
+
+func BenchmarkValidateManyEdges(b *testing.B) {
+	sizes := []int{100, 1000, 5000, 10000}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			rec := &Record{
+				Name: "ItemContainer",
+				Fields: []Field{
+					{Label: "item", Type: ScalarType(KindInteger, false), Cardinality: Cardinality{Min: 0, Unbounded: true}},
+				},
+			}
+			schema := Schema{Root: "ItemContainer", Env: map[string]*Record{"ItemContainer": rec}}
+			node := NewNode()
+			for i := 0; i < size; i++ {
+				node.AddValue("item", ScalarValue(NewIntegerScalar(big.NewInt(int64(i)))))
+			}
+			doc := NodeDocument(node)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = Validate(doc, schema)
+			}
+		})
+	}
+}
+
+func BenchmarkMaterializeManyEdges(b *testing.B) {
+	sizes := []int{100, 1000, 5000, 10000}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			rec := &Record{
+				Name: "ItemContainer",
+				Fields: []Field{
+					{Label: "item", Type: ScalarType(KindInteger, false), Cardinality: Cardinality{Min: 0, Unbounded: true}},
+				},
+			}
+			schema := Schema{Root: "ItemContainer", Env: map[string]*Record{"ItemContainer": rec}}
+			node := NewNode()
+			for i := 0; i < size; i++ {
+				node.AddValue("item", ScalarValue(NewIntegerScalar(big.NewInt(int64(i)))))
+			}
+			doc := NodeDocument(node)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, _, _ = Materialize(doc, schema)
+			}
+		})
+	}
+}
+
+func TestFindFieldHelper(t *testing.T) {
+	if f := findField(nil, "x"); f != nil {
+		t.Errorf("expected nil for nil record, got %v", f)
+	}
+	rec := &Record{
+		Name: "Test",
+		Fields: []Field{
+			{Label: "a", Type: ScalarType(KindString, false)},
+		},
+	}
+	if f := findField(rec, "a"); f == nil || f.Label != "a" {
+		t.Errorf("expected field a, got %v", f)
+	}
+	if f := findField(rec, "missing"); f != nil {
+		t.Errorf("expected nil for missing field, got %v", f)
 	}
 }
