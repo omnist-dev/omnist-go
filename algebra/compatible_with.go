@@ -106,16 +106,18 @@ func sub(sa omnist.Schema, ta omnist.Type, sb omnist.Schema, tb omnist.Type, sat
 // fieldByLabel implements §6.2's `R.field(label)`: the field with that
 // label, or none.
 func fieldByLabel(r *omnist.Record, label string) (omnist.Field, bool) {
-	for _, f := range r.Fields {
-		if f.Label == label {
-			return f, true
-		}
+	f := r.Index().Field(label)
+	if f == nil {
+		return omnist.Field{}, false
 	}
-	return omnist.Field{}, false
+	return *f, true
 }
 
 // recordSub implements §6.6's `record_sub(SA, a, SB, b, sat_a, memo)`.
 func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.Record, satA map[string]bool, memo map[subKey]bool) bool {
+	bIdx := b.Index()
+	aIdx := a.Index()
+
 	// 1. Every label A may emit must be allowed by B.
 	for _, fa := range a.Fields {
 		if !fa.Cardinality.Unbounded && fa.Cardinality.Max == 0 {
@@ -124,8 +126,8 @@ func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.R
 		if fa.Cardinality.Min == 0 && fa.Type.Kind == omnist.TypeRefKind && !satA[fa.Type.RefName] {
 			continue // A never emits it either
 		}
-		fb, ok := fieldByLabel(b, fa.Label)
-		if !ok {
+		fb := bIdx.Field(fa.Label)
+		if fb == nil {
 			return false // B is closed
 		}
 		if fb.Cardinality.Min > fa.Cardinality.Min ||
@@ -140,8 +142,8 @@ func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.R
 	// 2. Every label B requires must be guaranteed by A.
 	for _, fb := range b.Fields {
 		if fb.Cardinality.Min >= 1 {
-			fa, ok := fieldByLabel(a, fb.Label)
-			if !ok || fa.Cardinality.Min < fb.Cardinality.Min {
+			fa := aIdx.Field(fb.Label)
+			if fa == nil || fa.Cardinality.Min < fb.Cardinality.Min {
 				return false
 			}
 		}

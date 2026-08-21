@@ -190,13 +190,20 @@ func walkRecordShape(target Target, rec *Record, path Path, checker *LimitChecke
 	// of that order for the cardinality check below, per D-3 order
 	// independence.
 	counts := make(map[string]int, len(node.Edges))
-	outEdges := make([]Edge, 0, len(node.Edges))
-	for i, e := range node.Edges {
+	for _, e := range node.Edges {
 		counts[e.Label]++
-		occurrence, repeated := PathIndexInNode(node, i)
+	}
+	runningIndex := make(map[string]int, len(counts))
+	fieldsIdx := rec.Index()
+
+	outEdges := make([]Edge, 0, len(node.Edges))
+	for _, e := range node.Edges {
+		occurrence := runningIndex[e.Label]
+		repeated := counts[e.Label] > 1
+		runningIndex[e.Label]++
 		childPath := path.Child(e.Label, occurrence, repeated)
 
-		f := findField(rec, e.Label)
+		f := fieldsIdx.Field(e.Label)
 		if f == nil {
 			addDiagnostic(result, childPath, CodeValidateUnexpectedField, "field not declared on this record")
 			// No further descent: an undeclared field has no type to check
@@ -226,15 +233,7 @@ func walkRecordShape(target Target, rec *Record, path Path, checker *LimitChecke
 // findField looks up rec.field(label) from the pseudocode. rec may be nil
 // (see Resolved's doc comment on conformRecord).
 func findField(rec *Record, label string) *Field {
-	if rec == nil {
-		return nil
-	}
-	for i := range rec.Fields {
-		if rec.Fields[i].Label == label {
-			return &rec.Fields[i]
-		}
-	}
-	return nil
+	return rec.Index().Field(label)
 }
 
 // cardinalityMessage renders the §3.6.1 message template: "field X occurs
