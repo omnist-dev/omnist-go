@@ -36,7 +36,7 @@ Or add the library to a module: `go get github.com/omnist-dev/omnist-go`.
 
 ## Development
 
-Requires Go 1.24+.
+Requires Go 1.24+ (Go 1.26.6+ recommended for stdlib `encoding/xml` recursion security patch GO-2026-6088).
 
 ```bash
 git submodule update --init --recursive
