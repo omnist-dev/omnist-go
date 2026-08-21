@@ -36,9 +36,8 @@ was always correct (the reference implementation genuinely emits the bare
 extending §8.5.2 rule 4's code-agnostic comparison (already used for
 Track 2's diagnostics) to Track 1's finding `code` field, done in
 `tools/conformance/fixtures.go`. The one Track 2 skip needs a TOML
-The one Track 2 skip needs a TOML strict-mode write parameter this repo
-hasn't built yet. Both conformance tracks are strictly CI-gating as of
-issue #74.
+strict-mode write parameter this repo hasn't built yet. Both conformance
+tracks are strictly CI-gating as of issue #74.
 
 ### Codex audit cycle (#70–#81)
 
