@@ -48,7 +48,7 @@ gap (issue #60/#62/#63, `omnist-spec` commit `2af12e0`).
 
 The spec version this repo targets is stated here and in every release:
 currently **omnist-spec v0.2.2-alpha** (pinned via `vendor/omnist-spec`
-submodule). Ship pass/fail/skip counts alongside every release, per spec
+submodule at `f6ec180`). Ship pass/fail/skip counts alongside every release, per spec
 §10.3.
 
 Ship code, tests, docs, and any version bump together, in the same PR.

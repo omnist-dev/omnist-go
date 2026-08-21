@@ -32,10 +32,9 @@ func DefaultLimits() Limits {
 // and validates integer literal digit counts, against a fixed Limits
 // configuration. It is stateful and not safe for concurrent use.
 //
-// Nothing in this repository calls LimitChecker yet — issue #1 builds the
-// Document model and its safety-limit machinery only; future OML/OSD/JSON
-// etc. readers are expected to construct one LimitChecker per Document
-// they build and call its methods as they walk the input.
+// Every format reader in this repository (OML, OSD, JSON, YAML, TOML, XML)
+// constructs one LimitChecker per Document it builds and invokes
+// EnterNode, LeaveNode, and CheckIntDigits as it walks input.
 type LimitChecker struct {
 	limits       Limits
 	currentDepth int
