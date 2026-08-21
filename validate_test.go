@@ -1,8 +1,8 @@
 package omnist
 
 import (
-	"strconv"
 	"math/big"
+	"strconv"
 	"testing"
 )
 
@@ -496,7 +496,6 @@ func TestValidateUnresolvableRef(t *testing.T) {
 		t.Fatalf("Validate() = %+v, want single unexpected-field at $.ghost.x (unresolvable ref treated as empty closed record)", got)
 	}
 }
-
 
 func BenchmarkValidateManyEdges(b *testing.B) {
 	sizes := []int{100, 1000, 5000, 10000}

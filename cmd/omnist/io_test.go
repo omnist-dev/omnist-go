@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,5 +89,57 @@ func TestReadInputStdinError(t *testing.T) {
 	_, err := readInput("-", failingReader{})
 	if err == nil {
 		t.Error("readInput: expected error from a failing stdin reader, got nil")
+	}
+}
+
+type repeatingReader struct {
+	remaining int64
+}
+
+func (r *repeatingReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if int64(n) > r.remaining {
+		n = int(r.remaining)
+	}
+	for i := 0; i < n; i++ {
+		p[i] = 'a'
+	}
+	r.remaining -= int64(n)
+	return n, nil
+}
+
+func TestReadInputExceedsMaxInputBytesStdin(t *testing.T) {
+	oversized := &repeatingReader{remaining: maxInputBytes + 10}
+	_, err := readInput("-", oversized)
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum size limit") {
+		t.Errorf("expected size limit error, got %v", err)
+	}
+}
+
+func TestReadInputExceedsMaxInputBytesFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "large.txt")
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(int64(maxInputBytes + 10)); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	_, err = readInput(p, nil)
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum size limit") {
+		t.Errorf("expected size limit error for oversized file, got %v", err)
+	}
+}
+
+func TestReadInputDirectoryError(t *testing.T) {
+	_, err := readInput(t.TempDir(), nil)
+	if err == nil {
+		t.Error("expected error when reading directory as file, got nil")
 	}
 }

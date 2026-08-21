@@ -224,6 +224,9 @@ func (t Target) Value() (Value, bool) {
 }
 
 // Edge is a single (label, target) pair within a Node's ordered edge list.
+//
+// Validity contract (issue #77): in a valid Document, edges form a strictly
+// finite, acyclic tree with no shared or cyclic references.
 type Edge struct {
 	Label  string
 	Target Target
@@ -232,6 +235,12 @@ type Edge struct {
 // Node is an ordered list of labeled edges (spec §2.1/§2.2). Labels MAY
 // repeat; nothing in the Document model constrains uniqueness, ordering,
 // or the relationship between repeated labels (spec §2.2.2).
+//
+// Validity contract (issue #77): A Node and its descendant edges must form
+// a strictly finite, acyclic tree. Nodes must not be mutated concurrently
+// once constructed. Trees produced by omnist-go's format readers are
+// guaranteed acyclic by construction; callers constructing Node trees
+// programmatically are responsible for preserving acyclicity.
 //
 // Per the design decision recorded in docs/workflow-playbook.md §2.3, Node
 // stays edge-list-native everywhere: there is no separate map-collapsed
@@ -263,6 +272,11 @@ func (n *Node) AddNode(label string, child *Node) *Node {
 
 // Document is a node or a bare value (spec §2.2: `Document = node | value`).
 // Exactly one of Node or Value is meaningful, selected by IsNode.
+//
+// Validity contract (issue #77): A Document represents an immutable,
+// finite, acyclic tree. Operations throughout this package (validation,
+// materialization, algebra, serialization) assume this contract and do
+// not perform cyclic-graph checks during recursive descent.
 type Document struct {
 	IsNode bool
 	Node   *Node
