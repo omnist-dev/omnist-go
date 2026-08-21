@@ -14,7 +14,7 @@ import (
 
 // Read parses XML source text into an omnist.Document without a schema.
 //
-// Every leaf arrives as a string (spec ?7.1, docs/formats/xml.md). Callers
+// Every leaf arrives as a string (spec §7.1, docs/formats/xml.md). Callers
 // with an OSD schema should use ReadWithSchema to pre-type leaves into numeric,
 // boolean, and temporal scalars per omnist-spec#44.
 func Read(src string, limits omnist.Limits) (omnist.Document, error) {
@@ -24,7 +24,7 @@ func Read(src string, limits omnist.Limits) (omnist.Document, error) {
 // ReadWithSchema parses XML source text into an omnist.Document.
 //
 // If schema is non-nil, text leaves are pre-typed into boolean, integer, number,
-// or temporal scalars when the schema's declared field type calls for it (spec ?7.1,
+// or temporal scalars when the schema's declared field type calls for it (spec §7.1,
 // omnist-spec#44). Leaves that do not parse value-exactly remain strings and fall
 // through to normal stage-2 diagnostics.
 //

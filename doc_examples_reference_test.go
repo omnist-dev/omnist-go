@@ -404,3 +404,52 @@ func Example_xmlLeafTyping() {
 	fmt.Println(v.Scalar.Kind, v.Scalar.Str)
 	// Output: string 42
 }
+
+// Example_limitsValidate backs reference.md's Limits section:
+// Validate checks that configured limits are strictly positive and do not
+// exceed sane recommended safety bounds.
+func Example_limitsValidate() {
+	// DefaultLimits() satisfies all recommended bounds:
+	fmt.Println(omnist.DefaultLimits().Validate())
+
+	// Setting astronomically large limits triggers an error:
+	huge := omnist.Limits{
+		MaxDepth:     200,
+		MaxNodes:     200_000_000, // exceeds MaxRecommendedNodes (100,000,000)
+		MaxIntDigits: 4300,
+	}
+	fmt.Println(huge.Validate())
+	// Output:
+	// <nil>
+	// MaxNodes 200000000 exceeds recommended safety ceiling (100000000)
+}
+
+// Example_xmlReadWithSchema backs reference.md's `formats/xml` section:
+// XML carries no native type information, so plain `Read` leaves every
+// leaf as a string. `ReadWithSchema` uses an OSD schema to pre-type
+// numeric, boolean, and temporal leaves during ingestion per omnist-spec#44.
+func Example_xmlReadWithSchema() {
+	schema, err := osd.Read(`
+		record User { "name": string, "age": integer, "active": boolean }
+		root User
+	`)
+	if err != nil {
+		panic(err)
+	}
+
+	src := `<User><name>Ann</name><age>42</age><active>true</active></User>`
+	doc, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
+	if err != nil {
+		panic(err)
+	}
+
+	rootNode, _ := doc.Node.Edges[0].Target.Node()
+	for _, edge := range rootNode.Edges {
+		v, _ := edge.Target.Value()
+		fmt.Printf("%s: %s\n", edge.Label, v.Scalar.Kind)
+	}
+	// Output:
+	// name: string
+	// age: integer
+	// active: boolean
+}
