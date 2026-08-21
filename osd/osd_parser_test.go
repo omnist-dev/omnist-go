@@ -2,8 +2,8 @@ package osd
 
 import (
 	"fmt"
-	"strings"
 	"strconv"
+	"strings"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -630,7 +630,6 @@ func TestCardinalityBoundOverflowsInt64(t *testing.T) {
 		t.Fatalf("got %+v", c)
 	}
 }
-
 
 func BenchmarkReadOSDManyFields(b *testing.B) {
 	sizes := []int{100, 1000, 5000, 10000}

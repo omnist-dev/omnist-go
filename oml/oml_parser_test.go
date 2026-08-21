@@ -1002,7 +1002,6 @@ func TestIntDigitsLimitUsesNestedDocumentPath(t *testing.T) {
 	}
 }
 
-
 func BenchmarkReadOMLFlat(b *testing.B) {
 	sizes := []int{100, 1000, 5000, 10000}
 	for _, size := range sizes {
