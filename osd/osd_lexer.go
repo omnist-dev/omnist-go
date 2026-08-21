@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
@@ -45,28 +46,30 @@ type osdToken struct {
 // single ordered alternation, with whitespace and `#`-to-end-of-line
 // comments discarded before the parser ever sees a token.
 type osdLexer struct {
-	src  []rune
-	pos  int
-	line int
-	col  int
+	raw     string
+	bytePos int
+	line    int
+	col     int
 }
 
 func newOSDLexer(text string) *osdLexer {
-	return &osdLexer{src: []rune(text), pos: 0, line: 1, col: 1}
+	return &osdLexer{raw: text, bytePos: 0, line: 1, col: 1}
 }
 
-func (l *osdLexer) atEOF() bool { return l.pos >= len(l.src) }
+func (l *osdLexer) atEOF() bool { return l.bytePos >= len(l.raw) }
 
-// peekRune returns the rune at the current position. Every call site
-// guards with atEOF first (the same trust-the-caller convention advance
-// uses), so this does not re-check bounds itself.
+// peekRune returns the rune at the current position.
 func (l *osdLexer) peekRune() rune {
-	return l.src[l.pos]
+	if l.atEOF() {
+		return 0
+	}
+	r, _ := utf8.DecodeRuneInString(l.raw[l.bytePos:])
+	return r
 }
 
 func (l *osdLexer) advance() rune {
-	r := l.src[l.pos]
-	l.pos++
+	r, width := utf8.DecodeRuneInString(l.raw[l.bytePos:])
+	l.bytePos += width
 	if r == '\n' {
 		l.line++
 		l.col = 1
@@ -109,7 +112,7 @@ var (
 )
 
 func (l *osdLexer) remainingString() string {
-	return string(l.src[l.pos:])
+	return l.raw[l.bytePos:]
 }
 
 func (l *osdLexer) errAt(line, col int, code omnist.Code, msg string) *omnist.ParseError {
