@@ -4,31 +4,42 @@ import (
 	encxml "encoding/xml"
 	"errors"
 	"io"
+	"math"
+	"math/big"
 	"strconv"
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// Read parses XML source text into a omnist.Document (spec §7.1,
-// docs/formats/xml.md, "stage 1 only, no schema"). limits configures the
-// safety limits enforced while reading, via the same omnist.LimitChecker every
-// other codec in this package uses (limits.go).
+// Read parses XML source text into an omnist.Document without a schema.
+//
+// Every leaf arrives as a string (spec ?7.1, docs/formats/xml.md). Callers
+// with an OSD schema should use ReadWithSchema to pre-type leaves into numeric,
+// boolean, and temporal scalars per omnist-spec#44.
+func Read(src string, limits omnist.Limits) (omnist.Document, error) {
+	return ReadWithSchema(src, nil, limits)
+}
+
+// ReadWithSchema parses XML source text into an omnist.Document.
+//
+// If schema is non-nil, text leaves are pre-typed into boolean, integer, number,
+// or temporal scalars when the schema's declared field type calls for it (spec ?7.1,
+// omnist-spec#44). Leaves that do not parse value-exactly remain strings and fall
+// through to normal stage-2 diagnostics.
+//
+// limits configures the safety limits enforced while reading, via the same
+// omnist.LimitChecker every other codec in this package uses (limits.go).
 //
 // # Library choice
 //
 // Go's stdlib encoding/xml is used purely as a token-stream tokenizer:
 // encxml.Decoder.Token(), never the struct-tag-driven Unmarshal path (which
-// would impose its own shape assumptions this reader does not want — it
-// needs to build a omnist.Document tree directly from the raw element structure,
-// not decode into a predetermined Go type). No third-party dependency is
-// needed: XML's stage-1 typing story has no number/temporal ambiguity to
-// resolve (docs/formats/xml.md: "every leaf arrives as a string... XML
-// carries no type information"), so, unlike ReadJSON/ReadYAML/ReadTOML,
-// there is no literal-shape distinction this reader needs from a
-// lower-level API than the stdlib token stream already gives it.
+// would impose its own shape assumptions this reader does not want ? it
+// needs to build an omnist.Document tree directly from the raw element structure,
+// not decode into a predetermined Go type).
 //
-// # Interleaving preservation — the central correctness property here
+// # Interleaving preservation ? the central correctness property here
 //
 // docs/formats/xml.md: "`<m/><x/><m/>` reads as `[(m,...),(x,...),(m,...)]`
 // in that order." Every other codec's reader in this package (ReadJSON's
@@ -36,60 +47,48 @@ import (
 // still preserves source order of DISTINCT keys, but nothing in JSON/YAML/
 // TOML's own grammar lets the SAME key occur twice non-adjacently at one
 // level in the first place (a JSON/YAML object key is unique by
-// construction; a repeated TOML key is a redefinition error) — so those
+// construction; a repeated TOML key is a redefinition error) ? so those
 // readers have never had an interleaving case to get wrong. XML does allow
 // exactly that (`<m/><x/><m/>`), which is why docs/formats/xml.md calls
 // this out as the property "the whole reason the omnist.Document is an ordered
 // edge list rather than a map."
 //
-// This reader achieves it with no special-case logic at all: readElement
-// below appends one omnist.Edge per child StartElement to the parent *omnist.Node's
-// Edges slice, in the exact order encxml.Decoder.Token() emits them — the
-// same "just append to Edges in encounter order" mechanism every reader in
-// this package already uses for ordinary sibling order. Never grouping by
-// label (the way groupJSONEdges/groupYAMLEdges/groupTOMLEdges do, purely
-// for those write-side formats' own grouped-key syntax) is what keeps
-// same-label edges from ever being merged or reordered relative to a
-// different label between them. See TestReadXMLPreservesInterleaving.
-//
-// # Attributes and namespace prefixes: silently dropped
-//
-// docs/formats/xml.md / spec §9.4 D-3: "Attributes and namespace prefixes
-// are dropped" — silently, with "no adjustment reported... implementations
-// MUST behave identically here" until a future conformance vector defines
-// reporting codes for it. This reader honors that literally: readElement
-// never inspects StartElement.Attr at all (attributes are not merely
-// discarded after being read — they are never read in the first place),
-// and every element name is taken from encxml.Name.Local only, never
-// encxml.Name.Space, which is what discards a namespace prefix/binding (Go's
-// encxml.Decoder resolves a declared prefix to a namespace URI in Name.Space,
-// or leaves an undeclared prefix's literal text there — either way, using
-// only .Local drops it uniformly, without needing to special-case which of
-// those two cases occurred). No omnist.Diagnostic, no return value, nothing is
-// built to report this — see errors_test.go/xml_reader_test.go for the
-// test asserting a clean nil-error, no-diagnostic result.
+// This reader achieves it with no special-case logic at all: readElementBody
+// appends every child StartElement to children.Edges in the exact order
+// Decoder.Token emits it.
 //
 // # Single document element, enforced on read too
 //
-// docs/formats/xml.md describes the single-top-level-element rule as a
-// write-side constraint ("A omnist.Document with several top-level edges cannot
-// be written as XML"), but says nothing explicit about a read-side input
-// with multiple top-level elements — genuinely not well-formed XML (the
-// XML 1.0 grammar itself requires exactly one root element), but Go's
-// encoding/encxml.Decoder is a lenient, general-purpose token streamer that
-// does not itself enforce that rule; asked to decode `<a/><b/>` it happily
-// emits StartElement a, EndElement a, StartElement b, EndElement b, then
-// EOF, with no error at any point. This is the plainly-correct reading of
-// a narrow, cosmetic gap: this reader enforces well-formedness itself by
-// treating any token after the root element's matching EndElement — other
-// than trailing whitespace, comments, or processing instructions — as
-// omnist.CodeParseTrailingContent, mirroring ReadJSON's identical trailing-content
-// check (json_reader.go) for the same "more than one top-level value"
-// situation.
-func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	dec := encxml.NewDecoder(strings.NewReader(text))
-	r := &xmlReader{dec: dec, checker: omnist.NewLimitChecker(limits)}
-
+// XML grammar forbids multiple document elements (`<a/><b/>`) and forbids
+// text outside the document element (`stray text<a/>` or `<a/>stray`).
+// The decoder handles this via two checks:
+//
+//   - readRoot loops past any leading CharData/Comment/ProcInst, takes the
+//     first StartElement as the document element, and rejects non-whitespace
+//     CharData before it.
+//   - checkTrailing runs after the document element closes and consumes
+//     tokens until EOF, rejecting any further StartElement or non-whitespace
+//     CharData.
+//
+// # Attribute and namespace-prefix dropping
+//
+// Per docs/formats/xml.md ("Attributes and namespace prefixes are
+// dropped"), attributes leave no trace in the resulting omnist.Document, and any
+// StartElement/EndElement Name.Space prefix is discarded, keeping only
+// Name.Local as the edge label.
+func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, error) {
+	if len(src) == 0 {
+		return omnist.Document{}, &omnist.ParseError{
+			Path:    "1:0",
+			Code:    omnist.CodeParseUnexpectedToken,
+			Message: "unexpected end of input",
+		}
+	}
+	r := &xmlReader{
+		dec:     encxml.NewDecoder(strings.NewReader(src)),
+		checker: omnist.NewLimitChecker(limits),
+		schema:  schema,
+	}
 	label, node, isLeaf, leafText, err := r.readRoot()
 	if err != nil {
 		return omnist.Document{}, err
@@ -97,9 +96,18 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	if err := r.checkTrailing(); err != nil {
 		return omnist.Document{}, err
 	}
-
 	root := omnist.NewNode()
 	if isLeaf {
+		if r.schema != nil {
+			if rootRec := r.schema.Env[r.schema.Root]; rootRec != nil {
+				if f := findField(rootRec, label); f != nil && f.Type.Kind == omnist.TypeScalarKind {
+					if sc, ok := pretypeScalar(leafText, f.Type.ScalarKind); ok {
+						root.AddValue(label, omnist.ScalarValue(sc))
+						return omnist.NodeDocument(root), nil
+					}
+				}
+			}
+		}
 		root.AddValue(label, omnist.ScalarValue(omnist.NewStringScalar(leafText)))
 	} else {
 		root.AddNode(label, node)
@@ -107,31 +115,17 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	return omnist.NodeDocument(root), nil
 }
 
-// xmlReader holds the streaming-decode state for one Read call.
 type xmlReader struct {
 	dec     *encxml.Decoder
 	checker *omnist.LimitChecker
+	schema  *omnist.Schema
 }
 
-// readRoot scans past any leading prolog content (an XML declaration,
-// comments, processing instructions, or insignificant whitespace) to find
-// the document's one root StartElement, then reads it via readElement.
-//
-// The switch below has no default case for a reason confirmed empirically:
-// encxml.Token's only concrete types are StartElement, EndElement, CharData,
-// Comment, ProcInst, and Directive, and every one but EndElement is handled
-// by name here — an EndElement can never legally be the first
-// non-prolog/non-whitespace token in a well-formed document (there is no
-// open element yet for it to close), and Go's own encxml.Decoder enforces
-// that itself before Token() ever returns one: a probe against a stray
-// `</a>` with nothing open confirms Token() reports "unexpected end
-// element" as its error return rather than handing back an EndElement
-// value for this loop to see. So this switch is exhaustive over every
-// value this loop can actually receive, with no unreachable default branch
-// to carry, mirroring this package's established no-dead-branch convention
-// (see e.g. json_reader.go's readObjectBody comment on its key-type
-// assertion for the same reasoning applied to a different guaranteed
-// precondition).
+// readRoot finds the single document element, consumes it via
+// readElementBody, and returns its local name and body. Leading
+// whitespace, comments, and processing instructions are skipped. Any
+// non-whitespace text before the root element is rejected with
+// omnist.CodeParseUnexpectedToken.
 func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, leafText string, err error) {
 	for {
 		tok, err := r.next()
@@ -141,7 +135,23 @@ func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, le
 		switch t := tok.(type) {
 		case encxml.StartElement:
 			label = t.Name.Local
-			node, isLeaf, leafText, err = r.readElementBody()
+			var currentRec *omnist.Record
+			if r.schema != nil {
+				if rootRec := r.schema.Env[r.schema.Root]; rootRec != nil {
+					if f := findField(rootRec, label); f != nil {
+						if f.Type.Kind == omnist.TypeRefKind {
+							currentRec = r.schema.Env[f.Type.RefName]
+						}
+					} else if rootRec.Name == label || r.schema.Root == label {
+						currentRec = rootRec
+					} else {
+						currentRec = r.schema.Env[label]
+					}
+				} else {
+					currentRec = r.schema.Env[label]
+				}
+			}
+			node, isLeaf, leafText, err = r.readElementBody(currentRec)
 			return label, node, isLeaf, leafText, err
 		case encxml.CharData:
 			if len(strings.TrimSpace(string(t))) != 0 {
@@ -156,7 +166,7 @@ func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, le
 
 // checkTrailing consumes tokens after the root element's matching
 // EndElement, allowing only insignificant whitespace, comments, and
-// processing instructions before EOF — see Read's doc comment ("Single
+// processing instructions before EOF ? see Read's doc comment ("Single
 // document element, enforced on read too").
 func (r *xmlReader) checkTrailing() error {
 	for {
@@ -204,7 +214,7 @@ func (r *xmlReader) wrapDecodeErr(err error) error {
 }
 
 // errHere builds a *omnist.ParseError positioned at the decoder's current byte
-// offset, translated to a 1-based line:col pair — reusing offsetToLineCol
+// offset, translated to a 1-based line:col pair ? reusing offsetToLineCol
 // (json_reader.go), which is format-agnostic (it walks raw text bytes, not
 // anything JSON-specific).
 func (r *xmlReader) errHere(code omnist.Code, msg string) error {
@@ -212,63 +222,13 @@ func (r *xmlReader) errHere(code omnist.Code, msg string) error {
 }
 
 func (r *xmlReader) pathHere() string {
-	// encxml.Decoder has no InputOffset method analogous to json.Decoder's;
-	// it does expose InputPos (line, column) directly, which is exactly
-	// the pair every other reader's omnist.Path field renders as "line:col", with
-	// no byte-offset-to-line/col conversion needed at all.
 	line, col := r.dec.InputPos()
 	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
 
-// readElementBody reads one element's children (the StartElement itself
-// already consumed by the caller — either by readRoot for the document
-// element, or by readChild below for every other element), up to and
-// including the matching EndElement. Per docs/formats/xml.md's
-// model-mapping table:
-//
-//   - An element with one or more child elements becomes a Node: one omnist.Edge
-//     per child StartElement, appended to Edges in exact source order —
-//     this is the entire interleaving-preservation mechanism (see Read's
-//     doc comment).
-//   - An element with no child elements is a leaf: its text content (all
-//     CharData tokens directly inside it, concatenated) becomes a plain
-//     string omnist.Value, always — "every leaf arrives as a string... zero
-//     auto-typing" (docs/formats/xml.md). A self-closing element (`<b/>`)
-//     is the empty-string leaf, since encxml.Decoder emits a StartElement
-//     immediately followed by the matching EndElement for it, with no
-//     CharData token in between at all.
-//
-// Mixed content (an element with BOTH child elements and non-whitespace
-// text alongside them) has no entry in docs/formats/xml.md's model-mapping
-// table at all — the omnist.Document model has no construct for "a node that is
-// also partially text". This is a narrow, cosmetic gap: the plainly-correct
-// reading taken here is that once an element is known to have at least one
-// child element, it is a omnist.Node, full stop, and any CharData encountered
-// alongside those children (typically pure formatting whitespace between
-// tags, but not exclusively) is discarded the same way it already is
-// between any two sibling elements — not appended anywhere, since there is
-// no omnist.Document-model slot to put it in.
-//
-// # Depth/node-count enforcement
-//
-// Unlike ReadJSON/ReadYAML/ReadTOML (whose value grammars distinguish a
-// container from a scalar before this reader ever has to choose whether to
-// recurse — a JSON '{' vs a bare literal, say), an XML element gives no
-// such signal up front: `<a>...</a>` might turn out to be a leaf or a omnist.Node,
-// and that is only known after walking its full body. Bounding MaxDepth
-// therefore cannot wait until an element is known to have children (by
-// then the recursive call that needed bounding has already happened) — see
-// readChild, which enforces the limit on every child element BEFORE
-// recursing into it, regardless of what that element turns out to contain,
-// rather than only on elements later found to have children of their own.
-// This is a deliberate, slightly more conservative choice than
-// readNestedObject's (json_reader.go counts only realized objects): it
-// treats every element below the (uncounted, per every other reader's own
-// top-level convention) document root as one unit of depth/node budget,
-// which is the safe reading given XML's leaf-or-node ambiguity, and is
-// consistent with the fact that every element genuinely is a candidate
-// omnist.Node until its body says otherwise.
-func (r *xmlReader) readElementBody() (node *omnist.Node, isLeaf bool, leafText string, err error) {
+// readElementBody reads one element's children up to and including the matching
+// EndElement.
+func (r *xmlReader) readElementBody(currentRec *omnist.Record) (node *omnist.Node, isLeaf bool, leafText string, err error) {
 	var text strings.Builder
 	var children *omnist.Node
 
@@ -290,11 +250,22 @@ func (r *xmlReader) readElementBody() (node *omnist.Node, isLeaf bool, leafText 
 				children = omnist.NewNode()
 			}
 			label := t.Name.Local
-			childNode, childIsLeaf, childText, err := r.readChild()
+			f := findField(currentRec, label)
+			var childRec *omnist.Record
+			if f != nil && f.Type.Kind == omnist.TypeRefKind && r.schema != nil {
+				childRec = r.schema.Env[f.Type.RefName]
+			}
+			childNode, childIsLeaf, childText, err := r.readChild(childRec)
 			if err != nil {
 				return nil, false, "", err
 			}
 			if childIsLeaf {
+				if f != nil && f.Type.Kind == omnist.TypeScalarKind {
+					if sc, ok := pretypeScalar(childText, f.Type.ScalarKind); ok {
+						children.AddValue(label, omnist.ScalarValue(sc))
+						continue
+					}
+				}
 				children.AddValue(label, omnist.ScalarValue(omnist.NewStringScalar(childText)))
 			} else {
 				children.AddNode(label, childNode)
@@ -305,15 +276,69 @@ func (r *xmlReader) readElementBody() (node *omnist.Node, isLeaf bool, leafText 
 	}
 }
 
-// readChild reads one non-root element (its StartElement already
-// consumed), enforcing MaxDepth/MaxNodes via the shared omnist.LimitChecker around
-// the read — see readElementBody's doc comment for why every element, not
-// only ones later found to have children, is wrapped this way.
-func (r *xmlReader) readChild() (node *omnist.Node, isLeaf bool, leafText string, err error) {
+// readChild reads one non-root element, enforcing MaxDepth/MaxNodes via
+// the shared omnist.LimitChecker.
+func (r *xmlReader) readChild(childRec *omnist.Record) (node *omnist.Node, isLeaf bool, leafText string, err error) {
 	path := r.pathHere()
 	if diag := r.checker.EnterNode(path); diag != nil {
 		return nil, false, "", &omnist.ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
 	}
 	defer r.checker.LeaveNode()
-	return r.readElementBody()
+	return r.readElementBody(childRec)
+}
+
+func findField(rec *omnist.Record, label string) *omnist.Field {
+	if rec == nil {
+		return nil
+	}
+	for i := range rec.Fields {
+		if rec.Fields[i].Label == label {
+			return &rec.Fields[i]
+		}
+	}
+	return nil
+}
+
+func pretypeScalar(text string, kind omnist.ScalarKind) (omnist.Scalar, bool) {
+	switch kind {
+	case omnist.KindBoolean:
+		if text == "true" {
+			return omnist.NewBooleanScalar(true), true
+		}
+		if text == "false" {
+			return omnist.NewBooleanScalar(false), true
+		}
+		return omnist.Scalar{}, false
+	case omnist.KindInteger:
+		bi, ok := new(big.Int).SetString(text, 10)
+		if !ok {
+			return omnist.Scalar{}, false
+		}
+		return omnist.NewIntegerScalar(bi), true
+	case omnist.KindNumber:
+		f, err := strconv.ParseFloat(text, 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return omnist.Scalar{}, false
+		}
+		return omnist.NewNumberScalar(f), true
+	case omnist.KindDate:
+		if !omnist.MatchesISOKind(text, omnist.TemporalDate) {
+			return omnist.Scalar{}, false
+		}
+		return omnist.NewDateScalar(omnist.ParseISODate(text)), true
+	case omnist.KindTime:
+		if !omnist.MatchesISOKind(text, omnist.TemporalTime) {
+			return omnist.Scalar{}, false
+		}
+		return omnist.NewTimeScalar(omnist.ParseISOTime(text)), true
+	case omnist.KindDateTime:
+		if !omnist.MatchesISOKind(text, omnist.TemporalDateTime) {
+			return omnist.Scalar{}, false
+		}
+		return omnist.NewDateTimeScalar(omnist.ParseISODateTime(text)), true
+	case omnist.KindString:
+		return omnist.NewStringScalar(text), true
+	default:
+		return omnist.Scalar{}, false
+	}
 }
