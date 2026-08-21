@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.1.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.2.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -45,7 +45,14 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
-**`v0.1.0-alpha`**, the maintainer sign-off bump past `0.0.x` described in
+**`v0.2.0-alpha`**, a minor bump per `docs/workflow-playbook.md` §1's
+alpha-series rule: this release adds new public API (`xml.ReadWithSchema`,
+`Limits.Validate()`), patches a real security vulnerability
+(GO-2026-6088), and closes two real CPU-exhaustion DoS bugs — the Codex
+audit cycle (#70-81, see above). Minor, not patch, since new public API
+and a security fix cross the stable-surface threshold.
+
+`v0.1.0-alpha` was the maintainer sign-off bump past `0.0.x` described in
 `docs/workflow-playbook.md` §1: core document model, all four codecs, OML,
 OSD, and the CLI are implemented, both conformance tracks pass with zero
 real fails, the doc-example verification gate is CI-blocking (issue #62),

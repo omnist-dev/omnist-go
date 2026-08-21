@@ -6,7 +6,7 @@ model built around one idea: a document is an ordered list of labeled
 edges, not a map. See [`vendor/omnist-spec`](vendor/omnist-spec) for the
 full specification.
 
-**Status: `v0.1.0-alpha`.** Every core operation is implemented: the
+**Status: `v0.2.0-alpha`.** Every core operation is implemented: the
 Document and Schema models, OML and OSD (read and write), `validate`,
 `materialize`, the full schema algebra, all four interchange codecs
 (JSON/YAML/TOML/XML, read and write), and a CLI. Both tracks of this

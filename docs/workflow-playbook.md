@@ -51,6 +51,20 @@ currently **omnist-spec v0.2.2-alpha** (pinned via `vendor/omnist-spec`
 submodule at `f6ec180`). Ship pass/fail/skip counts alongside every release, per spec
 §10.3.
 
+**Minor vs. patch within the alpha series** (added at `v0.2.0-alpha`, the
+first bump past `v0.1.0-alpha`, to record the rule the sign-off actually
+used rather than leaving it to be re-derived from a chat log next time):
+minor (`v0.x.0-alpha`) when a release adds new public API, patches a real
+security vulnerability, or closes a bug whose severity crosses into
+correctness/DoS territory (a value silently corrupted, a CPU-exhaustion
+path) — these change what callers can rely on, even pre-1.0. Patch
+(`v0.x.y-alpha`) for everything else: internal refactors, docs, CI/tooling,
+narrow bug fixes that don't touch the public contract. This mirrors the
+convention already used elsewhere in the org (`omnist` Python's beta
+versioning, `omnist-j`'s `v0.1.0-alpha` → `v0.2.0-alpha` bump for the same
+shape of change) — not a Go-specific rule, just stated here explicitly so
+it doesn't have to be re-derived per release.
+
 Ship code, tests, docs, and any version bump together, in the same PR.
 
 ## 2. Foundational design decisions

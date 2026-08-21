@@ -7,15 +7,11 @@ in this repo renders automatically, always in sync with the code. That's
 the idiomatic Go answer to "API reference": don't hand-maintain a second
 copy of `go doc`'s output here.
 
-**Tagged, but pkg.go.dev hasn't indexed it yet.** `v0.1.0-alpha` is tagged
-and pushed, and the Go module proxy already knows about it —
-`curl https://proxy.golang.org/github.com/omnist-dev/omnist-go/@v/v0.1.0-alpha.info`
-returns a real result. pkg.go.dev itself, though, still 404s on
-`https://pkg.go.dev/github.com/omnist-dev/omnist-go` as of this page
-(indexing lags the proxy by anywhere from minutes to a few hours after
-the first `go get` of a new module path). Until that page comes up, treat
-this page's curated map below as authoritative, and use `go doc` locally
-for the mechanical dump:
+**Now indexed on pkg.go.dev.** As of `v0.2.0-alpha`, `https://pkg.go.dev/github.com/omnist-dev/omnist-go`
+resolves and renders the full mechanical API dump — check that page first
+for exact signatures. This page's curated map below stays useful as an
+organized starting point, not a substitute. `go doc` still works locally
+too:
 
 <!-- doc-illustrative -->
 ```bash
