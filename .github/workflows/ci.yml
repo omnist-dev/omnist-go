@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
 
 env:
   # The repo's top-level vendor/ directory holds the omnist-spec git
@@ -22,7 +24,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.6'
       - run: go build ./...
       - run: go vet ./...
       - name: Test with coverage
@@ -77,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.6'
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5.0
@@ -90,7 +92,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.6'
       - name: Fuzz the six format readers (issue #57)
         run: |
           # This step is deliberately short and time-boxed -- 10s per
@@ -130,7 +132,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.6'
       - name: Verify docs/*.md code-block markers (issue #62)
         run: |
           # Every fenced code block in docs/*.md must carry a
@@ -143,6 +145,18 @@ jobs:
           git fetch origin main
           go run ./tools/check_doc_examples -base=origin/main
 
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.6'
+      - name: Run govulncheck (issue #73)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
   conformance:
     runs-on: ubuntu-latest
     steps:
@@ -151,7 +165,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.6'
       - name: Run conformance harness (Track 2, JSON-vector)
         run: |
           if [ -d tools/conformance/cmd/conformance ]; then
