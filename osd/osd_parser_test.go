@@ -1,6 +1,9 @@
 package osd
 
 import (
+	"fmt"
+	"strings"
+	"strconv"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -625,5 +628,32 @@ func TestCardinalityBoundOverflowsInt64(t *testing.T) {
 	c := s.Env["R"].Fields[0].Cardinality
 	if c.Min != 0 || c.Max != 1 {
 		t.Fatalf("got %+v", c)
+	}
+}
+
+
+func BenchmarkReadOSDManyFields(b *testing.B) {
+	sizes := []int{100, 1000, 5000, 10000}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			var sb strings.Builder
+			sb.WriteString("record ManyFields {\n")
+			for i := 0; i < size; i++ {
+				fmt.Fprintf(&sb, "  field_%d: string,\n", i)
+			}
+			sb.WriteString("}\nroot ManyFields\n")
+			src := sb.String()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, _ = Read(src)
+			}
+		})
+	}
+}
+
+func TestOSDPeekRuneAtEOF(t *testing.T) {
+	l := newOSDLexer("")
+	if r := l.peekRune(); r != 0 {
+		t.Errorf("expected 0 at EOF, got %v", r)
 	}
 }

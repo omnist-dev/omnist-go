@@ -1,6 +1,7 @@
 package oml
 
 import (
+	"unicode/utf8"
 	"fmt"
 	"math"
 	"math/big"
@@ -70,22 +71,22 @@ type token struct {
 // consequence of the algorithm as specified in §4.2, not a bug worked
 // around here.
 type lexer struct {
-	src  []rune
-	pos  int
-	line int
-	col  int
+	raw       string
+	bytePos   int
+	line      int
+	col       int
 
 	limits *omnist.LimitChecker
 
-	// valuePath is the omnist.Document path (spec §8.4) of the edge value the
-	// parser is about to tokenize, e.g. "$.n" — set by the parser right
+	// valuePath is the omnist.Document path (spec ?8.4) of the edge value the
+	// parser is about to tokenize, e.g. "$.n" ? set by the parser right
 	// before it calls advance() to read a value token, and used only to
 	// path a document.limit.int-digits diagnostic correctly (that code is
-	// document.*, so per §8.4 it MUST carry an omnist.Document path, never the
+	// document.*, so per ?8.4 it MUST carry an omnist.Document path, never the
 	// text-position path every other diagnostic in this file uses; a
 	// parse.* diagnostic never consults this field). Left empty when no
 	// value is pending (e.g. while reading a label or punctuation), in
-	// which case CheckIntDigits falls back to a text-position path — this
+	// which case CheckIntDigits falls back to a text-position path ? this
 	// only matters for a lone top-level integer with no enclosing label,
 	// which document.limit.int-digits cannot presently pin an example of
 	// an omnist.Document path for since there's no label to name.
@@ -93,29 +94,39 @@ type lexer struct {
 }
 
 func newLexer(text string, limits *omnist.LimitChecker) *lexer {
-	return &lexer{src: []rune(text), pos: 0, line: 1, col: 1, limits: limits}
+	return &lexer{raw: text, bytePos: 0, line: 1, col: 1, limits: limits}
 }
 
-func (l *lexer) atEOF() bool { return l.pos >= len(l.src) }
+func (l *lexer) atEOF() bool { return l.bytePos >= len(l.raw) }
 
 func (l *lexer) peekRune() rune {
 	if l.atEOF() {
 		return 0
 	}
-	return l.src[l.pos]
+	r, _ := utf8.DecodeRuneInString(l.raw[l.bytePos:])
+	return r
 }
 
 func (l *lexer) peekRuneAt(offset int) rune {
-	if l.pos+offset >= len(l.src) {
+	pos := l.bytePos
+	for i := 0; i < offset; i++ {
+		if pos >= len(l.raw) {
+			return 0
+		}
+		_, width := utf8.DecodeRuneInString(l.raw[pos:])
+		pos += width
+	}
+	if pos >= len(l.raw) {
 		return 0
 	}
-	return l.src[l.pos+offset]
+	r, _ := utf8.DecodeRuneInString(l.raw[pos:])
+	return r
 }
 
 // advance consumes one rune, updating line/col.
 func (l *lexer) advance() rune {
-	r := l.src[l.pos]
-	l.pos++
+	r, width := utf8.DecodeRuneInString(l.raw[l.bytePos:])
+	l.bytePos += width
 	if r == '\n' {
 		l.line++
 		l.col = 1
@@ -177,7 +188,7 @@ var (
 // remainingString returns the source from the current position onward, as
 // a string, for regexp matching. Cheap enough: called once per token.
 func (l *lexer) remainingString() string {
-	return string(l.src[l.pos:])
+	return l.raw[l.bytePos:]
 }
 
 // next returns the next token, or a *omnist.ParseError. It is the single entry
@@ -433,10 +444,10 @@ func (l *lexer) scanEscape(b *strings.Builder, escLine, escCol int) *omnist.Pars
 }
 
 func (l *lexer) scanHex4(errLine, errCol int) (int, *omnist.ParseError) {
-	if l.pos+4 > len(l.src) {
+	if l.bytePos+4 > len(l.raw) {
 		return 0, l.errAt(errLine, errCol, omnist.CodeParseUnterminatedString, "unterminated \\u escape")
 	}
-	digits := string(l.src[l.pos : l.pos+4])
+	digits := l.raw[l.bytePos : l.bytePos+4]
 	v, err := strconv.ParseUint(digits, 16, 32)
 	if err != nil {
 		return 0, l.errAt(errLine, errCol, omnist.CodeParseInvalidEscape, "invalid \\u escape")

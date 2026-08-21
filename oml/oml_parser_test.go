@@ -1,8 +1,10 @@
 package oml
 
 import (
+	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -997,5 +999,31 @@ func TestIntDigitsLimitUsesNestedDocumentPath(t *testing.T) {
 	}
 	if pe.Path != "$.a.n" {
 		t.Errorf("path = %q, want %q", pe.Path, "$.a.n")
+	}
+}
+
+
+func BenchmarkReadOMLFlat(b *testing.B) {
+	sizes := []int{100, 1000, 5000, 10000}
+	for _, size := range sizes {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			var sb strings.Builder
+			for i := 0; i < size; i++ {
+				fmt.Fprintf(&sb, "item_%d: %d\n", i, i)
+			}
+			src := sb.String()
+			limits := omnist.DefaultLimits()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, _ = Read(src, limits)
+			}
+		})
+	}
+}
+
+func TestPeekRuneAtEOF(t *testing.T) {
+	l := newLexer("a", omnist.NewLimitChecker(omnist.DefaultLimits()))
+	if r := l.peekRuneAt(10); r != 0 {
+		t.Errorf("expected 0, got %v", r)
 	}
 }
