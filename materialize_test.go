@@ -94,6 +94,50 @@ func TestMaterializeFractionalFloatToIntegerFails(t *testing.T) {
 	}
 }
 
+func TestMaterializeIntegerToNumberExactness(t *testing.T) {
+	// Exact cases: 0, 1, -1, 2^53 (9007199254740992), -2^53, 2^54 (18014398509481984)
+	exacts := []string{
+		"0",
+		"1",
+		"-1",
+		"9007199254740992",  // 2^53
+		"-9007199254740992", // -2^53
+		"18014398509481984", // 2^54 (power of two)
+	}
+	for _, s := range exacts {
+		bi, _ := new(big.Int).SetString(s, 10)
+		doc := oneFieldDoc(ScalarValue(NewIntegerScalar(bi)))
+		got, diags, err := Materialize(doc, scalarRecordSchema(KindNumber, false))
+		if err != nil || len(diags) != 0 {
+			t.Errorf("exact int %s: want ok, got diags=%v err=%v", s, diags, err)
+			continue
+		}
+		v, _ := got.Node.Edges[0].Target.Value()
+		if v.Scalar.Kind != KindNumber {
+			t.Errorf("exact int %s: want KindNumber, got %v", s, v.Scalar.Kind)
+		}
+	}
+
+	// Inexact cases: 2^53 + 1 (9007199254740993), -(2^53 + 1), 2^54 + 1 (18014398509481985), 10^30
+	inexacts := []string{
+		"9007199254740993",  // 2^53 + 1
+		"-9007199254740993", // -(2^53 + 1)
+		"18014398509481985", // 2^54 + 1
+		"1000000000000000000000000000001",
+	}
+	for _, s := range inexacts {
+		bi, _ := new(big.Int).SetString(s, 10)
+		doc := oneFieldDoc(ScalarValue(NewIntegerScalar(bi)))
+		_, diags, err := Materialize(doc, scalarRecordSchema(KindNumber, false))
+		if err != nil {
+			t.Errorf("inexact int %s: unexpected err=%v", s, err)
+		}
+		if !hasCode(diags, CodeMaterializeInexactConversion) {
+			t.Errorf("inexact int %s: want CodeMaterializeInexactConversion, got %v", s, codesOf(diags))
+		}
+	}
+}
+
 func TestMaterializeIntegerToNumberYieldsFloatTypedResult(t *testing.T) {
 	doc := oneFieldDoc(ScalarValue(NewIntegerScalar(big.NewInt(1))))
 	got, diags, err := Materialize(doc, scalarRecordSchema(KindNumber, false))

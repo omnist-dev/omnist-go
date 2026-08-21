@@ -164,7 +164,10 @@ func tryUpgrade(s Scalar, targetKind ScalarKind) (Scalar, bool) {
 		if s.Kind != KindInteger {
 			return Scalar{}, false
 		}
-		f, _ := new(big.Float).SetInt(s.Int).Float64()
+		f, acc := new(big.Float).SetInt(s.Int).Float64()
+		if acc != big.Exact {
+			return Scalar{}, false
+		}
 		return NewNumberScalar(f), true
 	case KindDate:
 		if s.Kind != KindString || !MatchesISOKind(s.Str, TemporalDate) {
