@@ -1,13 +1,13 @@
 package oml
 
 import (
-	"unicode/utf8"
 	"fmt"
 	"math"
 	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
@@ -71,22 +71,22 @@ type token struct {
 // consequence of the algorithm as specified in §4.2, not a bug worked
 // around here.
 type lexer struct {
-	raw       string
-	bytePos   int
-	line      int
-	col       int
+	raw     string
+	bytePos int
+	line    int
+	col     int
 
 	limits *omnist.LimitChecker
 
-	// valuePath is the omnist.Document path (spec ?8.4) of the edge value the
-	// parser is about to tokenize, e.g. "$.n" ? set by the parser right
+	// valuePath is the omnist.Document path (spec §8.4) of the edge value the
+	// parser is about to tokenize, e.g. "$.n" — set by the parser right
 	// before it calls advance() to read a value token, and used only to
 	// path a document.limit.int-digits diagnostic correctly (that code is
-	// document.*, so per ?8.4 it MUST carry an omnist.Document path, never the
+	// document.*, so per §8.4 it MUST carry an omnist.Document path, never the
 	// text-position path every other diagnostic in this file uses; a
 	// parse.* diagnostic never consults this field). Left empty when no
 	// value is pending (e.g. while reading a label or punctuation), in
-	// which case CheckIntDigits falls back to a text-position path ? this
+	// which case CheckIntDigits falls back to a text-position path — this
 	// only matters for a lone top-level integer with no enclosing label,
 	// which document.limit.int-digits cannot presently pin an example of
 	// an omnist.Document path for since there's no label to name.

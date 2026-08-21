@@ -1,11 +1,11 @@
 package osd
 
 import (
-	"unicode/utf8"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
