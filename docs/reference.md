@@ -187,6 +187,26 @@ that don't belong to a specific codec or the algebra package.
 - **`Limits`** / **`DefaultLimits()`** — the finite, documented safety
   bounds (depth, node count, integer digit count) spec §2.4 requires every
   implementation to enforce. Passed to every format reader.
+- **`Limits.Validate()`** — opt-in sanity check verifying that configured
+  limits are strictly positive and within recommended safety ceilings
+  (`MaxRecommendedDepth = 10_000`, `MaxRecommendedNodes = 100_000_000`,
+  `MaxRecommendedIntDigits = 1_000_000`).
+
+<!-- verified-by: doc_examples_reference_test.go::Example_limitsValidate -->
+```go
+// DefaultLimits() satisfies all recommended bounds:
+fmt.Println(omnist.DefaultLimits().Validate())
+
+// Setting astronomically large limits triggers an error:
+huge := omnist.Limits{
+    MaxDepth:     200,
+    MaxNodes:     200_000_000, // exceeds MaxRecommendedNodes (100,000,000)
+    MaxIntDigits: 4300,
+}
+fmt.Println(huge.Validate())
+// <nil>
+// MaxNodes 200000000 exceeds recommended safety ceiling (100000000)
+```
 
 ## `oml` — `github.com/omnist-dev/omnist-go/oml`
 
@@ -296,6 +316,36 @@ ageNode, _ := doc.Node.Edges[0].Target.Node()
 v, _ := ageNode.Edges[0].Target.Value()
 fmt.Println(v.Scalar.Kind, v.Scalar.Str)
 // string 42
+```
+
+`xml` also provides **`ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits)`**
+to pre-type numeric, boolean, and temporal leaves during ingestion when an OSD schema is
+available (per `omnist-spec#44`):
+
+<!-- verified-by: doc_examples_reference_test.go::Example_xmlReadWithSchema -->
+```go
+schema, err := osd.Read(`
+    record User { "name": string, "age": integer, "active": boolean }
+    root User
+`)
+if err != nil {
+    panic(err)
+}
+
+src := `<User><name>Ann</name><age>42</age><active>true</active></User>`
+doc, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
+if err != nil {
+    panic(err)
+}
+
+rootNode, _ := doc.Node.Edges[0].Target.Node()
+for _, edge := range rootNode.Edges {
+    v, _ := edge.Target.Value()
+    fmt.Printf("%s: %s\n", edge.Label, v.Scalar.Kind)
+}
+// name: string
+// age: integer
+// active: boolean
 ```
 
 A codec beyond JSON/YAML, showing the shared writer shape:

@@ -36,8 +36,13 @@ was always correct (the reference implementation genuinely emits the bare
 extending §8.5.2 rule 4's code-agnostic comparison (already used for
 Track 2's diagnostics) to Track 1's finding `code` field, done in
 `tools/conformance/fixtures.go`. The one Track 2 skip needs a TOML
-strict-mode write parameter this repo hasn't built yet. Not CI-gating yet,
-per `docs/workflow-playbook.md` §4.
+The one Track 2 skip needs a TOML strict-mode write parameter this repo
+hasn't built yet. Both conformance tracks are strictly CI-gating as of
+issue #74.
+
+### Codex audit cycle (#70–#81)
+
+A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
 
