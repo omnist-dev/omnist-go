@@ -1,0 +1,1192 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A from-scratch, spec-first Go implementation of Omnist.">
+      
+      
+      
+        <link rel="canonical" href="https://go.omnist.dev/workflow-playbook/">
+      
+      
+        <link rel="prev" href="../reference/">
+      
+      
+        <link rel="next" href="../limitations/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Workflow playbook - omnist-go</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#omnist-go-workflow-playbook" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="omnist-go" class="md-header__button md-logo" aria-label="omnist-go" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            omnist-go
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Workflow playbook
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/omnist-dev/omnist-go" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    omnist-dev/omnist-go
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="omnist-go" class="md-nav__button md-logo" aria-label="omnist-go" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    omnist-go
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/omnist-dev/omnist-go" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    omnist-dev/omnist-go
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow playbook
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow playbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-spec-first-not-reference-implementation-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Spec-first, not reference-implementation-first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-foundational-design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Foundational design decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Foundational design decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-document-node-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Document node representation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-scalar-type-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Scalar type shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-ordered-map-repeated-label-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Ordered-map / repeated-label representation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-error-type-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Error-type hierarchy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-port-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Port order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-conformance-harness-built-early-interleaved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Conformance harness — built early, interleaved
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-engineering-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The engineering loop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-sharp-edges-carried-forward-from-the-other-three-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Sharp edges (carried forward from the other three ports)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-doc-example-verification-gate-issue-62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Doc-example verification gate (issue #62)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-docs-update-in-the-same-pr-as-the-state-they-describe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Docs update in the same PR as the state they describe
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../limitations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status & limitations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-spec-first-not-reference-implementation-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Spec-first, not reference-implementation-first
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-foundational-design-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Foundational design decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Foundational design decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-document-node-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Document node representation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-scalar-type-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Scalar type shape
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-ordered-map-repeated-label-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Ordered-map / repeated-label representation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-error-type-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Error-type hierarchy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-port-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Port order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-conformance-harness-built-early-interleaved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Conformance harness — built early, interleaved
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-the-engineering-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. The engineering loop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-sharp-edges-carried-forward-from-the-other-three-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Sharp edges (carried forward from the other three ports)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-doc-example-verification-gate-issue-62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Doc-example verification gate (issue #62)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-docs-update-in-the-same-pr-as-the-state-they-describe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Docs update in the same PR as the state they describe
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="omnist-go-workflow-playbook">omnist-go workflow playbook<a class="headerlink" href="#omnist-go-workflow-playbook" title="Permanent link">&para;</a></h1>
+<p>This document is binding for this repo. It exists so the rules survive past
+any one session. If you are an agent or contributor about to write code
+here, read this first.</p>
+<h2 id="0-spec-first-not-reference-implementation-first">0. Spec-first, not reference-implementation-first<a class="headerlink" href="#0-spec-first-not-reference-implementation-first" title="Permanent link">&para;</a></h2>
+<p>This is a deliberate inversion from how <code>omnist-rs</code> was built. <code>omnist-rs</code>
+read Python (<code>omnist</code>) as its day-to-day reference and checked the spec
+occasionally to settle disputes. <code>omnist-go</code> runs the loop the other way.</p>
+<ul>
+<li><strong>Primary source</strong>: <code>vendor/omnist-spec</code>'s normative docs. If the spec says
+  it, that's the contract.</li>
+<li><strong>Secondary, tie-breaking only, and only after a spec issue is already
+  filed for the gap</strong> — never as a way to avoid filing one. <code>omnist</code>,
+  <code>omnist-ts</code>, <code>omnist-rs</code> source may be read only to resolve a case the spec
+  doesn't pin down precisely enough to implement from prose alone, or to
+  write a better-informed spec issue. Their agreement is evidence of intent,
+  not proof.</li>
+<li><strong>Never</strong>: treat "Python does X" (or Rust, or TypeScript) as sufficient
+  justification for a Go behavior on its own, when the spec doesn't say X.</li>
+</ul>
+<p><strong>When a gap is load-bearing</strong> (shapes a design decision, affects more than
+the immediate piece of work): file the <code>omnist-spec</code> issue, then actually
+stop that piece of work until it resolves. Don't guess and continue.</p>
+<p><strong>When a gap is narrow and cosmetic</strong>: file the issue anyway, proceed with
+the plainly-correct reading, and flag the assumption explicitly in the code
+and the PR description.</p>
+<p>Do not open <code>~/dev/omnist</code>, <code>~/dev/omnist-ts</code>, or <code>~/dev/omnist-rs</code> except as
+a step-3 tie-breaker on a gap that already has a filed <code>omnist-spec</code> issue
+(spec §10.4 step 2/3). Not "just to check something."</p>
+<h2 id="1-versioning">1. Versioning<a class="headerlink" href="#1-versioning" title="Permanent link">&para;</a></h2>
+<p><code>omnist-go</code> stayed on <code>v0.0.x-alpha</code> until: core document model + all four
+codecs (JSON/YAML/TOML/XML) + OML + OSD + CLI were implemented, and our own
+conformance harness (<code>tools/conformance/</code>) passed with zero real fails
+(skips permitted and cited). This mirrored <code>omnist-rs</code>'s rule. The bump past
+<code>0.0.x</code> was a maintainer sign-off event, not a routine release mechanic —
+not triggered by accumulated features or fixes alone, and it happened once,
+at <code>v0.1.0-alpha</code>, once both conformance tracks reached zero real fails, the
+doc-example gate (§7) was CI-blocking, and a source-audited self-check of
+the §2.4 resource caps against <code>omnist-spec</code>'s divergence ledger found no
+gap (issue #60/#62/#63, <code>omnist-spec</code> commit <code>2af12e0</code>).</p>
+<p>The spec version this repo targets is stated here and in every release:
+currently <strong>omnist-spec v0.2.2-alpha</strong> (pinned via <code>vendor/omnist-spec</code>
+submodule at <code>f6ec180</code>). Ship pass/fail/skip counts alongside every release, per spec
+§10.3.</p>
+<p><strong>Minor vs. patch within the alpha series</strong> (added at <code>v0.2.0-alpha</code>, the
+first bump past <code>v0.1.0-alpha</code>, to record the rule the sign-off actually
+used rather than leaving it to be re-derived from a chat log next time):
+minor (<code>v0.x.0-alpha</code>) when a release adds new public API, patches a real
+security vulnerability, or closes a bug whose severity crosses into
+correctness/DoS territory (a value silently corrupted, a CPU-exhaustion
+path) — these change what callers can rely on, even pre-1.0. Patch
+(<code>v0.x.y-alpha</code>) for everything else: internal refactors, docs, CI/tooling,
+narrow bug fixes that don't touch the public contract. This mirrors the
+convention already used elsewhere in the org (<code>omnist</code> Python's beta
+versioning, <code>omnist-j</code>'s <code>v0.1.0-alpha</code> → <code>v0.2.0-alpha</code> bump for the same
+shape of change) — not a Go-specific rule, just stated here explicitly so
+it doesn't have to be re-derived per release.</p>
+<p>Ship code, tests, docs, and any version bump together, in the same PR.</p>
+<h2 id="2-foundational-design-decisions">2. Foundational design decisions<a class="headerlink" href="#2-foundational-design-decisions" title="Permanent link">&para;</a></h2>
+<p>Each decision below gets its own subsection with the choice and the "why."
+Nothing in §2 of this doc is provisional — these are load-bearing choices
+that later code depends on. If one needs to change, that's a new decision
+recorded here with the old one struck through, not silently overwritten.</p>
+<h3 id="21-document-node-representation">2.1 Document node representation<a class="headerlink" href="#21-document-node-representation" title="Permanent link">&para;</a></h3>
+<p><strong>Decision</strong>: pointer-based tree (<code>*Node</code> holding <code>[]Edge</code>), not an
+arena+index scheme.</p>
+<p><strong>Why</strong>: <code>omnist-rs</code> used an arena (<code>Vec&lt;Entry&gt;</code> + index newtype)
+specifically to avoid <code>Rc&lt;RefCell&lt;_&gt;&gt;</code> under Rust's ownership model. Go has
+a garbage collector and no borrow checker, so that motivation doesn't apply.
+A plain pointer tree is the idiomatic Go answer and keeps the Document model
+(spec §2.2 — a node is literally an ordered list of labeled edges) directly
+representable without an extra indirection layer.</p>
+<h3 id="22-scalar-type-shape">2.2 Scalar type shape<a class="headerlink" href="#22-scalar-type-shape" title="Permanent link">&para;</a></h3>
+<p><strong>Decision</strong>: a tagged struct with a <code>Kind</code> discriminant and one field per
+kind's Go-native representation:</p>
+<!-- doc-illustrative -->
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">ScalarKind</span><span class="w"> </span><span class="kt">int</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="nx">KindString</span><span class="w"> </span><span class="nx">ScalarKind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">iota</span>
+<span class="w">    </span><span class="nx">KindInteger</span>
+<span class="w">    </span><span class="nx">KindNumber</span>
+<span class="w">    </span><span class="nx">KindBoolean</span>
+<span class="w">    </span><span class="nx">KindDate</span>
+<span class="w">    </span><span class="nx">KindTime</span>
+<span class="w">    </span><span class="nx">KindDateTime</span>
+<span class="p">)</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Scalar</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Kind</span><span class="w"> </span><span class="nx">ScalarKind</span>
+<span class="w">    </span><span class="nx">Str</span><span class="w">  </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">Int</span><span class="w">  </span><span class="o">*</span><span class="nx">big</span><span class="p">.</span><span class="nx">Int</span>
+<span class="w">    </span><span class="nx">Num</span><span class="w">  </span><span class="kt">float64</span>
+<span class="w">    </span><span class="nx">Bool</span><span class="w"> </span><span class="kt">bool</span>
+<span class="w">    </span><span class="nx">Date</span><span class="w"> </span><span class="nx">DateValue</span>
+<span class="w">    </span><span class="nx">Time</span><span class="w"> </span><span class="nx">TimeValue</span>
+<span class="w">    </span><span class="nx">DateTime</span><span class="w"> </span><span class="nx">DateTimeValue</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong>Why</strong>: spec §2.2.1 defines exactly seven scalar kinds and is explicit that
+implementations MUST NOT add or collapse kinds — doing so changes the
+Schema Algebra's subtyping lattice (§2.2.1, §D-5). Go can natively
+distinguish <code>integer</code> from <code>number</code> (unlike TypeScript's single <code>number</code>
+type, which forced the D-6 divergence-ledger entry), so there is no reason
+to accept that collapse here. <code>integer</code> uses <code>math/big.Int</code> because spec
+§2.4 requires supporting integers up to 4,300 decimal digits — <code>int64</code>
+would silently violate that limit.</p>
+<h3 id="23-ordered-map-repeated-label-representation">2.3 Ordered-map / repeated-label representation<a class="headerlink" href="#23-ordered-map-repeated-label-representation" title="Permanent link">&para;</a></h3>
+<p><strong>Decision</strong>: the node stays edge-list-native everywhere —
+<code>type Node struct { Edges []Edge }</code>, <code>type Edge struct { Label string;
+Target Target }</code> — with no separate "canonical value" (map-collapsed) type
+alongside it. This differs from <code>omnist-rs</code>'s <code>Value</code>/<code>RawNode</code> split.</p>
+<p><strong>Why</strong>: spec §2.1/§2.2 defines the Document model itself as an ordered edge
+list with repeats permitted (<code>[(item,"pen"), (note,"rush"), (item,"pad")]</code>).
+That's not a special case for OML/XML — it's the model, full stop; JSON,
+YAML, and TOML documents are represented the identical way after reading
+(spec's own worked table in §2.1 shows this). Introducing a second,
+map-shaped type invites exactly the "note has moved" bug the model exists to
+prevent, if any code path accidentally uses the collapsed type instead of
+the edge list. If a later convenience API (e.g. a JSON-like accessor for
+callers who don't need repeated-label fidelity) turns out to be useful, it
+will be a derived read-only view computed from <code>Node</code>, never the source of
+truth, and will get its own decision record here when it's built — not
+assumed now.</p>
+<p><strong>Open flag</strong>: this is the one decision in this doc most likely to need
+revisiting once OML/XML round-trip code is actually written. If it turns
+out unworkable, update this section rather than silently diverging from it
+in code.</p>
+<h3 id="24-error-type-hierarchy">2.4 Error-type hierarchy<a class="headerlink" href="#24-error-type-hierarchy" title="Permanent link">&para;</a></h3>
+<p><strong>Decision</strong>: structured errors from day one —</p>
+<!-- doc-illustrative -->
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">ParseError</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">Line</span><span class="w">    </span><span class="kt">int</span>
+<span class="w">    </span><span class="nx">Col</span><span class="w">     </span><span class="kt">int</span>
+<span class="w">    </span><span class="nx">Path</span><span class="w">    </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">Code</span><span class="w">    </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">Message</span><span class="w"> </span><span class="kt">string</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>with <code>ValidationResult</code> as <code>[]ValidationError{Path, Code, Message}</code> per spec
+§3.6.</p>
+<p><strong>Why</strong>: the playbook notes that <code>omnist-rs</code>'s structured <code>ParseError{line,
+col, message}</code> (vs. TypeScript's message-only error) let materially more
+spec-conformance vectors run for real instead of being skipped, purely
+because the error type could report <em>where</em> something failed, not just
+<em>that</em> it failed. This costs nothing extra in Go and is the same shape spec
+§8's error taxonomy (<code>(path, code, message)</code>) already expects implementations
+to produce.</p>
+<h2 id="3-port-order">3. Port order<a class="headerlink" href="#3-port-order" title="Permanent link">&para;</a></h2>
+<p>Per spec §9.5's recommended build order:</p>
+<ol>
+<li>Document model core + §2.4 safety limits (depth, node count, integer
+   digits — finite, documented, enforced)</li>
+<li>OML reader, then canonical OML writer (Core, then Extended)</li>
+<li>OSD reader, then canonical OSD writer</li>
+<li><code>validate</code></li>
+<li><code>satisfiable_set</code>, <code>is_empty</code>, <code>prune</code></li>
+<li><code>compatible_with</code>, then <code>equivalent</code></li>
+<li><code>normalize</code> (needs <code>prune</code>)</li>
+<li><code>extract</code> (needs <code>prune</code> and <code>normalize</code>)</li>
+<li><code>lint</code> (needs <code>satisfiable_set</code> and <code>equivalence_classes</code>)</li>
+<li><code>infer</code></li>
+<li>Remaining codecs: JSON, YAML, TOML, XML</li>
+<li><code>materialize</code></li>
+<li>CLI</li>
+<li>Fuzzing / property-based testing (Go's built-in <code>testing/quick</code>-successor,
+    <code>go test -fuzz</code>, decided here rather than bolted on later)</li>
+</ol>
+<p>Steps 1-6 are the useful core per the spec; a port that stops there is still
+worth having.</p>
+<p>Step 14 landed as issue #57: one <code>FuzzRead</code> per reader package (<code>oml</code>,
+<code>osd</code>, <code>formats/{json,yaml,toml,xml}</code>), seeded from this repo's own test
+literals plus vendored <code>omnist-spec</code> test-suite/conformance-fixture text.
+Two real bugs surfaced immediately, both in <code>formats/toml</code>: go-toml/v2's
+unstable parser can tag a value node <code>Kind=LocalDate</code>/<code>LocalTime</code>/
+<code>LocalDateTime</code>/<code>DateTime</code> on text that does not actually have the full
+digit layout <code>ParseISODate</code>/<code>ParseISOTime</code> require as their documented
+precondition (e.g. bare <code>"00:"</code> reaching <code>Kind=LocalTime</code>), and
+<code>MatchesISOKind</code> itself had a latent bug where <code>regexp.FindString("")</code>'s
+ambiguity between "no match" and "an empty match" made it spuriously
+return true for an empty string against every kind. Both fixed (validate
+before calling the precondition-trusting parsers; reject <code>""</code> up front in
+<code>MatchesISOKind</code>), both covered by unit tests, not just the fuzz corpus.
+CI runs a short (10s/package, 60s total) <code>-fuzz</code> burst on every push,
+separate from — and much shorter than — the 30-60s-per-package local runs
+that found the above; see <code>.github/workflows/ci.yml</code>'s <code>fuzz</code> job for the
+regression-vs-exploration distinction.</p>
+<h2 id="4-conformance-harness-built-early-interleaved">4. Conformance harness — built early, interleaved<a class="headerlink" href="#4-conformance-harness-built-early-interleaved" title="Permanent link">&para;</a></h2>
+<p>Do not defer this to the end. Start it right after step 2 (OML) lands, and
+extend it as each subsequent operation/codec lands, not as one big effort
+after the library is "done." <code>omnist-rs</code> built its full library first and
+only then built its harness, and real bugs (XML leaf-typing, YAML
+sexagesimal ints, the OML temporal-provenance bug — see spec §9.4 D-7(2))
+sat undetected through several releases as a result.</p>
+<ul>
+<li><strong>Referee first.</strong> Port the 10-case <code>_referee-self-test</code> fixtures from
+  <code>vendor/omnist-spec/conformance/fixtures/_referee-self-test/</code> and get them
+  green before trusting any real comparison. Document comparison uses
+  <code>Node</code>'s own order-sensitive equality (order is data, per spec D-1/D-3).
+  Schema comparison needs both <code>exact</code> (record names must match — used for
+  <code>normalize</code>/<code>prune</code>/<code>extract</code>) and <code>isomorphic</code> (same structure up to
+  renaming — used only for <code>infer</code>, per spec §6.10) modes.</li>
+<li><strong>Track 1</strong> (<code>tools/conformance/track1/</code>): walks
+  <code>vendor/omnist-spec/conformance/fixtures/</code>, invokes operations via
+  <strong>direct library calls</strong> (decided over a CLI wrapper — this port is
+  primarily a library, matching <code>omnist-ts</code>'s and <code>omnist-rs</code>'s choice, not
+  Python's CLI-subprocess approach), compares via the referee.</li>
+<li><strong>Track 2</strong> (<code>tools/conformance/track2/</code>): walks
+  <code>vendor/omnist-spec/test-suite/</code>, dispatches on each vector's <code>operation</code>
+  field, compares <code>expect</code> per spec §8.5.2 (message text never compared,
+  diagnostics compare as a set of <code>(path, code)</code>, no partial matching).</li>
+<li><strong>Diagnostics matching mode</strong> (code-agnostic vs. exact) gets decided
+  empirically against a real vector once error codes exist — don't assume
+  Python's or Rust's answer transfers.</li>
+<li><strong>Skips</strong> are permitted and MUST be reported; every skip cites either
+  "not yet implemented" or a numbered <code>omnist-spec</code> divergence-ledger entry
+  (§9.4). Never an ungrounded skip reason.</li>
+<li><strong>CI gate</strong>: separate job from unit tests. Fails the build on nonzero real
+  <code>fail</code> count, never on nonzero <code>skip</code> count (provided every skip is
+  cited). Adversarially verify this gate once it exists: break something
+  real, confirm the job goes genuinely red with nonzero exit, revert,
+  confirm clean. Do not trust a read of the gating code alone.</li>
+</ul>
+<h2 id="5-the-engineering-loop">5. The engineering loop<a class="headerlink" href="#5-the-engineering-loop" title="Permanent link">&para;</a></h2>
+<ol>
+<li>File an issue with the actual spec section cited in the body (design +
+   reasoning, not "fix X").</li>
+<li>Post the plan, wait for real sign-off — a distinct step from filing the
+   issue.</li>
+<li>Cut a branch referencing the issue, build to the spec.</li>
+<li>Red before green for any behavior change: failing test first, shown
+   failing, then implement to green, shown passing.</li>
+<li>Run the full gate locally once, open the PR, let CI run it again for
+   real.</li>
+<li>Verify independently, tiered by risk: zero-production-diff PRs
+   self-verify (read diff, confirm CI green); real production changes get a
+   genuinely independent review (fresh agent/session, no memory of writing
+   the change, reads the actual diff and runs the actual gates itself).</li>
+<li>If review finds a real issue, fix and re-verify in the same PR. If the
+   plan itself needs to change, say so as a comment, not a silent patch.</li>
+<li>A surfaced separate problem gets its own new issue, not scope creep on
+   the current PR.</li>
+<li>Merge, with the version bump (when applicable) in the same PR.</li>
+<li>Close the issue with what actually happened, including any deviation
+    from the original plan.</li>
+</ol>
+<h2 id="6-sharp-edges-carried-forward-from-the-other-three-ports">6. Sharp edges (carried forward from the other three ports)<a class="headerlink" href="#6-sharp-edges-carried-forward-from-the-other-three-ports" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A pinned "expected N passed / M failed / K skipped" regression assertion
+  on the conformance runner will go stale after every real fix — that's
+  expected maintenance. On a merge conflict in that assertion, re-run the
+  harness on the combined branch and paste its real output; never add two
+  deltas by hand.</li>
+<li>A CLI arg-parser can reject an input before library code ever sees it.
+  Since this port drives the harness via direct library calls, this mostly
+  applies to the CLI itself once built — check it doesn't pre-emptively
+  reject cases the library handles fine.</li>
+<li><code>some_command | tail; echo $?</code> reports the pipe's last command's exit
+  code, not the command being checked. Redirect to a file or use
+  <code>${PIPESTATUS[0]}</code> before trusting any pass/fail claim through a pipe.</li>
+<li>Use <code>git worktree</code> per parallel branch if more than one agent/session
+  works this repo concurrently. Never a shared checkout.</li>
+<li>A PR merged after a sibling PR's changes can silently revert the
+  sibling's fix on a conflict-free merge. Diff the merged content against
+  the target branch's current file state after merging.</li>
+<li>Every skip in the conformance runner needs a cited reason in the source
+  itself, not just in a PR description.</li>
+<li>Don't trust a "this gate is just flaky" claim without checking the gate's
+  actual current behavior first.</li>
+</ul>
+<h2 id="7-doc-example-verification-gate-issue-62">7. Doc-example verification gate (issue #62)<a class="headerlink" href="#7-doc-example-verification-gate-issue-62" title="Permanent link">&para;</a></h2>
+<p>Every fenced code block in <code>docs/*.md</code> needs an HTML-comment marker
+directly above the block:</p>
+<ul>
+<li><code>&lt;!-- verified-by: path/to/test.go::TestOrExampleName --&gt;</code> -- there is a
+  real Go test (prefer a <code>godoc</code>-style <code>Example</code> function with a real
+  <code>// Output:</code> comment, since <code>go test</code> executes it directly) whose
+  assertions cover this exact block's literal displayed content, not just
+  a related code path.</li>
+<li><code>&lt;!-- doc-illustrative --&gt;</code> -- the block is conceptual/non-runnable (a
+  CLI transcript, a design-decision snapshot, a bare fragment) and
+  deliberately has no backing test. Don't force a test onto something that
+  isn't real runnable code just to satisfy the gate.</li>
+</ul>
+<p><code>tools/check_doc_examples.go</code> (run as the CI job <code>doc-examples</code> in
+<code>.github/workflows/ci.yml</code>) diffs <code>docs/*.md</code> against <code>origin/main...HEAD</code>
+and fails if any <em>added or changed</em> code block lacks one of the two
+markers. It does not retroactively flag pre-existing unmarked blocks --
+but as of issue #62 there are none, so keep it that way going forward:
+mark every new or edited block when you touch a doc page.</p>
+<p><strong>Known trap</strong>: a local run of the checker against uncommitted changes
+gives a false "passed", because it diffs against <code>origin/main</code>, not the
+working tree. Commit before trusting a local run.</p>
+<p>When writing <code>verified-by</code>, actually open the test and confirm it asserts
+the doc's literal displayed text/output -- a test whose name merely sounds
+related is not sufficient. (The Python port shipped a stale version-string
+doc example undetected for 5+ releases this way; the guarding test checked
+the live version constant, never the doc's own literal text.)</p>
+<h2 id="8-docs-update-in-the-same-pr-as-the-state-they-describe">8. Docs update in the same PR as the state they describe<a class="headerlink" href="#8-docs-update-in-the-same-pr-as-the-state-they-describe" title="Permanent link">&para;</a></h2>
+<p>If a change touches a public API surface, a documented number (a version,
+a pass/fail/skip count, a coverage percentage), or an external-state claim
+(tag status, an upstream issue's status, pkg.go.dev's indexing state,
+anything else observable outside this repo), the docs describing it MUST
+be updated in the <em>same PR</em> -- not filed as a follow-up issue, not left
+for "next time someone notices."</p>
+<p>This is the second time in this repo's history a doc was found stale on
+exactly this pattern -- a claim about external state that was true when
+written and silently went false. The first was <code>docs/limitations.md</code>
+citing spec-vector defects that had already been fixed weeks earlier
+(issue #59). The second was <code>docs/reference.md</code>'s tag-status caveat, found
+stale within hours of <code>v0.1.0-alpha</code> landing (issue #64). Two instances of
+the same failure mode is a pattern, not a coincidence, which is why this
+is a standing rule now instead of a reminder left for the next person to
+rediscover.</p>
+<p><code>doc-illustrative</code> (§7) is the deliberate exception for genuinely
+non-runnable content -- a CLI transcript, a bare fragment, a
+decision-record snapshot of a debate that's now settled. It is not the
+default for an entire page or section. If a code block is real, runnable
+Go (or another language with an equivalent test story), it gets a real
+test and a <code>verified-by</code> marker by default; reach for <code>doc-illustrative</code>
+only when there's genuinely nothing to run.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

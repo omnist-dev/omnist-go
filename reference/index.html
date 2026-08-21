@@ -1,0 +1,1277 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A from-scratch, spec-first Go implementation of Omnist.">
+      
+      
+      
+        <link rel="canonical" href="https://go.omnist.dev/reference/">
+      
+      
+        <link rel="prev" href="../cli/">
+      
+      
+        <link rel="next" href="../workflow-playbook/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>API reference - omnist-go</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="omnist-go" class="md-header__button md-logo" aria-label="omnist-go" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            omnist-go
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/omnist-dev/omnist-go" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    omnist-dev/omnist-go
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="omnist-go" class="md-nav__button md-logo" aria-label="omnist-go" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    omnist-go
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/omnist-dev/omnist-go" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    omnist-dev/omnist-go
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-page-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this page is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-package-githubcomomnist-devomnist-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root package — github.com/omnist-dev/omnist-go
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Root package — github.com/omnist-dev/omnist-go">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#document-model-documentgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document model (document.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-model-schemago" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema model (schema.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnostics-and-errors-errorsgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics and errors (errors.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-limitsgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits (limits.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#oml-githubcomomnist-devomnist-gooml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        oml — github.com/omnist-dev/omnist-go/oml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#osd-githubcomomnist-devomnist-goosd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        osd — github.com/omnist-dev/omnist-go/osd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#formatsjsonyamltomlxml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        formats/{json,yaml,toml,xml}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#algebra-githubcomomnist-devomnist-goalgebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        algebra — github.com/omnist-dev/omnist-go/algebra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#command-line-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command-line interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflow-playbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow playbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../limitations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status & limitations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-page-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this page is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#root-package-githubcomomnist-devomnist-go" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Root package — github.com/omnist-dev/omnist-go
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Root package — github.com/omnist-dev/omnist-go">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#document-model-documentgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Document model (document.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-model-schemago" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schema model (schema.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnostics-and-errors-errorsgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics and errors (errors.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-limitsgo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits (limits.go)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#oml-githubcomomnist-devomnist-gooml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        oml — github.com/omnist-dev/omnist-go/oml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#osd-githubcomomnist-devomnist-goosd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        osd — github.com/omnist-dev/omnist-go/osd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#formatsjsonyamltomlxml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        formats/{json,yaml,toml,xml}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#algebra-githubcomomnist-devomnist-goalgebra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        algebra — github.com/omnist-dev/omnist-go/algebra
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#command-line-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command-line interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<p><code>omnist-go</code>'s canonical, mechanically-generated API reference is
+<a href="https://pkg.go.dev/github.com/omnist-dev/omnist-go">pkg.go.dev</a> — once the
+module is published there, every exported type, function, and doc comment
+in this repo renders automatically, always in sync with the code. That's
+the idiomatic Go answer to "API reference": don't hand-maintain a second
+copy of <code>go doc</code>'s output here.</p>
+<p><strong>Now indexed on pkg.go.dev.</strong> As of <code>v0.2.0-alpha</code>, <code>https://pkg.go.dev/github.com/omnist-dev/omnist-go</code>
+resolves and renders the full mechanical API dump — check that page first
+for exact signatures. This page's curated map below stays useful as an
+organized starting point, not a substitute. <code>go doc</code> still works locally
+too:</p>
+<!-- doc-illustrative -->
+<div class="highlight"><pre><span></span><code>go<span class="w"> </span>doc<span class="w"> </span>github.com/omnist-dev/omnist-go
+go<span class="w"> </span>doc<span class="w"> </span>github.com/omnist-dev/omnist-go.Validate
+</code></pre></div>
+<h2 id="what-this-page-is">What this page is<a class="headerlink" href="#what-this-page-is" title="Permanent link">&para;</a></h2>
+<p>A curated map of the public API surface, organized by package, with a
+one-line description and doc-comment excerpt per major exported group —
+not a full mechanical dump. Read the linked source doc comments (or run
+<code>go doc</code>) for the complete, authoritative signatures.</p>
+<h2 id="root-package-githubcomomnist-devomnist-go">Root package — <code>github.com/omnist-dev/omnist-go</code><a class="headerlink" href="#root-package-githubcomomnist-devomnist-go" title="Permanent link">&para;</a></h2>
+<p>The Document model, Schema model, and the two document/schema operations
+that don't belong to a specific codec or the algebra package.</p>
+<h3 id="document-model-documentgo">Document model (<code>document.go</code>)<a class="headerlink" href="#document-model-documentgo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Document</code></strong> — a node or a bare value (spec §2.2:
+  <code>Document = node | value</code>). <code>IsNode</code> selects which.</li>
+<li><strong><code>Node</code></strong> — an ordered list of labeled <code>Edge</code>s (spec §2.1/§2.2). Labels
+  may repeat; a repeated label is <code>omnist-go</code>'s only representation of "an
+  array" — there is no separate list type.</li>
+<li><strong><code>Edge</code></strong> — a single <code>(Label, Target)</code> pair.</li>
+<li><strong><code>Target</code></strong> — what an edge points to: exactly a <code>Value</code> or a <code>*Node</code>
+  (spec D-4). Constructed via <code>ValueTarget</code> / <code>NodeTarget</code>, read via
+  <code>IsNode</code>/<code>Node()</code>/<code>Value()</code>.</li>
+<li><strong><code>Value</code></strong> / <strong><code>Scalar</code></strong> — <code>Value</code> is a <code>Scalar</code> or null (<code>IsNull</code>).
+  <code>Scalar</code> is a tagged union over the seven kinds spec §2.2.1 defines
+  (<code>ScalarKind</code>: string, integer, number, boolean, date, time, datetime) —
+  implementations must not add or collapse kinds. <code>integer</code> uses
+  <code>*math/big.Int</code> (not <code>int64</code>) to support the spec's 4,300-decimal-digit
+  limit. Construct with <code>NewStringScalar</code>, <code>NewIntegerScalar</code>,
+  <code>NewNumberScalar</code>, <code>NewBooleanScalar</code>, <code>NewDateScalar</code>, <code>NewTimeScalar</code>,
+  <code>NewDateTimeScalar</code>; compare with <code>Scalar.Equal</code>.</li>
+</ul>
+<p><code>NewIntegerScalar</code> takes a <code>*big.Int</code>, not a plain <code>int</code> — the one
+  constructor here that needs a concrete example, since <code>big.Int</code> isn't
+  the obvious first reach for a small literal:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_newIntegerScalar -->
+<div class="highlight"><pre><span></span><code><span class="nx">s</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">NewIntegerScalar</span><span class="p">(</span><span class="nx">big</span><span class="p">.</span><span class="nx">NewInt</span><span class="p">(</span><span class="mi">42</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">Int</span><span class="p">)</span>
+<span class="c1">// integer 42</span>
+</code></pre></div>
+<h3 id="schema-model-schemago">Schema model (<code>schema.go</code>)<a class="headerlink" href="#schema-model-schemago" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Schema</code></strong> — an environment of named <code>Record</code>s plus a <code>Root</code> type
+  reference.</li>
+<li><strong><code>Record</code></strong> / <strong><code>Field</code></strong> — a record's ordered field list; each <code>Field</code>
+  carries a <code>Type</code> and a <code>Cardinality</code>.</li>
+<li><strong><code>Type</code></strong> — a scalar type, a <code>Record</code> reference (<code>RefType</code>), or <code>any</code>
+  (<code>AnyType</code>). <code>ScalarType(kind, nullable)</code> builds a scalar field type.</li>
+<li><strong><code>Cardinality</code></strong> — <code>[min, max]</code> occurrence bounds on a field;
+  <code>DefaultCardinality()</code> is <code>[1,1]</code> (exactly one, per spec's default).</li>
+</ul>
+<h3 id="operations">Operations<a class="headerlink" href="#operations" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Validate(doc Document, s Schema) []Diagnostic</code></strong> (<code>validate.go</code>) —
+  checks shape and cardinality against the schema. Never converts a
+  value's type; a JSON string in a <code>date</code>-typed field fails, because
+  validation checks what's already there.</li>
+</ul>
+<p>A schema-typed <code>age: integer</code> field rejects a JSON string outright,
+  producing a real, populated <code>Diagnostic</code>:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_validate -->
+<div class="highlight"><pre><span></span><code><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record Person { "name": string, "age": integer }</span>
+<span class="s">    root Person</span>
+<span class="s">`</span><span class="p">)</span>
+<span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"name": "Ann", "age": "42"}`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+
+<span class="nx">diagnostics</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">Validate</span><span class="p">(</span><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">schema</span><span class="p">)</span>
+<span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">diagnostics</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">d</span><span class="p">.</span><span class="nx">Path</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">Code</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">Severity</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="c1">// $.age validate.type-mismatch error</span>
+</code></pre></div>
+<ul>
+<li><strong><code>Materialize(doc Document, s Schema) (Document, []Diagnostic, error)</code></strong>
+  (<code>materialize.go</code>) — walks the document against the schema in one pass,
+  upgrading leaf scalars to their schema-declared kind only when the
+  conversion is value-exact (e.g. <code>"2024-01-01"</code> -&gt; <code>date</code>, but never
+  string -&gt; number).</li>
+</ul>
+<p>A JSON string that looks like a date becomes a real <code>date</code> scalar once
+  materialized against a schema that says so:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_materialize -->
+<div class="highlight"><pre><span></span><code><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record Event { "when": date } root Event`</span><span class="p">)</span>
+<span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"when": "2024-01-01"}`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+
+<span class="nx">result</span><span class="p">,</span><span class="w"> </span><span class="nx">diagnostics</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">Materialize</span><span class="p">(</span><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">schema</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">diagnostics</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="s">"unexpected diagnostics"</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">result</span><span class="p">.</span><span class="nx">Node</span><span class="p">.</span><span class="nx">Edges</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Value</span><span class="p">()</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Date</span><span class="p">)</span>
+<span class="c1">// date {2024 1 1}</span>
+</code></pre></div>
+<ul>
+<li><strong><code>DocumentsEqual</code>, <code>SchemasEqual</code></strong> (<code>referee.go</code>) — order-sensitive
+  document equality and two schema-equality modes (<code>exact</code>: record names
+  must match; <code>isomorphic</code>: same structure up to renaming), used by this
+  repo's own conformance harness and available for any caller comparing
+  documents/schemas the same way.</li>
+</ul>
+<p><code>DocumentsEqual</code> is order-sensitive — the same edges in a different
+  order are not equal:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_documentsEqual -->
+<div class="highlight"><pre><span></span><code><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">oml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">"x: \"1\"\ny: \"2\"\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">oml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">"y: \"2\"\nx: \"1\"\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DocumentsEqual</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">a</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DocumentsEqual</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">))</span>
+<span class="c1">// true</span>
+<span class="c1">// false</span>
+</code></pre></div>
+<p><code>SchemasEqual</code>'s two modes differ on record naming — <code>ModeExact</code>
+  requires matching names, <code>ModeIsomorphic</code> accepts the same structure
+  under any consistent renaming:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_schemasEqual -->
+<div class="highlight"><pre><span></span><code><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record Person { "id": string } root Person`</span><span class="p">)</span>
+<span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record User { "id": string } root User`</span><span class="p">)</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">SchemasEqual</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">ModeExact</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">SchemasEqual</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">ModeIsomorphic</span><span class="p">))</span>
+<span class="c1">// false</span>
+<span class="c1">// true</span>
+</code></pre></div>
+<h3 id="diagnostics-and-errors-errorsgo">Diagnostics and errors (<code>errors.go</code>)<a class="headerlink" href="#diagnostics-and-errors-errorsgo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Diagnostic</code></strong> — <code>(Path, Code, Severity, Message)</code>, spec §8's
+  <code>(path, code, message)</code> error taxonomy plus a severity. See
+  <code>Validate</code>'s example above for one populated from a real failing call.</li>
+<li><strong><code>ParseError</code></strong> — the structured error a stage-1 (text to <code>Document</code>)
+  reader reports: <code>(Line, Col, Path, Code, Message)</code>. A text-position path
+  (<code>"14:8"</code>), since no <code>Document</code> exists yet when a parse error fires.</li>
+</ul>
+<p>Triggering a real parse error shows the shape:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_parseError -->
+<div class="highlight"><pre><span></span><code><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"name": }`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="nx">perr</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">err</span><span class="p">.(</span><span class="o">*</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">ParseError</span><span class="p">)</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">perr</span><span class="p">.</span><span class="nx">Line</span><span class="p">,</span><span class="w"> </span><span class="nx">perr</span><span class="p">.</span><span class="nx">Col</span><span class="p">,</span><span class="w"> </span><span class="nx">perr</span><span class="p">.</span><span class="nx">Code</span><span class="p">)</span>
+<span class="c1">// 1 10 parse.unexpected-token</span>
+</code></pre></div>
+<h3 id="limits-limitsgo">Limits (<code>limits.go</code>)<a class="headerlink" href="#limits-limitsgo" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>Limits</code></strong> / <strong><code>DefaultLimits()</code></strong> — the finite, documented safety
+  bounds (depth, node count, integer digit count) spec §2.4 requires every
+  implementation to enforce. Passed to every format reader.</li>
+<li><strong><code>Limits.Validate()</code></strong> — opt-in sanity check verifying that configured
+  limits are strictly positive and within recommended safety ceilings
+  (<code>MaxRecommendedDepth = 10_000</code>, <code>MaxRecommendedNodes = 100_000_000</code>,
+  <code>MaxRecommendedIntDigits = 1_000_000</code>).</li>
+</ul>
+<!-- verified-by: doc_examples_reference_test.go::Example_limitsValidate -->
+<div class="highlight"><pre><span></span><code><span class="c1">// DefaultLimits() satisfies all recommended bounds:</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">().</span><span class="nx">Validate</span><span class="p">())</span>
+
+<span class="c1">// Setting astronomically large limits triggers an error:</span>
+<span class="nx">huge</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">Limits</span><span class="p">{</span>
+<span class="w">    </span><span class="nx">MaxDepth</span><span class="p">:</span><span class="w">     </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">MaxNodes</span><span class="p">:</span><span class="w">     </span><span class="mi">200_000_000</span><span class="p">,</span><span class="w"> </span><span class="c1">// exceeds MaxRecommendedNodes (100,000,000)</span>
+<span class="w">    </span><span class="nx">MaxIntDigits</span><span class="p">:</span><span class="w"> </span><span class="mi">4300</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">huge</span><span class="p">.</span><span class="nx">Validate</span><span class="p">())</span>
+<span class="c1">// &lt;nil&gt;</span>
+<span class="c1">// MaxNodes 200000000 exceeds recommended safety ceiling (100000000)</span>
+</code></pre></div>
+<h2 id="oml-githubcomomnist-devomnist-gooml"><code>oml</code> — <code>github.com/omnist-dev/omnist-go/oml</code><a class="headerlink" href="#oml-githubcomomnist-devomnist-gooml" title="Permanent link">&para;</a></h2>
+<p>OML (the native format) reader and writer: <code>Read(text string, limits
+omnist.Limits) (omnist.Document, error)</code>, <code>Write(d omnist.Document, compact
+bool) (string, []omnist.Diagnostic)</code> (<code>WriteCompact</code> is a convenience
+wrapper for <code>Write(d, true)</code>). Round-trips Core and Extended OML per spec.</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_omlRoundTrip -->
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">oml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`name: "Ann"</span>
+<span class="s">tags: "a"</span>
+<span class="s">tags: "b"</span>
+<span class="s">`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="nx">diagnostics</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">oml</span><span class="p">.</span><span class="nx">WriteCompact</span><span class="p">(</span><span class="nx">doc</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">diagnostics</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="s">"unexpected diagnostics"</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">text</span><span class="p">)</span>
+<span class="c1">// name: "Ann"; tags: "a"; tags: "b"</span>
+</code></pre></div>
+<h2 id="osd-githubcomomnist-devomnist-goosd"><code>osd</code> — <code>github.com/omnist-dev/omnist-go/osd</code><a class="headerlink" href="#osd-githubcomomnist-devomnist-goosd" title="Permanent link">&para;</a></h2>
+<p>OSD (the schema definition format) reader and writer: <code>Read(text string)
+(omnist.Schema, error)</code>, <code>Write(s omnist.Schema, compact bool) string</code>.</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_osdRoundTrip -->
+<div class="highlight"><pre><span></span><code><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record Person { "name": string, "tags" [0,]: string }</span>
+<span class="s">    root Person</span>
+<span class="s">`</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">osd</span><span class="p">.</span><span class="nx">Write</span><span class="p">(</span><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">))</span>
+<span class="c1">// record Person { "name": string, "tags" [0,]: string } root Person</span>
+</code></pre></div>
+<h2 id="formatsjsonyamltomlxml"><code>formats/{json,yaml,toml,xml}</code><a class="headerlink" href="#formatsjsonyamltomlxml" title="Permanent link">&para;</a></h2>
+<p>One reader/writer pair per format, all with the same reader shape —
+<code>Read(text string, limits omnist.Limits) (omnist.Document, error)</code> — and a
+writer shape shared by <code>xml</code>/<code>toml</code>/<code>yaml</code>/<code>json</code>:
+<code>Write(d omnist.Document) (string, []omnist.Diagnostic, error)</code>. Writers
+are schema-free by design — they serialize whatever <code>Document</code> they're
+given, faithfully, and report non-fatal adjustments (a dropped null, a
+stringified temporal value, a substituted <code>NaN</code>) as diagnostics rather than
+errors. See each package's doc comment for format-specific caveats (e.g.
+XML leaf-typing, YAML sexagesimal integers, TOML's native date/time
+kinds).</p>
+<p><code>json</code>, round-tripping the shared reader/writer shape:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_jsonRoundTrip -->
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"name": "Ann"}`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="nx">diagnostics</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Write</span><span class="p">(</span><span class="nx">doc</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">diagnostics</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="s">"unexpected diagnostics"</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Print</span><span class="p">(</span><span class="nx">text</span><span class="p">)</span>
+<span class="c1">// {"name": "Ann"}</span>
+</code></pre></div>
+<p><code>yaml</code>'s sexagesimal-integer sharp edge — YAML 1.1 resolves a bare
+<code>1:30:00</code> to the base-60 integer <code>5400</code>, not a time value, even though it
+looks like one:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_yamlSexagesimal -->
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">yaml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">"n: 1:30:00\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">Node</span><span class="p">.</span><span class="nx">Edges</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Value</span><span class="p">()</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Int</span><span class="p">)</span>
+<span class="c1">// integer 5400</span>
+</code></pre></div>
+<p><code>xml</code>'s leaf-typing caveat — XML carries no type information at all, so
+every leaf arrives as a string scalar, never resolved to an integer or
+other kind the way JSON/YAML/TOML would:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_xmlLeafTyping -->
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">xml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`&lt;root&gt;&lt;age&gt;42&lt;/age&gt;&lt;/root&gt;`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">ageNode</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">Node</span><span class="p">.</span><span class="nx">Edges</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Node</span><span class="p">()</span>
+<span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ageNode</span><span class="p">.</span><span class="nx">Edges</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Value</span><span class="p">()</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Str</span><span class="p">)</span>
+<span class="c1">// string 42</span>
+</code></pre></div>
+<p><code>xml</code> also provides <strong><code>ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits)</code></strong>
+to pre-type numeric, boolean, and temporal leaves during ingestion when an OSD schema is
+available (per <code>omnist-spec#44</code>):</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_xmlReadWithSchema -->
+<div class="highlight"><pre><span></span><code><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record User { "name": string, "age": integer, "active": boolean }</span>
+<span class="s">    root User</span>
+<span class="s">`</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">src</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="s">`&lt;User&gt;&lt;name&gt;Ann&lt;/name&gt;&lt;age&gt;42&lt;/age&gt;&lt;active&gt;true&lt;/active&gt;&lt;/User&gt;`</span>
+<span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">xml</span><span class="p">.</span><span class="nx">ReadWithSchema</span><span class="p">(</span><span class="nx">src</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">rootNode</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">Node</span><span class="p">.</span><span class="nx">Edges</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Node</span><span class="p">()</span>
+<span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">edge</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">rootNode</span><span class="p">.</span><span class="nx">Edges</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">edge</span><span class="p">.</span><span class="nx">Target</span><span class="p">.</span><span class="nx">Value</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"%s: %s\n"</span><span class="p">,</span><span class="w"> </span><span class="nx">edge</span><span class="p">.</span><span class="nx">Label</span><span class="p">,</span><span class="w"> </span><span class="nx">v</span><span class="p">.</span><span class="nx">Scalar</span><span class="p">.</span><span class="nx">Kind</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="c1">// name: string</span>
+<span class="c1">// age: integer</span>
+<span class="c1">// active: boolean</span>
+</code></pre></div>
+<p>A codec beyond JSON/YAML, showing the shared writer shape:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_tomlWrite -->
+<div class="highlight"><pre><span></span><code><span class="nx">doc</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">oml</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`name: "Ann"`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="nx">diagnostics</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">toml</span><span class="p">.</span><span class="nx">Write</span><span class="p">(</span><span class="nx">doc</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">diagnostics</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="s">"unexpected diagnostics"</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Print</span><span class="p">(</span><span class="nx">text</span><span class="p">)</span>
+<span class="c1">// "name" = "Ann"</span>
+</code></pre></div>
+<h2 id="algebra-githubcomomnist-devomnist-goalgebra"><code>algebra</code> — <code>github.com/omnist-dev/omnist-go/algebra</code><a class="headerlink" href="#algebra-githubcomomnist-devomnist-goalgebra" title="Permanent link">&para;</a></h2>
+<p>The Schema Algebra operations (spec §6): <code>CompatibleWith</code>, <code>Equivalent</code>,
+<code>Normalize</code>, <code>Extract</code>, <code>Prune</code>, <code>Lint</code>, <code>Infer</code>. Each operates purely on
+<code>omnist.Schema</code> values — no document, no I/O. See the package doc comment
+for the operation-by-operation contract (each mirrors its spec §6
+subsection).</p>
+<p><code>CompatibleWith</code> — §6.6's own worked example: <code>A</code> has an optional <code>nick</code>
+field <code>B</code> doesn't, so <code>A</code> may emit something <code>B</code>'s closed shape rejects,
+but everything <code>B</code> emits, <code>A</code> accepts:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraCompatibleWith -->
+<div class="highlight"><pre><span></span><code><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record User {</span>
+<span class="s">    "id": string,</span>
+<span class="s">    "name": string,</span>
+<span class="s">    "nick" [0,1]: string,</span>
+<span class="s">} root User`</span><span class="p">)</span>
+<span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record User {</span>
+<span class="s">    "id": string,</span>
+<span class="s">    "name": string,</span>
+<span class="s">} root User`</span><span class="p">)</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">algebra</span><span class="p">.</span><span class="nx">CompatibleWith</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">algebra</span><span class="p">.</span><span class="nx">CompatibleWith</span><span class="p">(</span><span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">a</span><span class="p">))</span>
+<span class="c1">// false</span>
+<span class="c1">// true</span>
+</code></pre></div>
+<p><code>Normalize</code> — collapses structurally-identical records (same fields,
+different names) into shared equivalence classes:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraNormalize -->
+<div class="highlight"><pre><span></span><code><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record A { "id": string }</span>
+<span class="s">    record B { "id": string }</span>
+<span class="s">    record Root { "a": A, "b": B }</span>
+<span class="s">    root Root</span>
+<span class="s">`</span><span class="p">)</span>
+
+<span class="nx">classes</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">algebra</span><span class="p">.</span><span class="nx">EquivalenceClasses</span><span class="p">(</span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Normalize</span><span class="p">(</span><span class="nx">s</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">classes</span><span class="p">))</span>
+<span class="c1">// 2</span>
+</code></pre></div>
+<p><code>Extract</code> — trims a schema down to only what's needed to keep a chosen
+field set, erroring if that would invalidate the root:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraExtract -->
+<div class="highlight"><pre><span></span><code><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record Root { "keep": string, "drop" [0,1]: string }</span>
+<span class="s">    root Root</span>
+<span class="s">`</span><span class="p">)</span>
+
+<span class="nx">out</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Extract</span><span class="p">(</span><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="kt">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">bool</span><span class="p">{</span><span class="s">"keep"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">})</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">root</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">out</span><span class="p">.</span><span class="nx">Env</span><span class="p">[</span><span class="nx">out</span><span class="p">.</span><span class="nx">Root</span><span class="p">]</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">root</span><span class="p">.</span><span class="nx">Fields</span><span class="p">))</span>
+<span class="c1">// 1</span>
+</code></pre></div>
+<p><code>Lint</code> — reports schema diagnostics such as an unreachable record no
+field ever references:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraLint -->
+<div class="highlight"><pre><span></span><code><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record Root { "id": string }</span>
+<span class="s">    record Orphan { "id": string, "note": string }</span>
+<span class="s">    root Root</span>
+<span class="s">`</span><span class="p">)</span>
+
+<span class="nx">findings</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Lint</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span>
+<span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">f</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">findings</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">f</span><span class="p">.</span><span class="nx">Code</span><span class="p">,</span><span class="w"> </span><span class="nx">f</span><span class="p">.</span><span class="nx">Location</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="c1">// lint.unreachable-record Orphan</span>
+</code></pre></div>
+<p><code>Prune</code> — removes a never-emittable field (cardinality <code>[0,0]</code>) and, as a
+consequence, the now-unreachable record it alone referenced:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraPrune -->
+<div class="highlight"><pre><span></span><code><span class="nx">s</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`</span>
+<span class="s">    record Root { "id": string, "dead" [0,0]: Orphan }</span>
+<span class="s">    record Orphan { "note": string }</span>
+<span class="s">    root Root</span>
+<span class="s">`</span><span class="p">)</span>
+
+<span class="nx">pruned</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Prune</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span>
+<span class="nx">root</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pruned</span><span class="p">.</span><span class="nx">Env</span><span class="p">[</span><span class="nx">pruned</span><span class="p">.</span><span class="nx">Root</span><span class="p">]</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">root</span><span class="p">.</span><span class="nx">Fields</span><span class="p">))</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="nx">pruned</span><span class="p">.</span><span class="nx">Env</span><span class="p">))</span>
+<span class="c1">// 1</span>
+<span class="c1">// 1</span>
+</code></pre></div>
+<p><code>Equivalent</code> — strictly stronger than <code>CompatibleWith</code> in one direction:
+two schemas differing only in record naming and declaration order are
+equivalent even though they aren't structurally equal:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraEquivalent -->
+<div class="highlight"><pre><span></span><code><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record Person { "id": string, "name": string } root Person`</span><span class="p">)</span>
+<span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">osd</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`record User { "id": string, "name": string } root User`</span><span class="p">)</span>
+
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Equivalent</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">))</span>
+<span class="c1">// true</span>
+</code></pre></div>
+<p><code>Infer</code> — drafts a schema from sample documents; two samples that
+disagree on whether <code>tags</code> is present produce an optional <code>[0,1]</code> field:</p>
+<!-- verified-by: doc_examples_reference_test.go::Example_algebraInfer -->
+<div class="highlight"><pre><span></span><code><span class="nx">s1</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"name": "Ann", "tags": ["a"]}`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+<span class="nx">s2</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Read</span><span class="p">(</span><span class="s">`{"name": "Bo"}`</span><span class="p">,</span><span class="w"> </span><span class="nx">omnist</span><span class="p">.</span><span class="nx">DefaultLimits</span><span class="p">())</span>
+
+<span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">algebra</span><span class="p">.</span><span class="nx">Infer</span><span class="p">([]</span><span class="nx">omnist</span><span class="p">.</span><span class="nx">Document</span><span class="p">{</span><span class="nx">s1</span><span class="p">,</span><span class="w"> </span><span class="nx">s2</span><span class="p">},</span><span class="w"> </span><span class="s">""</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nb">panic</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="nx">osd</span><span class="p">.</span><span class="nx">Write</span><span class="p">(</span><span class="nx">schema</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">))</span>
+<span class="c1">// record Root { "name": string, "tags" [0,1]: string } root Root</span>
+</code></pre></div>
+<h2 id="command-line-interface">Command-line interface<a class="headerlink" href="#command-line-interface" title="Permanent link">&para;</a></h2>
+<p><code>cmd/omnist</code> is a thin binding over the library (direct calls, not a
+subprocess wrapper internally) — see the <a href="../cli/">CLI reference</a> for its
+own documented contract, which is <code>omnist-go</code>'s own design, not
+spec-mandated.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
