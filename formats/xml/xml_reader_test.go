@@ -1,6 +1,10 @@
 package xml
 
 import (
+	encxml "encoding/xml"
+	"io"
+	"strings"
+	"github.com/omnist-dev/omnist-go/osd"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -366,5 +370,309 @@ func TestReadXMLMixedContentDiscardsStrayText(t *testing.T) {
 	want := omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("x")))
 	if !nodeEqual(node, want) {
 		t.Errorf("got %+v, want %+v", node, want)
+	}
+}
+
+
+// --- schema-aware pretyping tests (issue #81, omnist-spec#44) ---
+
+func TestReadXMLWithSchemaWorkedExample(t *testing.T) {
+	// Replicates vendor/omnist-spec/docs/formats/xml.md worked example.
+	schema, err := osd.Read(`
+record Address  { "street": string, "city": string }
+record LineItem { "sku": string, "qty": integer, "price": number }
+
+record Order {
+    "id":           string,
+    "status":       string,
+    "total":        number,
+    "address":      Address,
+    "items" [1,]:   LineItem,
+    "coupon" [0,1]: string,
+}
+
+record Root { "order": Order }
+root Root
+`)
+	if err != nil {
+		t.Fatalf("osd.Read failed: %v", err)
+	}
+
+	src := `<order>
+  <id>A1</id>
+  <status>shipped</status>
+  <total>29.97</total>
+  <address><street>1 Main</street><city>London</city></address>
+  <items><sku>W</sku><qty>3</qty><price>9.99</price></items>
+  <items><sku>G</sku><qty>1</qty><price>9.99</price></items>
+</order>`
+
+	doc, err := ReadWithSchema(src, &schema, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected read error: %v", err)
+	}
+
+	diags := omnist.Validate(doc, schema)
+	if len(diags) != 0 {
+		t.Fatalf("validation failed: diags=%v err=%v", diags, err)
+	}
+
+	// Verify pre-typed leaves
+	orderNode, ok := doc.Node.Edges[0].Target.Node()
+	if !ok {
+		t.Fatalf("expected order node")
+	}
+
+	// total should be KindNumber 29.97
+	for _, e := range orderNode.Edges {
+		if e.Label == "total" {
+			v, _ := e.Target.Value()
+			if v.Scalar.Kind != omnist.KindNumber || v.Scalar.Num != 29.97 {
+				t.Errorf("total: got %+v, want 29.97 number", v.Scalar)
+			}
+		}
+		if e.Label == "items" {
+			itemNode, _ := e.Target.Node()
+			for _, ie := range itemNode.Edges {
+				if ie.Label == "qty" {
+					v, _ := ie.Target.Value()
+					if v.Scalar.Kind != omnist.KindInteger {
+						t.Errorf("qty: got kind %v, want integer", v.Scalar.Kind)
+					}
+				}
+				if ie.Label == "price" {
+					v, _ := ie.Target.Value()
+					if v.Scalar.Kind != omnist.KindNumber || v.Scalar.Num != 9.99 {
+						t.Errorf("price: got %+v, want 9.99 number", v.Scalar)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestReadXMLWithSchemaAllScalarKinds(t *testing.T) {
+	schema := &omnist.Schema{
+		Root: "R",
+		Env: map[string]*omnist.Record{
+			"R": {
+				Name: "R",
+				Fields: []omnist.Field{
+					{Label: "b1", Type: omnist.ScalarType(omnist.KindBoolean, false)},
+					{Label: "b2", Type: omnist.ScalarType(omnist.KindBoolean, false)},
+					{Label: "i", Type: omnist.ScalarType(omnist.KindInteger, false)},
+					{Label: "n", Type: omnist.ScalarType(omnist.KindNumber, false)},
+					{Label: "d", Type: omnist.ScalarType(omnist.KindDate, false)},
+					{Label: "t", Type: omnist.ScalarType(omnist.KindTime, false)},
+					{Label: "dt", Type: omnist.ScalarType(omnist.KindDateTime, false)},
+					{Label: "s", Type: omnist.ScalarType(omnist.KindString, false)},
+				},
+			},
+		},
+		EnvOrder: []string{"R"},
+	}
+
+	src := `<R>
+  <b1>true</b1>
+  <b2>false</b2>
+  <i>12345</i>
+  <n>3.1415</n>
+  <d>2024-01-15</d>
+  <t>12:30:00</t>
+  <dt>2024-01-15T12:30:00</dt>
+  <s>hello</s>
+</R>`
+
+	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	node, _ := doc.Node.Edges[0].Target.Node()
+	for _, e := range node.Edges {
+		v, _ := e.Target.Value()
+		switch e.Label {
+		case "b1":
+			if v.Scalar.Kind != omnist.KindBoolean || !v.Scalar.Bool {
+				t.Errorf("b1: got %+v", v.Scalar)
+			}
+		case "b2":
+			if v.Scalar.Kind != omnist.KindBoolean || v.Scalar.Bool {
+				t.Errorf("b2: got %+v", v.Scalar)
+			}
+		case "i":
+			if v.Scalar.Kind != omnist.KindInteger || v.Scalar.Int.Int64() != 12345 {
+				t.Errorf("i: got %+v", v.Scalar)
+			}
+		case "n":
+			if v.Scalar.Kind != omnist.KindNumber || v.Scalar.Num != 3.1415 {
+				t.Errorf("n: got %+v", v.Scalar)
+			}
+		case "d":
+			if v.Scalar.Kind != omnist.KindDate {
+				t.Errorf("d: got %+v", v.Scalar)
+			}
+		case "t":
+			if v.Scalar.Kind != omnist.KindTime {
+				t.Errorf("t: got %+v", v.Scalar)
+			}
+		case "dt":
+			if v.Scalar.Kind != omnist.KindDateTime {
+				t.Errorf("dt: got %+v", v.Scalar)
+			}
+		case "s":
+			if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "hello" {
+				t.Errorf("s: got %+v", v.Scalar)
+			}
+		}
+	}
+}
+
+func TestReadXMLWithSchemaInvalidLiteralsRemainStrings(t *testing.T) {
+	schema := &omnist.Schema{
+		Root: "R",
+		Env: map[string]*omnist.Record{
+			"R": {
+				Name: "R",
+				Fields: []omnist.Field{
+					{Label: "b", Type: omnist.ScalarType(omnist.KindBoolean, false)},
+					{Label: "i", Type: omnist.ScalarType(omnist.KindInteger, false)},
+					{Label: "n", Type: omnist.ScalarType(omnist.KindNumber, false)},
+					{Label: "d", Type: omnist.ScalarType(omnist.KindDate, false)},
+					{Label: "t", Type: omnist.ScalarType(omnist.KindTime, false)},
+					{Label: "dt", Type: omnist.ScalarType(omnist.KindDateTime, false)},
+					{Label: "unknown", Type: omnist.Type{Kind: omnist.TypeKind(99)}},
+				},
+			},
+		},
+		EnvOrder: []string{"R"},
+	}
+
+	src := `<R>
+  <b>not-bool</b>
+  <i>not-int</i>
+  <n>not-num</n>
+  <d>not-date</d>
+  <t>not-time</t>
+  <dt>not-datetime</dt>
+  <unknown>val</unknown>
+</R>`
+
+	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	node, _ := doc.Node.Edges[0].Target.Node()
+	for _, e := range node.Edges {
+		v, _ := e.Target.Value()
+		if v.Scalar.Kind != omnist.KindString {
+			t.Errorf("field %s: expected KindString fallback for invalid literal, got %v", e.Label, v.Scalar.Kind)
+		}
+	}
+}
+
+func TestReadXMLWithSchemaRootElementIsLeaf(t *testing.T) {
+	schema := &omnist.Schema{
+		Root: "Root",
+		Env: map[string]*omnist.Record{
+			"Root": {
+				Name: "Root",
+				Fields: []omnist.Field{
+					{Label: "count", Type: omnist.ScalarType(omnist.KindInteger, false)},
+				},
+			},
+		},
+		EnvOrder: []string{"Root"},
+	}
+
+	src := `<count>42</count>`
+	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	v, ok := doc.Node.Edges[0].Target.Value()
+	if !ok || v.Scalar.Kind != omnist.KindInteger || v.Scalar.Int.Int64() != 42 {
+		t.Fatalf("got %+v, want integer 42", doc.Node.Edges[0].Target)
+	}
+}
+
+
+func TestReadXMLWithSchemaRootFallback(t *testing.T) {
+	schema := &omnist.Schema{
+		Root: "Other",
+		Env: map[string]*omnist.Record{
+			"Other": {
+				Name: "Other",
+				Fields: []omnist.Field{
+					{Label: "foo", Type: omnist.ScalarType(omnist.KindString, false)},
+				},
+			},
+			"Target": {
+				Name: "Target",
+				Fields: []omnist.Field{
+					{Label: "num", Type: omnist.ScalarType(omnist.KindInteger, false)},
+				},
+			},
+		},
+		EnvOrder: []string{"Other", "Target"},
+	}
+
+	src := `<Target><num>100</num></Target>`
+	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	targetNode, _ := doc.Node.Edges[0].Target.Node()
+	v, _ := targetNode.Edges[0].Target.Value()
+	if v.Scalar.Kind != omnist.KindInteger || v.Scalar.Int.Int64() != 100 {
+		t.Errorf("got %+v, want 100 integer", v.Scalar)
+	}
+
+	// Unresolved root record fallback
+	schemaNoRoot := &omnist.Schema{
+		Root: "MissingRoot",
+		Env: map[string]*omnist.Record{
+			"Target": {
+				Name: "Target",
+				Fields: []omnist.Field{
+					{Label: "num", Type: omnist.ScalarType(omnist.KindInteger, false)},
+				},
+			},
+		},
+		EnvOrder: []string{"Target"},
+	}
+	doc2, err := ReadWithSchema(src, schemaNoRoot, omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	targetNode2, _ := doc2.Node.Edges[0].Target.Node()
+	v2, _ := targetNode2.Edges[0].Target.Value()
+	if v2.Scalar.Kind != omnist.KindInteger || v2.Scalar.Int.Int64() != 100 {
+		t.Errorf("got %+v, want 100 integer", v2.Scalar)
+	}
+}
+
+func TestPretypeScalarDefault(t *testing.T) {
+	_, ok := pretypeScalar("foo", omnist.ScalarKind(999))
+	if ok {
+		t.Errorf("expected false for unknown scalar kind")
+	}
+}
+
+func TestReadXMLUnexpectedEOFInsideBody(t *testing.T) {
+	_, err := Read("<root><child>", omnist.DefaultLimits())
+	if err == nil {
+		t.Fatal("expected error for unterminated tag")
+	}
+}
+
+func TestWrapDecodeErrEOF(t *testing.T) {
+	r := &xmlReader{
+		dec: encxml.NewDecoder(strings.NewReader("")),
+	}
+	err := r.wrapDecodeErr(io.EOF)
+	if err == nil || !strings.Contains(err.Error(), "unexpected end of input") {
+		t.Errorf("got %v, want unexpected end of input", err)
 	}
 }
