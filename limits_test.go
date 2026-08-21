@@ -90,3 +90,32 @@ func TestLimitCheckerIntDigits(t *testing.T) {
 		t.Errorf("Path = %q, want %q", diag.Path, "$.n")
 	}
 }
+
+func TestLimitsValidate(t *testing.T) {
+	// DefaultLimits() is valid
+	if err := DefaultLimits().Validate(); err != nil {
+		t.Errorf("DefaultLimits().Validate() failed: %v", err)
+	}
+
+	// Non-positive values
+	if err := (Limits{MaxDepth: 0, MaxNodes: 100, MaxIntDigits: 10}).Validate(); err == nil {
+		t.Error("expected error for MaxDepth <= 0")
+	}
+	if err := (Limits{MaxDepth: 10, MaxNodes: 0, MaxIntDigits: 10}).Validate(); err == nil {
+		t.Error("expected error for MaxNodes <= 0")
+	}
+	if err := (Limits{MaxDepth: 10, MaxNodes: 100, MaxIntDigits: 0}).Validate(); err == nil {
+		t.Error("expected error for MaxIntDigits <= 0")
+	}
+
+	// Values exceeding recommended ceilings
+	if err := (Limits{MaxDepth: MaxRecommendedDepth + 1, MaxNodes: 100, MaxIntDigits: 10}).Validate(); err == nil {
+		t.Error("expected error for MaxDepth > MaxRecommendedDepth")
+	}
+	if err := (Limits{MaxDepth: 10, MaxNodes: MaxRecommendedNodes + 1, MaxIntDigits: 10}).Validate(); err == nil {
+		t.Error("expected error for MaxNodes > MaxRecommendedNodes")
+	}
+	if err := (Limits{MaxDepth: 10, MaxNodes: 100, MaxIntDigits: MaxRecommendedIntDigits + 1}).Validate(); err == nil {
+		t.Error("expected error for MaxIntDigits > MaxRecommendedIntDigits")
+	}
+}

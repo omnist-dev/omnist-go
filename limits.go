@@ -1,5 +1,7 @@
 package omnist
 
+import "fmt"
+
 // Limits bounds the work a Document builder will do before refusing to
 // continue, per spec §2.4. The existence and meaning of the three limits
 // is normative; the specific numbers are not, so Limits is a configurable
@@ -101,6 +103,47 @@ func (c *LimitChecker) CheckIntDigits(path string, digitCount int) *Diagnostic {
 			Message:  "integer literal exceeds the configured digit limit",
 			Severity: SeverityError,
 		}
+	}
+	return nil
+}
+
+// Recommended limit ceilings for Limits.Validate:
+// While spec §2.4 mandates that every implementation must enforce finite positive
+// limits for MaxDepth, MaxNodes, and MaxIntDigits, setting astronomically large limits
+// (e.g. math.MaxInt) practically defeats the safety purpose of resource bounding.
+const (
+	// MaxRecommendedDepth is the upper bound above which recursive algorithms risk stack exhaustion.
+	MaxRecommendedDepth = 10_000
+	// MaxRecommendedNodes is the upper bound above which node materialization risks heap exhaustion.
+	MaxRecommendedNodes = 100_000_000
+	// MaxRecommendedIntDigits is the upper bound above which arbitrary-precision integer parsing risks CPU exhaustion.
+	MaxRecommendedIntDigits = 1_000_000
+)
+
+// Validate checks that l specifies strictly positive values within sane, recommended safety
+// bounds (issue #78). It returns an error if any field is <= 0 or exceeds recommended ceilings.
+//
+// Validate is purely opt-in: NewLimitChecker does not enforce it, so callers who require
+// custom or unusually large limits retain full control. For standard production use,
+// DefaultLimits() is recommended.
+func (l Limits) Validate() error {
+	if l.MaxDepth <= 0 {
+		return fmt.Errorf("MaxDepth must be positive, got %d", l.MaxDepth)
+	}
+	if l.MaxDepth > MaxRecommendedDepth {
+		return fmt.Errorf("MaxDepth %d exceeds recommended safety ceiling (%d)", l.MaxDepth, MaxRecommendedDepth)
+	}
+	if l.MaxNodes <= 0 {
+		return fmt.Errorf("MaxNodes must be positive, got %d", l.MaxNodes)
+	}
+	if l.MaxNodes > MaxRecommendedNodes {
+		return fmt.Errorf("MaxNodes %d exceeds recommended safety ceiling (%d)", l.MaxNodes, MaxRecommendedNodes)
+	}
+	if l.MaxIntDigits <= 0 {
+		return fmt.Errorf("MaxIntDigits must be positive, got %d", l.MaxIntDigits)
+	}
+	if l.MaxIntDigits > MaxRecommendedIntDigits {
+		return fmt.Errorf("MaxIntDigits %d exceeds recommended safety ceiling (%d)", l.MaxIntDigits, MaxRecommendedIntDigits)
 	}
 	return nil
 }

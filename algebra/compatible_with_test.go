@@ -39,7 +39,6 @@ func TestScalarSub(t *testing.T) {
 	}
 }
 
-
 func BenchmarkCompatibleWithManyFields(b *testing.B) {
 	sizes := []int{50, 200, 1000}
 	for _, size := range sizes {
