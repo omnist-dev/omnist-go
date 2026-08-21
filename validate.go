@@ -207,7 +207,7 @@ func walkRecordShape(target Target, rec *Record, path Path, checker *LimitChecke
 		if f == nil {
 			addDiagnostic(result, childPath, CodeValidateUnexpectedField, "field not declared on this record")
 			// No further descent: an undeclared field has no type to check
-			// against (?3.6.1's first "easy to miss" detail). Kept
+			// against (§3.6.1's first "easy to miss" detail). Kept
 			// unchanged in the output, per materialize_record's pseudocode.
 			outEdges = append(outEdges, e)
 			continue
@@ -215,9 +215,9 @@ func walkRecordShape(target Target, rec *Record, path Path, checker *LimitChecke
 		outEdges = append(outEdges, Edge{Label: e.Label, Target: onMatched(e, f, childPath)})
 	}
 
-	// Cardinality (spec ?3.6 point 1). The error's path is the record's
+	// Cardinality (spec §3.6 point 1). The error's path is the record's
 	// own path, not any edge's, even when the count is nonzero-but-wrong
-	// (?3.6.1's second "easy to miss" detail) ? never childPath.
+	// (§3.6.1's second "easy to miss" detail) — never childPath.
 	if rec == nil {
 		return outEdges
 	}

@@ -113,7 +113,7 @@ func fieldByLabel(r *omnist.Record, label string) (omnist.Field, bool) {
 	return *f, true
 }
 
-// recordSub implements ?6.6's `record_sub(SA, a, SB, b, sat_a, memo)`.
+// recordSub implements §6.6's `record_sub(SA, a, SB, b, sat_a, memo)`.
 func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.Record, satA map[string]bool, memo map[subKey]bool) bool {
 	bIdx := b.Index()
 	aIdx := a.Index()
@@ -151,9 +151,9 @@ func recordSub(sa omnist.Schema, a *omnist.Record, sb omnist.Schema, b *omnist.R
 	return true
 }
 
-// Equivalent implements ?6.7's `equivalent(A, B)`: exactly
+// Equivalent implements §6.7's `equivalent(A, B)`: exactly
 // CompatibleWith(A, B) && CompatibleWith(B, A). The spec explicitly forbids
-// any structural-equality shortcut here ? structural equality is strictly
+// any structural-equality shortcut here — structural equality is strictly
 // stronger than equivalence, so substituting one would reject equivalent
 // schemas that merely differ in record naming, declaration order, or
 // unreachable records.
