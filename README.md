@@ -1,5 +1,7 @@
 # omnist-go
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/omnist-dev/omnist-go.svg)](https://pkg.go.dev/github.com/omnist-dev/omnist-go)
+
 A from-scratch, spec-first Go implementation of
 [Omnist](https://spec.omnist.dev), a data-interchange format and schema
 model built around one idea: a document is an ordered list of labeled
