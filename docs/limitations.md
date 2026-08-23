@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**151 pass / 0 fail / 1 skip** of 152 vectors. Track 1 (fixture-based,
+**152 pass / 0 fail / 1 skip** of 153 vectors. Track 1 (fixture-based,
 `conformance/fixtures/`) reports **19 pass / 0 fail / 0 skip** of 19
 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
@@ -63,9 +63,10 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `f6ec180` (`v0.2.2-alpha`), pinned via the
-`vendor/omnist-spec` git submodule. This repo does not track the spec's
-`main` branch — the pin is bumped deliberately, in its own commit.
+`omnist-spec` at commit `964af7b` (`v0.3.0-alpha`, 2 commits past the tag —
+closes D-2's spec gap, issue #91), pinned via the `vendor/omnist-spec`
+git submodule. This repo does not track the spec's `main` branch — the
+pin is bumped deliberately, in its own commit.
 
 See `omnist-spec`'s own [§9.3 status table](https://github.com/omnist-dev/omnist-spec/blob/main/docs/09-divergence-ledger.md#93-status-table)
 for the cross-implementation divergence ledger this repo reports into.

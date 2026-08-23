@@ -300,14 +300,13 @@ func TestS1RootMissingIsError(t *testing.T) {
 	wantDiag(t, err, omnist.CodeSchemaNoRoot, "$")
 }
 
-func TestS1DuplicateRootFirstWins(t *testing.T) {
-	// D-2 (chapter 9, open divergence item): this implementation's chosen
-	// resolution is "first root wins" -- see the comment in
-	// parseSchema's `case "root":` branch for the full reasoning.
-	s := mustParseOSD(t, `record A{"x":string} record B{"x":string} root A root B`)
-	if s.Root != "A" {
-		t.Fatalf("Root = %q, want %q (first root should win)", s.Root, "A")
-	}
+func TestS1DuplicateRootIsError(t *testing.T) {
+	// D-2 (chapter 9 divergence-ledger, closed by spec §5.8's 2026-08-23
+	// update): a schema with more than one `root` declaration is
+	// normatively an error, not an implementation-defined choice -- see
+	// the comment in parseSchema's `case "root":` branch.
+	err := mustFailOSD(t, `record A{"x":string} record B{"x":string} root A root B`)
+	wantDiag(t, err, omnist.CodeSchemaDuplicateRoot, "$")
 }
 
 // S-2: cardinality bounds.

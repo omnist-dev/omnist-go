@@ -49,6 +49,11 @@ const (
 	// legally appear there, since type position only ever accepts a bare
 	// schema name (a scalar keyword, `any`, or a reference).
 	CodeSchemaQuotedType Code = "schema.quoted-type"
+	// CodeSchemaDuplicateRoot is raised when a schema contains more than
+	// one `root` declaration. Per spec §5.8 (updated 2026-08-23, closing
+	// chapter 9 divergence-ledger D-2), this is normatively an error, not
+	// an implementation-defined choice.
+	CodeSchemaDuplicateRoot Code = "schema.duplicate-root"
 )
 
 // validate.* — document against schema (spec §8.3.4).
