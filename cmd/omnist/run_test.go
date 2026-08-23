@@ -130,6 +130,25 @@ func TestCmdParseWriteToFile(t *testing.T) {
 	}
 }
 
+// TestCmdParseXMLReadDiagnostics exercises the D-3 (spec §8.3.8) read-side
+// diagnostics channel added to xml.Read: a dropped attribute is surfaced
+// to stderr the same way a writer's non-fatal adjustment already was
+// (issue #49's ok:true+diagnostics convention), and the command still
+// exits ExitProblem even though the parse itself succeeded and produced
+// output.
+func TestCmdParseXMLReadDiagnostics(t *testing.T) {
+	code, stdout, stderr := runCLI(t, []string{"parse", "--from", "xml", "--to", "json", "-"}, `<a x="1"><b>hi</b></a>`)
+	if code != ExitProblem {
+		t.Errorf("exit = %d, want %d", code, ExitProblem)
+	}
+	if !strings.Contains(stderr, "format.attribute-dropped") {
+		t.Errorf("stderr = %q, want a format.attribute-dropped diagnostic", stderr)
+	}
+	if !strings.Contains(stdout, "\"b\": \"hi\"") {
+		t.Errorf("stdout = %q, want the converted document despite the diagnostic", stdout)
+	}
+}
+
 func TestCmdValidateSuccess(t *testing.T) {
 	schemaPath := writeTemp(t, "s.osd", testSchema)
 	code, stdout, _ := runCLI(t, []string{"validate", "--from", "json", "--schema", schemaPath, "-"}, `{"name": "Ada", "age": 12}`)
@@ -178,6 +197,17 @@ func TestCmdValidateMissingSchemaFile(t *testing.T) {
 	}
 }
 
+func TestCmdValidateXMLReadDiagnostics(t *testing.T) {
+	schemaPath := writeTemp(t, "s.osd", `record Root { "a": string } root Root`)
+	code, stdout, _ := runCLI(t, []string{"validate", "--from", "xml", "--schema", schemaPath, "-"}, `<a x="1">hi</a>`)
+	if code != ExitProblem {
+		t.Errorf("exit = %d, want %d", code, ExitProblem)
+	}
+	if !strings.Contains(stdout, "format.attribute-dropped") {
+		t.Errorf("stdout = %q, want a format.attribute-dropped diagnostic", stdout)
+	}
+}
+
 func TestCmdMaterializeSuccessNoOutput(t *testing.T) {
 	schemaPath := writeTemp(t, "s.osd", testSchema)
 	code, stdout, _ := runCLI(t, []string{"materialize", "--from", "json", "--schema", schemaPath, "-"}, `{"name": "Ada", "age": 12}`)
@@ -208,6 +238,17 @@ func TestCmdMaterializeDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "validate.cardinality") {
 		t.Errorf("stdout = %q", stdout)
+	}
+}
+
+func TestCmdMaterializeXMLReadDiagnostics(t *testing.T) {
+	schemaPath := writeTemp(t, "s.osd", `record Root { "a": string } root Root`)
+	code, stdout, _ := runCLI(t, []string{"materialize", "--from", "xml", "--schema", schemaPath, "-"}, `<a x="1">hi</a>`)
+	if code != ExitProblem {
+		t.Errorf("exit = %d, want %d", code, ExitProblem)
+	}
+	if !strings.Contains(stdout, "format.attribute-dropped") {
+		t.Errorf("stdout = %q, want a format.attribute-dropped diagnostic", stdout)
 	}
 }
 
@@ -401,6 +442,20 @@ func TestCmdInferAllowAnyFallback(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "any") {
 		t.Errorf("stdout = %q, want any-typed field", stdout)
+	}
+}
+
+func TestCmdInferXMLReadDiagnostics(t *testing.T) {
+	f1 := writeTemp(t, "a.xml", `<a x="1">hi</a>`)
+	code, stdout, stderr := runCLI(t, []string{"infer", "--from", "xml", f1}, "")
+	if code != ExitOK {
+		t.Fatalf("exit = %d, stderr = %q", code, stderr)
+	}
+	if !strings.Contains(stderr, "format.attribute-dropped") {
+		t.Errorf("stderr = %q, want a format.attribute-dropped note (informational, not a failure for infer)", stderr)
+	}
+	if !strings.Contains(stdout, "record Root") {
+		t.Errorf("stdout = %q", stdout)
 	}
 }
 
