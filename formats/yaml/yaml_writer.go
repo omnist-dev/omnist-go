@@ -113,6 +113,15 @@ type yamlGroup struct {
 	children []omnist.Target
 }
 
+// groupYAMLEdges mirrors groupJSONEdges (json_writer.go): edges sharing a
+// label collapse into one group, in first-seen label order, preserving
+// each label's own children in their original edge order. Cross-label
+// interleaving (e.g. [(m,A),(x,X),(m,B)]) is lost here, exactly as §7.3
+// states the JSON family must ("no format in the JSON family can express
+// it") -- buildYAMLNode reports this loss via
+// omnist.CodeFormatInterleavingLost (spec §8.3.8, D-3) whenever it
+// actually happens (omnist.Node.HasLostInterleaving, document.go), rather
+// than silently, as it did before.
 func groupYAMLEdges(n *omnist.Node) []yamlGroup {
 	var groups []yamlGroup
 	index := make(map[string]int, len(n.Edges))
@@ -134,6 +143,14 @@ func groupYAMLEdges(n *omnist.Node) []yamlGroup {
 // yamllib.Node values instead of directly-written text.
 func buildYAMLNode(n *omnist.Node, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	groups := groupYAMLEdges(n)
+	if n.HasLostInterleaving() {
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatInterleavingLost,
+			Message:  "cross-label interleaving cannot be expressed in YAML, so it is lost",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 	m := &yamllib.Node{Kind: yamllib.MappingNode}
 	for _, g := range groups {
 		// Every label is written double-quoted unconditionally, never

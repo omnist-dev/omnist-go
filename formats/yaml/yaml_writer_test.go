@@ -354,3 +354,54 @@ func TestWriteYAMLNestedNode(t *testing.T) {
 		t.Errorf("wrote %q, got %+v", out, back)
 	}
 }
+
+// --- cross-label interleaving loss (D-3, spec §8.3.8) ---
+
+func TestWriteYAMLInterleavingLostReportsDiagnostic(t *testing.T) {
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteYAML failed: %v", err)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$" || diags[0].Code != omnist.CodeFormatInterleavingLost || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}
+
+func TestWriteYAMLContiguousRepeatNoInterleavingDiagnostic(t *testing.T) {
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteYAML failed: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diags = %+v, want none (contiguous repeat loses nothing)", diags)
+	}
+}
+
+func TestWriteYAMLInterleavingLostAtNestedPath(t *testing.T) {
+	inner := omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B")))
+	doc := omnist.NodeDocument(omnist.NewNode().AddNode("outer", inner))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteYAML failed: %v", err)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.outer" || diags[0].Code != omnist.CodeFormatInterleavingLost {
+		t.Errorf("got diagnostic %+v, want {Path: $.outer, Code: %s}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}

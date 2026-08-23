@@ -303,7 +303,7 @@ other kind the way JSON/YAML/TOML would:
 
 <!-- verified-by: doc_examples_reference_test.go::Example_xmlLeafTyping -->
 ```go
-doc, err := xml.Read(`<root><age>42</age></root>`, omnist.DefaultLimits())
+doc, _, err := xml.Read(`<root><age>42</age></root>`, omnist.DefaultLimits())
 if err != nil {
     panic(err)
 }
@@ -329,7 +329,7 @@ if err != nil {
 }
 
 src := `<User><name>Ann</name><age>42</age><active>true</active></User>`
-doc, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
+doc, _, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
 if err != nil {
     panic(err)
 }

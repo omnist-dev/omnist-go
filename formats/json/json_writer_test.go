@@ -322,3 +322,66 @@ func TestWriteJSONNestedNode(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// --- cross-label interleaving loss (D-3, spec §8.3.8) ---
+
+func TestWriteJSONInterleavingLostReportsDiagnostic(t *testing.T) {
+	// formats-json/basic/cross-label-interleaving-lost-and-reported
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))))
+	got, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+	if want := `{"m": ["A", "B"], "x": "X"}`; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$" || diags[0].Code != omnist.CodeFormatInterleavingLost || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}
+
+func TestWriteJSONContiguousRepeatNoInterleavingDiagnostic(t *testing.T) {
+	// A label repeating back-to-back, with no other label between its
+	// occurrences, loses nothing and must NOT report interleaving-lost --
+	// the distinction the issue calls out as the trickiest part.
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))))
+	got, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+	if want := `{"m": ["A", "B"], "x": "X"}`; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diags = %+v, want none (contiguous repeat loses nothing)", diags)
+	}
+}
+
+func TestWriteJSONInterleavingLostAtNestedPath(t *testing.T) {
+	// The check runs per node, not just at the document root -- interleaving
+	// lost inside a nested object is reported at that object's own path.
+	inner := omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B")))
+	doc := omnist.NodeDocument(omnist.NewNode().AddNode("outer", inner))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteJSON failed: %v", err)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.outer" || diags[0].Code != omnist.CodeFormatInterleavingLost {
+		t.Errorf("got diagnostic %+v, want {Path: $.outer, Code: %s}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}

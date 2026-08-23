@@ -42,20 +42,29 @@ func limitsFromInput(in parseInput) omnist.Limits {
 	return l
 }
 
-func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, error) {
+// readByFormat's diagnostics return mirrors runWrite's below: today only
+// xml.Read ever populates it (an attribute or namespace prefix dropped,
+// D-3, spec §8.3.8) -- every other reader has nothing to report on
+// read, so it returns nil there, same as oml.Write's nil-diagnostics case
+// in runWrite when nothing was adjusted.
+func readByFormat(format, text string, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
 	switch format {
 	case "oml":
-		return oml.Read(text, limits)
+		doc, err := oml.Read(text, limits)
+		return doc, nil, err
 	case "json":
-		return json.Read(text, limits)
+		doc, err := json.Read(text, limits)
+		return doc, nil, err
 	case "yaml":
-		return yaml.Read(text, limits)
+		doc, err := yaml.Read(text, limits)
+		return doc, nil, err
 	case "toml":
-		return toml.Read(text, limits)
+		doc, err := toml.Read(text, limits)
+		return doc, nil, err
 	case "xml":
 		return xml.Read(text, limits)
 	default:
-		return omnist.Document{}, fmt.Errorf("unrecognized format %q", format)
+		return omnist.Document{}, nil, fmt.Errorf("unrecognized format %q", format)
 	}
 }
 
@@ -68,7 +77,7 @@ func runParse(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	doc, rerr := readByFormat(in.Format, in.Text, limitsFromInput(in))
+	doc, gotDiags, rerr := readByFormat(in.Format, in.Text, limitsFromInput(in))
 	wantOK := expectOK(expect)
 	if rerr != nil {
 		if wantOK {
@@ -87,6 +96,19 @@ func runParse(v Vector) Result {
 	}
 	if !wantOK {
 		return fail(v, "expected error, got ok document")
+	}
+	// parse is also an operation where ok:true and diagnostics can
+	// coexist, since D-3 (spec §8.3.8): xml.Read reports a dropped
+	// attribute/namespace prefix without failing the read. Compared here
+	// exactly like runWrite compares a successful write's diagnostics.
+	if wantDiags, err := decodeExpectDiagnostics(expect); err != nil {
+		return fail(v, "decode expect.diagnostics: %v", err)
+	} else if _, hasDiagsKey := expect["diagnostics"]; hasDiagsKey {
+		got := diagsToPairs(gotDiags)
+		want := expectDiagPairs(wantDiags)
+		if !diagnosticSetsEqual(got, want) {
+			return fail(v, "diagnostics mismatch: got %v want %v", diagStrings(got), diagStrings(want))
+		}
 	}
 	wantDocRaw, ok := expect["document"]
 	if !ok {

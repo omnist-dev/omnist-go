@@ -75,7 +75,7 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		return ExitUsage
 	}
 
-	doc, err := reader(text, omnist.DefaultLimits())
+	doc, readDiags, err := reader(text, omnist.DefaultLimits())
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem
@@ -86,6 +86,12 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		return ExitProblem
 	}
 
+	// A reader can succeed while still reporting a non-fatal adjustment
+	// (D-3, spec §8.3.8) -- printed alongside Materialize's own
+	// diagnostics below, same "path: code: message" convention.
+	for _, d := range readDiags {
+		_, _ = fmt.Fprintf(stdout, "%s: %s: %s\n", d.Path, d.Code, d.Message)
+	}
 	result, diags, err := omnist.Materialize(doc, schema)
 	for _, d := range diags {
 		_, _ = fmt.Fprintf(stdout, "%s: %s: %s\n", d.Path, d.Code, d.Message)
@@ -114,7 +120,7 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		}
 	}
 
-	if len(diags) > 0 || writeDiagCount > 0 {
+	if len(readDiags) > 0 || len(diags) > 0 || writeDiagCount > 0 {
 		return ExitProblem
 	}
 	return ExitOK

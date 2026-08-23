@@ -53,10 +53,18 @@ func cmdInfer(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, rerr)
 			return ExitUsage
 		}
-		doc, perr := reader(text, omnist.DefaultLimits())
+		doc, readDiags, perr := reader(text, omnist.DefaultLimits())
 		if perr != nil {
 			_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", name, path, perr)
 			return ExitProblem
+		}
+		// A reader can succeed while still reporting a non-fatal
+		// adjustment (D-3, spec §8.3.8) -- surfaced the same
+		// informational way as --allow-any's fallbacks below, since
+		// infer's contract is best-effort schema drafting, not
+		// round-trip fidelity of the samples themselves.
+		for _, d := range readDiags {
+			_, _ = fmt.Fprintf(stderr, "%s: %s: %s: %s: %s\n", name, path, d.Path, d.Code, d.Message)
 		}
 		samples = append(samples, doc)
 	}

@@ -16,19 +16,22 @@ import (
 // JSON-specific leaf rendering: temporal leaves are stringified to
 // ISO-8601, and NaN/Infinity — not valid JSON tokens — are substituted
 // with `null` at the leaf (docs/formats/json.md's default lenient mode).
+// Grouping itself can also lose cross-label interleaving; see
+// groupJSONEdges's doc comment.
 //
-// The signature returns diagnostics alongside text and error because both
-// of JSON's leaf adjustments are reportable per spec §7.4 ("a reader or
+// The signature returns diagnostics alongside text and error because all
+// three of JSON's adjustments are reportable per spec §7.4 ("a reader or
 // writer SHOULD be able to report the adjustments... this is what makes
 // lossiness auditable") and spec §8.5.3, which documents write as the one
 // operation where a successful `{ok: true, ...}` result and a non-empty
 // diagnostics list are not mutually exclusive: every temporal leaf
-// stringified to ISO-8601 (format.temporal-stringified) and every
-// NaN/Infinity substituted with `null` (format.float-special) is now
-// reported this way. text is non-empty and err is nil whenever the write
-// succeeds, with diagnostics non-empty exactly when an adjustment
-// happened; text is empty and err is non-nil only on WriteStrict's hard
-// NaN/Infinity failure below.
+// stringified to ISO-8601 (format.temporal-stringified), every
+// NaN/Infinity substituted with `null` (format.float-special), and every
+// grouping that loses cross-label interleaving (format.interleaving-lost,
+// spec §8.3.8, D-3) is now reported this way. text is non-empty and err
+// is nil whenever the write succeeds, with diagnostics non-empty exactly
+// when an adjustment happened; text is empty and err is non-nil only on
+// WriteStrict's hard NaN/Infinity failure below.
 //
 // See WriteStrict for the spec's optional MAY: failing instead of
 // substituting.
@@ -79,6 +82,14 @@ type jsonGroup struct {
 // otherwise (count-1 rule).
 func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool, diags *[]omnist.Diagnostic) error {
 	groups := groupJSONEdges(n)
+	if n.HasLostInterleaving() {
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatInterleavingLost,
+			Message:  "cross-label interleaving cannot be expressed in JSON, so it is lost",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 
 	b.WriteByte('{')
 	for i, g := range groups {
@@ -114,7 +125,10 @@ func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool,
 // a label collapse into one group, in first-seen label order, preserving
 // each label's own children in their original edge order. Cross-label
 // interleaving (e.g. [(m,A),(x,X),(m,B)]) is lost here, exactly as §7.3
-// states JSON must ("no format in the JSON family can express it").
+// states JSON must ("no format in the JSON family can express it") --
+// writeJSONNode reports this loss via omnist.CodeFormatInterleavingLost
+// (spec §8.3.8, D-3) whenever it actually happens (omnist.Node.HasLostInterleaving,
+// document.go), rather than silently, as it did before.
 func groupJSONEdges(n *omnist.Node) []jsonGroup {
 	var groups []jsonGroup
 	index := make(map[string]int, len(n.Edges))

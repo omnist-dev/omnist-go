@@ -394,7 +394,7 @@ func Example_yamlSexagesimal() {
 // scalar -- unlike JSON/YAML/TOML, `42` inside an element is never
 // resolved to an integer.
 func Example_xmlLeafTyping() {
-	doc, err := xml.Read(`<root><age>42</age></root>`, omnist.DefaultLimits())
+	doc, _, err := xml.Read(`<root><age>42</age></root>`, omnist.DefaultLimits())
 	if err != nil {
 		panic(err)
 	}
@@ -438,7 +438,7 @@ func Example_xmlReadWithSchema() {
 	}
 
 	src := `<User><name>Ann</name><age>42</age><active>true</active></User>`
-	doc, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
+	doc, _, err := xml.ReadWithSchema(src, &schema, omnist.DefaultLimits())
 	if err != nil {
 		panic(err)
 	}

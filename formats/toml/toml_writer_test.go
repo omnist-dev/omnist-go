@@ -359,3 +359,57 @@ func TestWriteTOMLNestedNode(t *testing.T) {
 		t.Errorf("round-trip mismatch: wrote %q,\ngot  %+v,\nwant %+v", out, back, d)
 	}
 }
+
+// --- cross-label interleaving loss (D-3, spec §8.3.8) ---
+
+func TestWriteTOMLInterleavingLostReportsDiagnostic(t *testing.T) {
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteTOML failed: %v", err)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$" || diags[0].Code != omnist.CodeFormatInterleavingLost || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}
+
+func TestWriteTOMLContiguousRepeatNoInterleavingDiagnostic(t *testing.T) {
+	doc := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteTOML failed: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diags = %+v, want none (contiguous repeat loses nothing)", diags)
+	}
+}
+
+func TestWriteTOMLInterleavingLostAtNestedPath(t *testing.T) {
+	// Exercises writeTOMLInlineTable's own check, not just
+	// writeTOMLTopLevel's -- the loss is reported at the nested inline
+	// table's own path, not "$".
+	inner := omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("X"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B")))
+	doc := omnist.NodeDocument(omnist.NewNode().AddNode("outer", inner))
+	_, diags, err := Write(doc)
+	if err != nil {
+		t.Fatalf("WriteTOML failed: %v", err)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.outer" || diags[0].Code != omnist.CodeFormatInterleavingLost {
+		t.Errorf("got diagnostic %+v, want {Path: $.outer, Code: %s}", diags[0], omnist.CodeFormatInterleavingLost)
+	}
+}

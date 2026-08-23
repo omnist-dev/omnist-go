@@ -312,7 +312,7 @@ func runFixtureWrite(fc FixtureCase) Result {
 	if err != nil {
 		return fixFail(fc, "reading input.%s: %v", format, err)
 	}
-	doc, rerr := readByFormat(format, inputText, omnist.DefaultLimits())
+	doc, _, rerr := readByFormat(format, inputText, omnist.DefaultLimits())
 	if rerr != nil {
 		return fixFail(fc, "parsing input.%s: %v", format, rerr)
 	}
@@ -320,7 +320,7 @@ func runFixtureWrite(fc FixtureCase) Result {
 	if err != nil {
 		return fixFail(fc, "reading expected.%s: %v", format, err)
 	}
-	wantDoc, werr := readByFormat(format, expectedText, omnist.DefaultLimits())
+	wantDoc, _, werr := readByFormat(format, expectedText, omnist.DefaultLimits())
 	if werr != nil {
 		return fixFail(fc, "parsing expected.%s: %v", format, werr)
 	}
@@ -331,7 +331,7 @@ func runFixtureWrite(fc FixtureCase) Result {
 	// §2's "--compact vs. pretty-printed output must compare equal" note
 	// applies here too: the referee re-parses gotText rather than
 	// byte-comparing it against expectedText.
-	gotDoc, gerr := readByFormat(format, gotText, omnist.DefaultLimits())
+	gotDoc, _, gerr := readByFormat(format, gotText, omnist.DefaultLimits())
 	if gerr != nil {
 		return fixFail(fc, "re-parsing written output: %v (output was %q)", gerr, gotText)
 	}

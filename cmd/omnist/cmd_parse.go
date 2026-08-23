@@ -56,10 +56,17 @@ func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 
-	doc, err := reader(text, omnist.DefaultLimits())
+	doc, readDiags, err := reader(text, omnist.DefaultLimits())
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitProblem
+	}
+	// A reader can succeed while still reporting a non-fatal adjustment
+	// too (D-3, spec §8.3.8: an XML attribute or namespace prefix
+	// dropped on read) -- same channel and printing convention as a
+	// writer's diagnostics below, just surfaced before the write happens.
+	for _, d := range readDiags {
+		_, _ = fmt.Fprintf(stderr, "omnist parse: %s: %s: %s\n", d.Path, d.Code, d.Message)
 	}
 	outText, diags, err := writer(doc)
 	if err != nil {
@@ -78,7 +85,7 @@ func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitUsage
 	}
-	if len(diags) > 0 {
+	if len(readDiags) > 0 || len(diags) > 0 {
 		return ExitProblem
 	}
 	return ExitOK

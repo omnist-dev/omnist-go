@@ -231,3 +231,36 @@ func TestDocumentConstructors(t *testing.T) {
 		t.Errorf("ValueDocument: got %+v", d2)
 	}
 }
+
+// TestHasLostInterleaving covers the D-3 distinction (spec §8.3.8):
+// contiguous repeats of one label are not interleaving loss, but a
+// different label's edge appearing between two occurrences of the same
+// label is.
+func TestHasLostInterleaving(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels []string
+		want   bool
+	}{
+		{"empty", nil, false},
+		{"single edge", []string{"m"}, false},
+		{"all distinct labels", []string{"m", "x", "y"}, false},
+		{"contiguous repeat, not interleaved", []string{"m", "m", "x"}, false},
+		{"contiguous repeat then another label", []string{"m", "m", "x", "x"}, false},
+		{"genuine interleaving", []string{"m", "x", "m"}, true},
+		{"interleaving after a third label", []string{"m", "x", "y", "m"}, true},
+		{"interleaving in the middle of a longer run", []string{"a", "m", "x", "m", "b"}, true},
+		{"two separately-interleaved labels", []string{"m", "x", "m", "y", "x"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := NewNode()
+			for _, label := range tt.labels {
+				n.AddValue(label, ScalarValue(NewStringScalar("v")))
+			}
+			if got := n.HasLostInterleaving(); got != tt.want {
+				t.Errorf("HasLostInterleaving() = %v, want %v (labels %v)", got, tt.want, tt.labels)
+			}
+		})
+	}
+}
