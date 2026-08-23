@@ -63,8 +63,8 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `964af7b` (`v0.3.0-alpha`, 2 commits past the tag —
-closes D-2's spec gap, issue #91), pinned via the `vendor/omnist-spec`
+`omnist-spec` at commit `7f7690c` (`v0.3.0-alpha`, 3 commits past the tag —
+closes D-3's spec gap, issue #93), pinned via the `vendor/omnist-spec`
 git submodule. This repo does not track the spec's `main` branch — the
 pin is bumped deliberately, in its own commit.
 
