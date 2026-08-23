@@ -90,20 +90,17 @@ func (p *osdParser) parseSchema() (omnist.Schema, error) {
 			if err != nil {
 				return omnist.Schema{}, err
 			}
-			// spec §5.8 / chapter 9 divergence-ledger D-2: a second `root`
-			// declaration's behavior is an explicitly acknowledged open
-			// item (the spec does not yet mandate erroring, though a future
-			// spec-level change may make it one). This implementation
-			// picks "first root wins" — the earliest `root` declaration in
-			// source order is authoritative and later ones are parsed (so
-			// their own syntax is still validated) but otherwise ignored.
-			// This is one of the two defensible choices the issue names;
-			// it is not a blocking ambiguity, per the issue's own
-			// instruction not to treat D-2 as one.
-			if !rootSet {
-				schema.Root = name
-				rootSet = true
+			// spec §5.8 (updated 2026-08-23, closing chapter 9
+			// divergence-ledger D-2): a schema with more than one `root`
+			// declaration is normatively an error, not an
+			// implementation-defined choice. The second (and any later)
+			// `root` declaration's own syntax is still validated by
+			// parseRootDef above, but its presence at all is rejected here.
+			if rootSet {
+				return omnist.Schema{}, schemaError("$", omnist.CodeSchemaDuplicateRoot, fmt.Sprintf("a schema must declare exactly one root; %q is a second root declaration", name))
 			}
+			schema.Root = name
+			rootSet = true
 		default:
 			return omnist.Schema{}, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected 'record' or 'root'")
 		}
