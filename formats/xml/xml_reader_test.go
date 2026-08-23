@@ -13,7 +13,7 @@ import (
 // --- interleaving preservation: the highest-priority test in this issue ---
 
 func TestReadXMLPreservesInterleaving(t *testing.T) {
-	d, err := Read(`<root><m/><x/><m/></root>`, omnist.DefaultLimits())
+	d, _, err := Read(`<root><m/><x/><m/></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestReadXMLPreservesInterleaving(t *testing.T) {
 func TestReadXMLInterleavingNotRegrouped(t *testing.T) {
 	// A grouping reader (like WriteJSON's write side) would produce
 	// [(m,[A,B]),(x,X)] — 2 edges. This must stay 3 edges in source order.
-	d, err := Read(`<root><m>A</m><x>X</x><m>B</m></root>`, omnist.DefaultLimits())
+	d, _, err := Read(`<root><m>A</m><x>X</x><m>B</m></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestReadXMLWorkedExampleStage1Untyped(t *testing.T) {
   <items><sku>W</sku><qty>3</qty><price>9.99</price></items>
   <items><sku>G</sku><qty>1</qty><price>9.99</price></items>
 </order>`
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestReadXMLWorkedExampleStage1Untyped(t *testing.T) {
 // --- repeated elements -> repeated labels, no wrapper ---
 
 func TestReadXMLRepeatedElementsNoWrapper(t *testing.T) {
-	d, err := Read(`<root><items>a</items><items>b</items><items>c</items></root>`, omnist.DefaultLimits())
+	d, _, err := Read(`<root><items>a</items><items>b</items><items>c</items></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,22 +119,32 @@ func TestReadXMLRepeatedElementsNoWrapper(t *testing.T) {
 	}
 }
 
-// --- attribute dropping: silent, no diagnostic ---
+// --- attribute dropping: now reported, not silent (D-3, spec §8.3.8) ---
 
-func TestReadXMLDropsAttributesSilently(t *testing.T) {
-	d, err := Read(`<a x="1"><b>hi</b></a>`, omnist.DefaultLimits())
+func TestReadXMLDropsAttributesAndReportsDiagnostic(t *testing.T) {
+	// formats-xml/basic/attributes-are-dropped-on-read
+	d, diags, err := Read(`<a x="1"><b>hi</b></a>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("expected a clean nil error, got %v", err)
 	}
 	b := omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("hi")))
 	want := omnist.NodeDocument(omnist.NewNode().AddNode("a", b))
 	if !docEqual(d, want) {
-		t.Errorf("got %+v, want %+v (attribute must leave no trace)", d, want)
+		t.Errorf("got %+v, want %+v (attribute must leave no trace in the Document)", d, want)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.a" || diags[0].Code != omnist.CodeFormatAttributeDropped || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $.a, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatAttributeDropped)
 	}
 }
 
-func TestReadXMLDropsMultipleAttributesSilently(t *testing.T) {
-	d, err := Read(`<a x="1" y="2" z="3"/>`, omnist.DefaultLimits())
+func TestReadXMLDropsMultipleAttributesReportsOneDiagnostic(t *testing.T) {
+	// One element with several dropped attributes still reports exactly
+	// one format.attribute-dropped diagnostic -- the loss is per element,
+	// not per attribute.
+	d, diags, err := Read(`<a x="1" y="2" z="3"/>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("expected a clean nil error, got %v", err)
 	}
@@ -142,12 +152,22 @@ func TestReadXMLDropsMultipleAttributesSilently(t *testing.T) {
 	if !docEqual(d, want) {
 		t.Errorf("got %+v, want %+v", d, want)
 	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.a" || diags[0].Code != omnist.CodeFormatAttributeDropped || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $.a, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatAttributeDropped)
+	}
 }
 
-// --- namespace-prefix dropping ---
+// --- namespace-prefix dropping: now reported, not silent (D-3, spec §8.3.8) ---
 
-func TestReadXMLDropsNamespacePrefix(t *testing.T) {
-	d, err := Read(`<root xmlns:ns="http://example.com/ns"><ns:b>hi</ns:b></root>`, omnist.DefaultLimits())
+func TestReadXMLDropsNamespacePrefixAndReportsDiagnostic(t *testing.T) {
+	// formats-xml/basic/namespace-prefix-is-dropped-on-read (with an
+	// explicit xmlns declaration this time, rather than the vector's
+	// undeclared-prefix spelling -- see
+	// TestReadXMLDropsUndeclaredNamespacePrefix below for that one).
+	d, diags, err := Read(`<root xmlns:ns="http://example.com/ns"><ns:b>hi</ns:b></root>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,17 +175,40 @@ func TestReadXMLDropsNamespacePrefix(t *testing.T) {
 	if len(node.Edges) != 1 || node.Edges[0].Label != "b" {
 		t.Fatalf("expected a single edge labeled b (prefix dropped), got %+v", node.Edges)
 	}
+	// The root element carries the xmlns:ns declaration itself as an
+	// XML attribute, so this also reports format.attribute-dropped for
+	// $.root alongside the namespace-prefix drop on $.root.b.
+	if len(diags) != 2 {
+		t.Fatalf("diags = %+v, want exactly 2", diags)
+	}
+	wantDiags := []omnist.Diagnostic{
+		{Path: "$.root", Code: omnist.CodeFormatAttributeDropped, Message: "an XML attribute was discarded on read", Severity: omnist.SeverityWarning},
+		{Path: "$.root.b", Code: omnist.CodeFormatNamespaceDropped, Message: "an XML namespace prefix was discarded on read", Severity: omnist.SeverityWarning},
+	}
+	for i, want := range wantDiags {
+		if diags[i] != want {
+			t.Errorf("diag[%d] = %+v, want %+v", i, diags[i], want)
+		}
+	}
 }
 
 func TestReadXMLDropsUndeclaredNamespacePrefix(t *testing.T) {
 	// A prefix with no matching xmlns declaration must still resolve to
-	// the local name only.
-	d, err := Read(`<ns:b>hi</ns:b>`, omnist.DefaultLimits())
+	// the local name only, and still reports format.namespace-dropped --
+	// this time on the document element itself, since the prefixed tag
+	// is the root.
+	d, diags, err := Read(`<ns:b>hi</ns:b>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Node.Edges[0].Label != "b" {
 		t.Fatalf("got label %q, want b", d.Node.Edges[0].Label)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("diags = %+v, want exactly 1", diags)
+	}
+	if diags[0].Path != "$.b" || diags[0].Code != omnist.CodeFormatNamespaceDropped || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("got diagnostic %+v, want {Path: $.b, Code: %s, Severity: warning}", diags[0], omnist.CodeFormatNamespaceDropped)
 	}
 }
 
@@ -173,7 +216,7 @@ func TestReadXMLDropsUndeclaredNamespacePrefix(t *testing.T) {
 
 func TestReadXMLTextAlwaysString(t *testing.T) {
 	src := `<root><d>2024-01-15</d><i>42</i><b>true</b></root>`
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +235,7 @@ func TestReadXMLTextAlwaysString(t *testing.T) {
 // --- self-closing / empty leaf ---
 
 func TestReadXMLSelfClosingElementIsEmptyString(t *testing.T) {
-	d, err := Read(`<a/>`, omnist.DefaultLimits())
+	d, _, err := Read(`<a/>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +249,7 @@ func TestReadXMLSelfClosingElementIsEmptyString(t *testing.T) {
 
 func TestReadXMLSkipsPrologAndComments(t *testing.T) {
 	src := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- a comment -->\n<a>hi</a>\n"
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +262,7 @@ func TestReadXMLSkipsPrologAndComments(t *testing.T) {
 // --- multiple top-level elements are rejected on read (not well-formed) ---
 
 func TestReadXMLRejectsMultipleTopLevelElements(t *testing.T) {
-	_, err := Read(`<a/><b/>`, omnist.DefaultLimits())
+	_, _, err := Read(`<a/><b/>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for multiple top-level elements")
 	}
@@ -233,14 +276,14 @@ func TestReadXMLRejectsMultipleTopLevelElements(t *testing.T) {
 }
 
 func TestReadXMLRejectsTextBeforeRoot(t *testing.T) {
-	_, err := Read(`stray text<a/>`, omnist.DefaultLimits())
+	_, _, err := Read(`stray text<a/>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for text before the root element")
 	}
 }
 
 func TestReadXMLRejectsStrayEndElementBeforeRoot(t *testing.T) {
-	_, err := Read(`</a>`, omnist.DefaultLimits())
+	_, _, err := Read(`</a>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for a stray closing tag before any root element")
 	}
@@ -250,7 +293,7 @@ func TestReadXMLSkipsCommentAndProcInstInsideElementBody(t *testing.T) {
 	// A comment/processing instruction interleaved with actual child
 	// elements must be ignored without disturbing sibling order.
 	src := "<a><b/><!-- c --><?pi d?><e/></a>"
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +308,7 @@ func TestReadXMLSkipsCommentAndProcInstInsideElementBody(t *testing.T) {
 
 func TestReadXMLSkipsCommentAndProcInstAfterRoot(t *testing.T) {
 	src := "<a/>\n<!-- trailing comment -->\n<?pi data?>\n"
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +322,7 @@ func TestReadXMLRejectsMalformedContentAfterRoot(t *testing.T) {
 	// Unterminated element after the root closes: a genuine decoder error,
 	// not just a trailing-content shape violation, must surface from
 	// checkTrailing too.
-	_, err := Read(`<a/><b`, omnist.DefaultLimits())
+	_, _, err := Read(`<a/><b`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for malformed content after the root element")
 	}
@@ -289,7 +332,7 @@ func TestReadXMLRejectsMalformedContentAfterRoot(t *testing.T) {
 }
 
 func TestReadXMLRejectsTextAfterRoot(t *testing.T) {
-	_, err := Read(`<a/>stray`, omnist.DefaultLimits())
+	_, _, err := Read(`<a/>stray`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for text after the root element")
 	}
@@ -300,7 +343,7 @@ func TestReadXMLRejectsTextAfterRoot(t *testing.T) {
 }
 
 func TestReadXMLRejectsEmptyInput(t *testing.T) {
-	_, err := Read(``, omnist.DefaultLimits())
+	_, _, err := Read(``, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for empty input")
 	}
@@ -311,7 +354,7 @@ func TestReadXMLRejectsEmptyInput(t *testing.T) {
 func TestReadXMLEnforcesMaxDepth(t *testing.T) {
 	src := "<a><b><c><d>x</d></c></b></a>"
 	limits := omnist.Limits{MaxDepth: 2, MaxNodes: 1_000_000, MaxIntDigits: 4300}
-	_, err := Read(src, limits)
+	_, _, err := Read(src, limits)
 	if err == nil {
 		t.Fatal("expected a depth-limit error")
 	}
@@ -324,7 +367,7 @@ func TestReadXMLEnforcesMaxDepth(t *testing.T) {
 func TestReadXMLEnforcesMaxNodes(t *testing.T) {
 	src := "<a><b/><c/><d/></a>"
 	limits := omnist.Limits{MaxDepth: 200, MaxNodes: 2, MaxIntDigits: 4300}
-	_, err := Read(src, limits)
+	_, _, err := Read(src, limits)
 	if err == nil {
 		t.Fatal("expected a node-count-limit error")
 	}
@@ -337,7 +380,7 @@ func TestReadXMLEnforcesMaxNodes(t *testing.T) {
 // --- malformed XML surfaces a parse error, not a panic ---
 
 func TestReadXMLMalformedInputReturnsParseError(t *testing.T) {
-	_, err := Read(`<a><b></a>`, omnist.DefaultLimits())
+	_, _, err := Read(`<a><b></a>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for mismatched tags")
 	}
@@ -347,7 +390,7 @@ func TestReadXMLMalformedInputReturnsParseError(t *testing.T) {
 }
 
 func TestReadXMLUnterminatedElementReturnsParseError(t *testing.T) {
-	_, err := Read(`<a><b>`, omnist.DefaultLimits())
+	_, _, err := Read(`<a><b>`, omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected an error for unterminated element")
 	}
@@ -359,7 +402,7 @@ func TestReadXMLUnterminatedElementReturnsParseError(t *testing.T) {
 // --- mixed content: narrow/cosmetic, elements win over stray text ---
 
 func TestReadXMLMixedContentDiscardsStrayText(t *testing.T) {
-	d, err := Read(`<a>hello<b>x</b>world</a>`, omnist.DefaultLimits())
+	d, _, err := Read(`<a>hello<b>x</b>world</a>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +450,7 @@ root Root
   <items><sku>G</sku><qty>1</qty><price>9.99</price></items>
 </order>`
 
-	doc, err := ReadWithSchema(src, &schema, omnist.DefaultLimits())
+	doc, _, err := ReadWithSchema(src, &schema, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected read error: %v", err)
 	}
@@ -483,7 +526,7 @@ func TestReadXMLWithSchemaAllScalarKinds(t *testing.T) {
   <s>hello</s>
 </R>`
 
-	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	doc, _, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -558,7 +601,7 @@ func TestReadXMLWithSchemaInvalidLiteralsRemainStrings(t *testing.T) {
   <unknown>val</unknown>
 </R>`
 
-	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	doc, _, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -587,7 +630,7 @@ func TestReadXMLWithSchemaRootElementIsLeaf(t *testing.T) {
 	}
 
 	src := `<count>42</count>`
-	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	doc, _, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -619,7 +662,7 @@ func TestReadXMLWithSchemaRootFallback(t *testing.T) {
 	}
 
 	src := `<Target><num>100</num></Target>`
-	doc, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
+	doc, _, err := ReadWithSchema(src, schema, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -642,7 +685,7 @@ func TestReadXMLWithSchemaRootFallback(t *testing.T) {
 		},
 		EnvOrder: []string{"Target"},
 	}
-	doc2, err := ReadWithSchema(src, schemaNoRoot, omnist.DefaultLimits())
+	doc2, _, err := ReadWithSchema(src, schemaNoRoot, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -661,7 +704,7 @@ func TestPretypeScalarDefault(t *testing.T) {
 }
 
 func TestReadXMLUnexpectedEOFInsideBody(t *testing.T) {
-	_, err := Read("<root><child>", omnist.DefaultLimits())
+	_, _, err := Read("<root><child>", omnist.DefaultLimits())
 	if err == nil {
 		t.Fatal("expected error for unterminated tag")
 	}

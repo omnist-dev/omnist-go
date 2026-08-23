@@ -29,7 +29,7 @@ func TestWriteXMLPreservesInterleaving(t *testing.T) {
 
 	// Read it back and confirm the interleaving survived the full
 	// round trip, not just the writer's raw string output.
-	back, err := Read(out, omnist.DefaultLimits())
+	back, _, err := Read(out, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestWriteXMLRejectsBareScalarRoot(t *testing.T) {
 
 func TestWriteXMLRoundTripsWorkedExample(t *testing.T) {
 	src := `<order><id>A1</id><status>shipped</status><total>29.97</total><address><street>1 Main</street><city>London</city></address><items><sku>W</sku><qty>3</qty><price>9.99</price></items><items><sku>G</sku><qty>1</qty><price>9.99</price></items></order>`
-	d, err := Read(src, omnist.DefaultLimits())
+	d, _, err := Read(src, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestWriteXMLRoundTripsWorkedExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, err := Read(out, omnist.DefaultLimits())
+	back, _, err := Read(out, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestWriteXMLRoundTripsWorkedExample(t *testing.T) {
 }
 
 func TestWriteXMLRoundTripsSelfClosingLeaf(t *testing.T) {
-	d, err := Read(`<a/>`, omnist.DefaultLimits())
+	d, _, err := Read(`<a/>`, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestWriteXMLRoundTripsSelfClosingLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, err := Read(out, omnist.DefaultLimits())
+	back, _, err := Read(out, omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}

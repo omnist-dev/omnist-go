@@ -270,6 +270,47 @@ func (n *Node) AddNode(label string, child *Node) *Node {
 	return n
 }
 
+// HasLostInterleaving reports whether grouping n's edges by label (spec
+// §7.3.1's `groups` construction, shared by every JSON-family writer —
+// formats/json, formats/yaml, formats/toml) would lose cross-label
+// interleaving: some label's edges are not all contiguous in n.Edges.
+//
+// This is the shared home for the check because all three writer
+// packages already depend on this root-level omnist package (the same
+// placement precedent as schema.go's FieldIndex), and the algorithm
+// itself is format-independent — it only inspects n.Edges' label order,
+// never any format-specific rendering.
+//
+// The distinction that matters (spec §8.3.8, D-3): a label reappearing
+// immediately after its own prior occurrence is NOT interleaving loss —
+// [(m,A),(m,B),(x,X)] groups to {"m":[A,B],"x":X} with nothing lost,
+// since m's two edges were already contiguous before grouping. Only a
+// genuine interruption — a different label's edge appearing between two
+// edges of the same label, e.g. [(m,A),(x,X),(m,B)] — loses information:
+// grouping produces {"m":[A,B],"x":X}, which can no longer tell that X
+// originally sat between A and B.
+//
+// Detection walks n.Edges once, tracking the most recently seen label at
+// each position and the set of labels considered "closed" (a different
+// label has appeared since we last saw them). If a closed label reappears,
+// its edges were not contiguous, so interleaving was lost.
+func (n *Node) HasLostInterleaving() bool {
+	var lastLabel string
+	haveLast := false
+	closed := make(map[string]bool, len(n.Edges))
+	for _, e := range n.Edges {
+		if haveLast && e.Label != lastLabel {
+			closed[lastLabel] = true
+		}
+		if closed[e.Label] {
+			return true
+		}
+		lastLabel = e.Label
+		haveLast = true
+	}
+	return false
+}
+
 // Document is a node or a bare value (spec §2.2: `Document = node | value`).
 // Exactly one of Node or Value is meaningful, selected by IsNode.
 //

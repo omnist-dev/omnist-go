@@ -108,6 +108,16 @@ type tomlGroup struct {
 	children []omnist.Target
 }
 
+// groupTOMLEdges mirrors groupJSONEdges/groupYAMLEdges
+// (json_writer.go/yaml_writer.go): edges sharing a label collapse into
+// one group, in first-seen label order, preserving each label's own
+// children in their original edge order. Cross-label interleaving (e.g.
+// [(m,A),(x,X),(m,B)]) is lost here, exactly as §7.3 states the JSON
+// family must ("no format in the JSON family can express it") --
+// writeTOMLTopLevel/writeTOMLInlineTable report this loss via
+// omnist.CodeFormatInterleavingLost (spec §8.3.8, D-3) whenever it
+// actually happens (omnist.Node.HasLostInterleaving, document.go), rather
+// than silently, as it did before.
 func groupTOMLEdges(n *omnist.Node) []tomlGroup {
 	var groups []tomlGroup
 	index := make(map[string]int, len(n.Edges))
@@ -129,6 +139,14 @@ func groupTOMLEdges(n *omnist.Node) []tomlGroup {
 // `[section]` headers, and for the null-drop reasoning below.
 func writeTOMLTopLevel(b *strings.Builder, n *omnist.Node, diags *[]omnist.Diagnostic) {
 	groups := groupTOMLEdges(n)
+	if n.HasLostInterleaving() {
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     "$",
+			Code:     omnist.CodeFormatInterleavingLost,
+			Message:  "cross-label interleaving cannot be expressed in TOML, so it is lost",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 	for _, g := range groups {
 		var vb strings.Builder
 		if !writeTOMLGroupValue(&vb, g, "$."+g.label, diags) {
@@ -215,6 +233,14 @@ func writeTOMLTargetOptional(b *strings.Builder, t omnist.Target, path string, d
 // than leaving a dangling key.
 func writeTOMLInlineTable(b *strings.Builder, n *omnist.Node, path string, diags *[]omnist.Diagnostic) {
 	groups := groupTOMLEdges(n)
+	if n.HasLostInterleaving() {
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatInterleavingLost,
+			Message:  "cross-label interleaving cannot be expressed in TOML, so it is lost",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 	b.WriteByte('{')
 	first := true
 	for _, g := range groups {

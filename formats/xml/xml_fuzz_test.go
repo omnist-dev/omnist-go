@@ -67,7 +67,7 @@ func FuzzRead(f *testing.F) {
 	f.Add("<a>hello<b>x</b>world</a>")                  // repo-test-literal
 
 	f.Fuzz(func(t *testing.T, text string) {
-		doc, err := Read(text, fuzzLimits())
+		doc, _, err := Read(text, fuzzLimits())
 		if err != nil {
 			if _, ok := err.(*omnist.ParseError); !ok {
 				t.Fatalf("Read returned a non-*omnist.ParseError error: %T: %v", err, err)

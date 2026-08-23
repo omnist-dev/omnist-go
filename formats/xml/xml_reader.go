@@ -17,7 +17,15 @@ import (
 // Every leaf arrives as a string (spec §7.1, docs/formats/xml.md). Callers
 // with an OSD schema should use ReadWithSchema to pre-type leaves into numeric,
 // boolean, and temporal scalars per omnist-spec#44.
-func Read(src string, limits omnist.Limits) (omnist.Document, error) {
+//
+// The signature returns diagnostics alongside the omnist.Document and error,
+// matching every writer in this repository (issue #49) and, as of D-3
+// (spec §8.3.8), this reader too: every dropped attribute
+// (format.attribute-dropped) and every dropped namespace prefix
+// (format.namespace-dropped) is now reported this way rather than
+// silently -- see ReadWithSchema's "Attribute and namespace-prefix
+// dropping" section below.
+func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
 	return ReadWithSchema(src, nil, limits)
 }
 
@@ -75,10 +83,18 @@ func Read(src string, limits omnist.Limits) (omnist.Document, error) {
 // Per docs/formats/xml.md ("Attributes and namespace prefixes are
 // dropped"), attributes leave no trace in the resulting omnist.Document, and any
 // StartElement/EndElement Name.Space prefix is discarded, keeping only
-// Name.Local as the edge label.
-func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, error) {
+// Name.Local as the edge label. Per D-3 (spec §8.3.8), both drops are now
+// reported rather than silent: an element with one or more attributes
+// emits one omnist.CodeFormatAttributeDropped warning at that element's own
+// Document path (e.g. "$.a" for `<a x="1"><b>hi</b></a>`), and an element
+// whose tag carried a namespace prefix emits one
+// omnist.CodeFormatNamespaceDropped warning, also at that element's own
+// Document path (e.g. "$.a.b" for `<a><ns:b>hi</ns:b></a>`). Both checks
+// live in readStart, run once per StartElement token (root and every
+// child alike) as soon as that element's own Document path is known.
+func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
 	if len(src) == 0 {
-		return omnist.Document{}, &omnist.ParseError{
+		return omnist.Document{}, nil, &omnist.ParseError{
 			Path:    "1:0",
 			Code:    omnist.CodeParseUnexpectedToken,
 			Message: "unexpected end of input",
@@ -91,10 +107,10 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	}
 	label, node, isLeaf, leafText, err := r.readRoot()
 	if err != nil {
-		return omnist.Document{}, err
+		return omnist.Document{}, nil, err
 	}
 	if err := r.checkTrailing(); err != nil {
-		return omnist.Document{}, err
+		return omnist.Document{}, nil, err
 	}
 	root := omnist.NewNode()
 	if isLeaf {
@@ -103,7 +119,7 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 				if f := findField(rootRec, label); f != nil && f.Type.Kind == omnist.TypeScalarKind {
 					if sc, ok := pretypeScalar(leafText, f.Type.ScalarKind); ok {
 						root.AddValue(label, omnist.ScalarValue(sc))
-						return omnist.NodeDocument(root), nil
+						return omnist.NodeDocument(root), r.diags, nil
 					}
 				}
 			}
@@ -112,13 +128,14 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	} else {
 		root.AddNode(label, node)
 	}
-	return omnist.NodeDocument(root), nil
+	return omnist.NodeDocument(root), r.diags, nil
 }
 
 type xmlReader struct {
 	dec     *encxml.Decoder
 	checker *omnist.LimitChecker
 	schema  *omnist.Schema
+	diags   []omnist.Diagnostic
 }
 
 // readRoot finds the single document element, consumes it via
@@ -135,6 +152,8 @@ func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, le
 		switch t := tok.(type) {
 		case encxml.StartElement:
 			label = t.Name.Local
+			docPath := "$." + label
+			r.readStart(t, docPath)
 			var currentRec *omnist.Record
 			if r.schema != nil {
 				if rootRec := r.schema.Env[r.schema.Root]; rootRec != nil {
@@ -151,7 +170,7 @@ func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, le
 					currentRec = r.schema.Env[label]
 				}
 			}
-			node, isLeaf, leafText, err = r.readElementBody(currentRec)
+			node, isLeaf, leafText, err = r.readElementBody(currentRec, docPath)
 			return label, node, isLeaf, leafText, err
 		case encxml.CharData:
 			if len(strings.TrimSpace(string(t))) != 0 {
@@ -228,7 +247,7 @@ func (r *xmlReader) pathHere() string {
 
 // readElementBody reads one element's children up to and including the matching
 // EndElement.
-func (r *xmlReader) readElementBody(currentRec *omnist.Record) (node *omnist.Node, isLeaf bool, leafText string, err error) {
+func (r *xmlReader) readElementBody(currentRec *omnist.Record, docPath string) (node *omnist.Node, isLeaf bool, leafText string, err error) {
 	var text strings.Builder
 	var children *omnist.Node
 
@@ -255,7 +274,8 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record) (node *omnist.Nod
 			if f != nil && f.Type.Kind == omnist.TypeRefKind && r.schema != nil {
 				childRec = r.schema.Env[f.Type.RefName]
 			}
-			childNode, childIsLeaf, childText, err := r.readChild(childRec)
+			childDocPath := docPath + "." + label
+			childNode, childIsLeaf, childText, err := r.readChild(childRec, t, childDocPath)
 			if err != nil {
 				return nil, false, "", err
 			}
@@ -278,13 +298,41 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record) (node *omnist.Nod
 
 // readChild reads one non-root element, enforcing MaxDepth/MaxNodes via
 // the shared omnist.LimitChecker.
-func (r *xmlReader) readChild(childRec *omnist.Record) (node *omnist.Node, isLeaf bool, leafText string, err error) {
+func (r *xmlReader) readChild(childRec *omnist.Record, start encxml.StartElement, docPath string) (node *omnist.Node, isLeaf bool, leafText string, err error) {
 	path := r.pathHere()
 	if diag := r.checker.EnterNode(path); diag != nil {
 		return nil, false, "", &omnist.ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
 	}
 	defer r.checker.LeaveNode()
-	return r.readElementBody(childRec)
+	r.readStart(start, docPath)
+	return r.readElementBody(childRec, docPath)
+}
+
+// readStart records D-3's two report-not-silently-drop diagnostics (spec
+// §8.3.8) for one StartElement, at that element's own Document path
+// docPath: one omnist.CodeFormatAttributeDropped warning if the element
+// carries one or more attributes, and one omnist.CodeFormatNamespaceDropped
+// warning if the element's tag itself had a namespace prefix
+// (start.Name.Space != ""). Called once per StartElement -- root
+// (readRoot) and every child (readChild) alike -- as soon as that
+// element's docPath is known, before its body is read.
+func (r *xmlReader) readStart(start encxml.StartElement, docPath string) {
+	if len(start.Attr) > 0 {
+		r.diags = append(r.diags, omnist.Diagnostic{
+			Path:     docPath,
+			Code:     omnist.CodeFormatAttributeDropped,
+			Message:  "an XML attribute was discarded on read",
+			Severity: omnist.SeverityWarning,
+		})
+	}
+	if start.Name.Space != "" {
+		r.diags = append(r.diags, omnist.Diagnostic{
+			Path:     docPath,
+			Code:     omnist.CodeFormatNamespaceDropped,
+			Message:  "an XML namespace prefix was discarded on read",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 }
 
 func findField(rec *omnist.Record, label string) *omnist.Field {
