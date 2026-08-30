@@ -110,6 +110,28 @@ func TestWorkedEmptyCardinality(t *testing.T) {
 	wantDiagCode(t, err, omnist.CodeSchemaEmptyCardinality)
 }
 
+func TestSchemaEmptyLabelIsRejected(t *testing.T) {
+	// spec section 5.4 (2026-08-29): an empty-string field label is an
+	// identifier-position value that names nothing, and is now rejected.
+	err := mustFailOSD(t, `record R { "": string } root R`)
+	wantDiag(t, err, omnist.CodeSchemaEmptyLabel, "R")
+}
+
+func TestSchemaBracketInLabelIsRejected(t *testing.T) {
+	// spec section 5.4 (2026-08-29): a label containing '[' or ']' can
+	// collide with the "[i]" suffix validate() appends to a repeated
+	// label's diagnostic path.
+	err := mustFailOSD(t, `record R { "a[1]": string } root R`)
+	wantDiag(t, err, omnist.CodeSchemaBracketInLabel, "R")
+}
+
+func TestSchemaClosingBracketAloneInLabelIsRejected(t *testing.T) {
+	// The rule is about the character vocabulary, not specifically a
+	// matched [i] pattern -- a lone ']' with no '[' is also rejected.
+	err := mustFailOSD(t, `record R { "total]": string } root R`)
+	wantDiag(t, err, omnist.CodeSchemaBracketInLabel, "R")
+}
+
 func TestWorkedNegativeCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [-1]: string } root R`)
 	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)

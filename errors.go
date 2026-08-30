@@ -54,6 +54,24 @@ const (
 	// chapter 9 divergence-ledger D-2), this is normatively an error, not
 	// an implementation-defined choice.
 	CodeSchemaDuplicateRoot Code = "schema.duplicate-root"
+	// CodeSchemaEmptyLabel is raised when a field label is the empty
+	// string. Per spec section 5.4 (added 2026-08-29): a label is an
+	// identifier, not a value -- an empty label names nothing a caller
+	// could ever reference. Path is the enclosing record, the same
+	// convention CodeSchemaUnquotedLabel uses when the label itself is
+	// the problem.
+	CodeSchemaEmptyLabel Code = "schema.empty-label"
+	// CodeSchemaBracketInLabel is raised when a field label contains a
+	// literal '[' or ']' character. Per spec section 5.4 (added
+	// 2026-08-29): section 3.6.1's validate() pseudocode appends "[i]"
+	// to a repeated label's second and later occurrences when building a
+	// diagnostic path, so a label containing a literal bracket can
+	// collide with that convention (e.g. a repeatable field "a" and a
+	// separately declared field literally named "a[1]" can both path as
+	// $.a[1]). Rejecting the character vocabulary in labels is the
+	// narrowest fix. Path is the enclosing record, same convention as
+	// CodeSchemaEmptyLabel/CodeSchemaUnquotedLabel.
+	CodeSchemaBracketInLabel Code = "schema.bracket-in-label"
 )
 
 // validate.* — document against schema (spec §8.3.4).

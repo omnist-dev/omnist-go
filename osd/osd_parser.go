@@ -2,6 +2,7 @@ package osd
 
 import (
 	"fmt"
+	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
@@ -255,6 +256,12 @@ func (p *osdParser) parseField(recordName string) (omnist.Field, error) {
 		return omnist.Field{}, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected a quoted field name")
 	}
 	label := p.cur.strVal
+	if label == "" {
+		return omnist.Field{}, schemaError(recordName, omnist.CodeSchemaEmptyLabel, "field label must not be empty")
+	}
+	if strings.ContainsAny(label, "[]") {
+		return omnist.Field{}, schemaError(recordName, omnist.CodeSchemaBracketInLabel, "field label must not contain '[' or ']'")
+	}
 	if err := p.advance(); err != nil {
 		return omnist.Field{}, err
 	}
