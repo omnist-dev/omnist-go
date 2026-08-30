@@ -171,17 +171,55 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 			Severity: omnist.SeverityError,
 		}
 	}
-	// encxml.EscapeText's only failure mode is its io.Writer returning an
-	// error; xmlTextWriter wraps a *strings.Builder, whose Write never
-	// does (per xmlTextWriter's own doc comment), so this error is never
-	// non-nil for any input — mirroring this package's established
-	// no-dead-branch convention (see e.g. toml_reader.go's parseTOMLInt
-	// doc comment) rather than carrying a permanently-unreachable check.
-	_ = encxml.EscapeText(&xmlTextWriter{b}, []byte(writeXMLScalarText(v.Scalar)))
+	writeXMLText(b, writeXMLScalarText(v.Scalar))
 	b.WriteString("</")
 	b.WriteString(label)
 	b.WriteByte('>')
 	return nil
+}
+
+// writeXMLText renders leaf text, escaping a literal carriage return as
+// the numeric character reference `&#13;` instead of a raw byte. Per
+// spec section 8.3.8 (updated 2026-08-24, issue #99): XML mandates
+// line-ending normalization on parse, so a literal \r byte and a literal
+// \n byte, written as-is, are indistinguishable on read-back -- confirmed
+// empirically (TestXMLCRWrittenRawIsIndistinguishableFromLF in
+// xml_writer_test.go) that this port's previous behavior (delegating
+// straight to encxml.EscapeText) collapsed that distinction, exactly the
+// collision shape the rest of this issue series fixes. A numeric
+// character reference is exempt from XML's line-ending normalization and
+// survives a compliant parser intact, so \r becomes `&#13;` (and
+// \r\n becomes `&#13;\n`, leaving the \n itself as a literal,
+// unescaped byte -- confirmed empirically that Go's stdlib
+// encxml.EscapeText would otherwise ALSO numeric-escape a bare \n as
+// `&#xA;`, which is correct but unrelated to this fix and left alone
+// here: only the \r half of a \r\n pair is consumed specially, the \n
+// is passed straight through this function's own literal write, not
+// through EscapeText, so it round-trips as a literal newline exactly as
+// it did before this fix for a lone \n). Every other character
+// (including a lone \n with no preceding \r) still goes through
+// encxml.EscapeText exactly as before; encxml.EscapeText's only failure
+// mode is its io.Writer returning an error, and xmlTextWriter wraps a
+// *strings.Builder, whose Write never does (per xmlTextWriter's own doc
+// comment), so it is never non-nil for any input here either -- mirroring
+// this package's established no-dead-branch convention (see e.g.
+// toml_reader.go's parseTOMLInt doc comment) rather than carrying a
+// permanently-unreachable check.
+func writeXMLText(b *strings.Builder, text string) {
+	for {
+		i := strings.IndexByte(text, '\r')
+		if i < 0 {
+			_ = encxml.EscapeText(&xmlTextWriter{b}, []byte(text))
+			return
+		}
+		_ = encxml.EscapeText(&xmlTextWriter{b}, []byte(text[:i]))
+		b.WriteString("&#13;")
+		text = text[i+1:]
+		if strings.HasPrefix(text, "\n") {
+			b.WriteByte('\n')
+			text = text[1:]
+		}
+	}
 }
 
 // xmlTextWriter adapts *strings.Builder to io.Writer for encxml.EscapeText,

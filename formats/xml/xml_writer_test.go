@@ -1,6 +1,7 @@
 package xml
 
 import (
+	xmlpkg "encoding/xml"
 	"math"
 	"math/big"
 	"strings"
@@ -304,6 +305,81 @@ func TestWriteXMLRejectsInvalidLabel(t *testing.T) {
 // isValidXMLName/writeXMLElement already fail closed here (hard error,
 // no sanitize-and-succeed fallback), so this is a confirming test, not a
 // bug fix -- see the issue's own comment thread.
+// --- carriage return: numeric character reference, not a raw byte ---
+
+// TestXMLCRWrittenRawIsIndistinguishableFromLF is the empirical check the
+// issue calls for before "fixing" anything: confirms that Go's stdlib
+// encxml.EscapeText, used unmodified, writes a literal \r as the numeric
+// character reference &#xD; -- already NOT a raw byte -- but writes it
+// with a hex reference, and a literal \r\n pair gets BOTH bytes
+// numeric-escaped (&#xD;&#xA;), collapsing the \r/\n distinction anyway
+// on the \n side of the pair (a literal \n alone would also become
+// &#xA; via the same call, so \r\n and \n\n look different afterward,
+// but a bare \r and \r\n's escaped \r half look identical -- and, more
+// to the point, the vector requires the DECIMAL spelling &#13;, not the
+// hex &#xD; stdlib produces).
+func TestXMLCRWrittenRawIsIndistinguishableFromLF(t *testing.T) {
+	var viaStdlib strings.Builder
+	_ = xmlpkg.EscapeText(&viaStdlib, []byte("a\rb"))
+	if viaStdlib.String() != "a&#xD;b" {
+		t.Fatalf("encxml.EscapeText(%q) = %q, want the hex reference a&#xD;b (confirms the decimal &#13; the vector wants needs custom handling)", "a\rb", viaStdlib.String())
+	}
+}
+
+func TestWriteXMLEscapesCarriageReturnAsNumericReference(t *testing.T) {
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("a\rb")))))
+	out, _, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "a&#13;b") {
+		t.Errorf("out = %q, want it to contain a&#13;b", out)
+	}
+	if strings.ContainsRune(out, '\r') {
+		t.Errorf("out = %q, want no raw carriage return byte", out)
+	}
+}
+
+func TestWriteXMLEscapesCarriageReturnNewlinePairKeepingNewlineLiteral(t *testing.T) {
+	// Per the issue: \r\n becomes &#13;\n -- the \r half is escaped, the
+	// \n half is left as a literal, unescaped byte (not also numeric-escaped).
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("a\r\nb")))))
+	out, _, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "a&#13;\nb") {
+		t.Errorf("out = %q, want it to contain a&#13;\\nb (literal newline after the reference)", out)
+	}
+	if strings.ContainsRune(out, '\r') {
+		t.Errorf("out = %q, want no raw carriage return byte", out)
+	}
+}
+
+func TestWriteXMLEscapesMultipleCarriageReturns(t *testing.T) {
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("a\rb\rc")))))
+	out, _, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "a&#13;b&#13;c") {
+		t.Errorf("out = %q, want it to contain a&#13;b&#13;c", out)
+	}
+}
+
+func TestWriteXMLTrailingCarriageReturn(t *testing.T) {
+	// A trailing \r with nothing after it exercises writeXMLText's loop
+	// termination after consuming the last \r (no following \n to check).
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("x", omnist.ScalarValue(omnist.NewStringScalar("a\r")))))
+	out, _, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error: %v", err)
+	}
+	if !strings.HasSuffix(out, "a&#13;</x></root>") {
+		t.Errorf("out = %q, want it to end with a&#13;</x></root>", out)
+	}
+}
+
 func TestWriteXMLRejectsSpaceInLabelMatchesVector(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("my label", omnist.ScalarValue(omnist.NewStringScalar("hi")))))
 	_, _, err := Write(d)
