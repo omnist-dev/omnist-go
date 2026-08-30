@@ -88,11 +88,19 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `0ac1eac` (`v0.4.0-beta`, 13 commits past the tag
-— omnist-spec has moved from alpha to beta upstream; pins the fixes for
-issues #95-103, a spec-correctness audit batch), pinned via the
-`vendor/omnist-spec` git submodule. This repo does not track the spec's
-`main` branch — the pin is bumped deliberately, in its own commit.
+`omnist-spec` at commit `aac3ce0`, pinned via the `vendor/omnist-spec` git
+submodule. This repo does not track the spec's `main` branch — the pin is
+bumped deliberately, in its own commit. Past `0ac1eac` (the #95-103
+spec-correctness audit batch), this pin also carries the fix for
+`omnist-spec#52` — a new §8.5.3 rule requiring a harness to strip
+insignificant inter-tag XML whitespace before comparing a `write` vector's
+expected/actual text, since the spec places no requirement on XML writer
+whitespace at all. This repo's own conformance-test skip for that vector
+(cited as `omnist-spec#52` in a prior revision of this doc) is removed —
+`formats-xml/basic/carriage-return-written-as-numeric-character-reference`
+now passes outright, bringing Track 2 to 171/0/1 (of 172; the one
+remaining skip is the pre-existing, unrelated TOML strict-mode gap noted
+above).
 
 See `omnist-spec`'s own [§9.3 status table](https://github.com/omnist-dev/omnist-spec/blob/main/docs/09-divergence-ledger.md#93-status-table)
 for the cross-implementation divergence ledger this repo reports into.
