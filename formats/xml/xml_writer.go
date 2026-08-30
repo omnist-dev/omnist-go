@@ -115,6 +115,27 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 	}
 
 	if node, ok := t.Node(); ok {
+		if len(node.Edges) == 0 {
+			// Per spec section 8.3.8/8.3.9 (updated 2026-08-24): an internal
+			// node with zero edges has no XML spelling distinct from an
+			// empty-string leaf -- both would write as the self-closing
+			// `<label/>` (equivalently `<label></label>`), and the
+			// internal-node-ness is gone, silently, with no way to recover
+			// it on read-back. This is a genuine gap (this writer previously
+			// emitted the self-closing form here with no diagnostic at all),
+			// not a strictness flip: fail unconditionally
+			// (omnist.CodeWriteUnsupportedValue) rather than emit the
+			// ambiguous output. This does not affect a omnist.Value target
+			// holding an empty string, which is fine and unrelated -- see
+			// the v.IsNull branch below and writeXMLElement's own doc
+			// comment on empty-string leaves.
+			return omnist.Diagnostic{
+				Path:     path,
+				Code:     omnist.CodeWriteUnsupportedValue,
+				Message:  "an internal node with no edges has no XML spelling distinct from an empty string leaf and cannot be written",
+				Severity: omnist.SeverityError,
+			}
+		}
 		b.WriteByte('<')
 		b.WriteString(label)
 		b.WriteByte('>')
@@ -134,30 +155,21 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 	b.WriteString(label)
 	b.WriteByte('>')
 	if v.IsNull {
-		// docs/formats/xml.md does not discuss null explicitly, but XML
-		// text has no spelling for "absent" distinct from "empty" any more
-		// than TOML has a spelling for null at all (see WriteTOML's doc
-		// comment on omnist.CodeFormatNullUnrepresentable) — the plainly-correct,
-		// narrow/cosmetic reading taken here is the same one: report the
-		// same warning-severity adjustment code TOML's writer already
-		// uses for "this leaf has no representation in this format, so it
-		// is written as empty/dropped", applied to XML's own empty-element
-		// spelling instead of TOML's outright omission. Unlike TOML
-		// (which has no spelling at all and must drop the leaf), XML's
-		// empty-element spelling is a real, if lossy, representation, so
-		// per spec §8.5.3 (write's ok:true + diagnostics coexistence) this
-		// is now a non-fatal diagnostic rather than a hard failure that
-		// discards the rest of the document.
-		*diags = append(*diags, omnist.Diagnostic{
+		// Per spec section 8.3.8/8.3.9 (updated 2026-08-24): writing a null
+		// leaf now fails unconditionally (omnist.CodeWriteUnsupportedValue)
+		// rather than substituting a lossy fallback. XML's only candidate
+		// fallback -- an empty element, `<label></label>` -- collides with
+		// a genuinely different, independently-valid input: writing a real
+		// empty-string leaf produces the exact same bytes, and there is no
+		// way to tell the two apart on read-back. Same collision shape as
+		// the label-sanitization fix in issue #96 and the TOML null fix in
+		// issue #97, here for XML's own null-has-no-distinct-spelling case.
+		return omnist.Diagnostic{
 			Path:     path,
-			Code:     omnist.CodeFormatNullUnrepresentable,
-			Message:  "a null leaf cannot be written in XML, so it is written as an empty element",
-			Severity: omnist.SeverityWarning,
-		})
-		b.WriteString("</")
-		b.WriteString(label)
-		b.WriteByte('>')
-		return nil
+			Code:     omnist.CodeWriteUnsupportedValue,
+			Message:  "a null leaf has no XML spelling distinct from an empty string and cannot be written",
+			Severity: omnist.SeverityError,
+		}
 	}
 	// encxml.EscapeText's only failure mode is its io.Writer returning an
 	// error; xmlTextWriter wraps a *strings.Builder, whose Write never

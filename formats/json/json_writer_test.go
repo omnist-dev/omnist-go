@@ -124,9 +124,17 @@ func TestWriteJSONTimeVariants(t *testing.T) {
 	}
 }
 
-// --- NaN/Infinity: default lenient substitution ---
+// --- NaN/Infinity: unconditional write failure ---
+//
+// Per spec section 8.3.8/8.3.9 (updated 2026-08-24, issue #98): writing a
+// genuine null value and writing NaN used to produce the identical JSON
+// token, with no way to tell a substituted NaN from an original null on
+// read-back -- the same collision shape as the label-sanitization fix in
+// issue #96. Write and WriteStrict are now functionally identical: both
+// fail unconditionally instead of one of them substituting `null`. See
+// Write's doc comment.
 
-func TestWriteJSONNaNInfinitySubstitutesNull(t *testing.T) {
+func TestWriteJSONNaNInfinityFailsUnconditionally(t *testing.T) {
 	cases := []struct {
 		name string
 		num  float64
@@ -141,30 +149,23 @@ func TestWriteJSONNaNInfinitySubstitutesNull(t *testing.T) {
 				AddValue("before", omnist.ScalarValue(omnist.NewStringScalar("kept"))).
 				AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(tc.num))).
 				AddValue("after", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(7)))))
-			got, diags, err := Write(doc)
-			if err != nil {
-				t.Fatalf("WriteJSON failed: %v", err)
+			_, _, err := Write(doc)
+			if err == nil {
+				t.Fatalf("Write(%v): want error, got ok write", tc.num)
 			}
-			want := `{"before": "kept", "n": null, "after": 7}`
-			if got != want {
-				t.Errorf("got %q, want %q (rest of the document must be otherwise unaffected)", got, want)
+			diag, ok := err.(omnist.Diagnostic)
+			if !ok {
+				t.Fatalf("error is %T, want omnist.Diagnostic", err)
 			}
-			// Issue #49: the substitution is now reported alongside the
-			// successful write (spec §8.5.3).
-			if len(diags) != 1 {
-				t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+			if diag.Code != omnist.CodeWriteUnsupportedValue {
+				t.Errorf("diagnostic code = %s, want %s", diag.Code, omnist.CodeWriteUnsupportedValue)
 			}
-			if diags[0].Code != omnist.CodeFormatFloatSpecial {
-				t.Errorf("diagnostic code = %s, want %s", diags[0].Code, omnist.CodeFormatFloatSpecial)
-			}
-			if diags[0].Path != "$.n" {
-				t.Errorf("diagnostic path = %s, want $.n", diags[0].Path)
+			if diag.Path != "$.n" {
+				t.Errorf("diagnostic path = %s, want $.n", diag.Path)
 			}
 		})
 	}
 }
-
-// --- NaN/Infinity: optional strict mode ---
 
 func TestWriteJSONStrictFailsOnNaNInfinity(t *testing.T) {
 	cases := []float64{math.NaN(), math.Inf(1), math.Inf(-1)}

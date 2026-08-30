@@ -9,59 +9,65 @@ import (
 	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// Write renders d as JSON text (spec §7.3, docs/formats/json.md),
-// schema-free: a writer MUST NOT accept a schema (§7.3), and this one
-// doesn't. It applies §7.3's two rules (grouping by label, the count-1
-// bare-value-vs-list rule) via writeJSONNode/writeJSONGroup below, plus
-// JSON-specific leaf rendering: temporal leaves are stringified to
-// ISO-8601, and NaN/Infinity — not valid JSON tokens — are substituted
-// with `null` at the leaf (docs/formats/json.md's default lenient mode).
-// Grouping itself can also lose cross-label interleaving; see
-// groupJSONEdges's doc comment.
+// Write renders d as JSON text (spec section 7.3, docs/formats/json.md),
+// schema-free: a writer MUST NOT accept a schema (section 7.3), and this
+// one doesn't. It applies section 7.3's two rules (grouping by label, the
+// count-1 bare-value-vs-list rule) via writeJSONNode/writeJSONGroup
+// below, plus JSON-specific leaf rendering: temporal leaves are
+// stringified to ISO-8601, and NaN/Infinity -- not valid JSON tokens --
+// now fail the write unconditionally (spec section 8.3.8/8.3.9, updated
+// 2026-08-24, issue #98). Grouping itself can also lose cross-label
+// interleaving; see groupJSONEdges's doc comment.
 //
-// The signature returns diagnostics alongside text and error because all
-// three of JSON's adjustments are reportable per spec §7.4 ("a reader or
-// writer SHOULD be able to report the adjustments... this is what makes
-// lossiness auditable") and spec §8.5.3, which documents write as the one
-// operation where a successful `{ok: true, ...}` result and a non-empty
-// diagnostics list are not mutually exclusive: every temporal leaf
-// stringified to ISO-8601 (format.temporal-stringified), every
-// NaN/Infinity substituted with `null` (format.float-special), and every
-// grouping that loses cross-label interleaving (format.interleaving-lost,
-// spec §8.3.8, D-3) is now reported this way. text is non-empty and err
-// is nil whenever the write succeeds, with diagnostics non-empty exactly
-// when an adjustment happened; text is empty and err is non-nil only on
-// WriteStrict's hard NaN/Infinity failure below.
+// # NaN/Infinity: unconditional failure, not a lenient substitution
 //
-// See WriteStrict for the spec's optional MAY: failing instead of
-// substituting.
+// A previous version of this writer substituted `null` for NaN/Infinity
+// by default, with a `WriteStrict` variant that failed instead (the
+// spec's then-optional MAY: "a strict mode MAY instead fail"). That
+// default was removed per spec section 8.3.8/8.3.9: writing a genuine
+// `null` value and writing NaN produce the identical JSON token, and both
+// read back as the identical Document value -- there is no way, after the
+// fact, to tell a substituted NaN from an original null. The correct
+// behavior is write.unsupported-value, unconditionally, matching the
+// null-unrepresentable fix for TOML (issue #97) and XML (issue #96/#97)
+// and the label-sanitization fix (issue #96) -- the same "does the
+// fallback collide with a genuinely different, independently-valid
+// input" test applied consistently.
+//
+// The signature still returns diagnostics alongside text and error
+// because JSON's other adjustment remains reportable per spec section 7.4
+// ("a reader or writer SHOULD be able to report the adjustments... this
+// is what makes lossiness auditable") and section 8.5.3, which documents
+// write as the one operation where a successful `{ok: true, ...}` result
+// and a non-empty diagnostics list are not mutually exclusive: every
+// temporal leaf stringified to ISO-8601 (format.temporal-stringified) and
+// every grouping that loses cross-label interleaving
+// (format.interleaving-lost, spec section 8.3.8, D-3) is reported this
+// way.
 func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
-	return writeJSONDocument(d, false)
+	return writeJSONDocument(d)
 }
 
-// WriteStrict renders d as JSON text like Write, except a
-// NaN/Infinity leaf is a hard failure instead of a `null` substitution —
-// the strict mode docs/formats/json.md's "no NaN or Infinity" rule
-// describes as a spec MAY ("A strict mode MAY instead fail"). The
-// returned error is a omnist.Diagnostic (code write.unsupported-value, spec
-// §8.3.9), positioned by the omnist.Document path to the offending leaf.
-// A temporal leaf can still be stringified and reported even in strict
-// mode (the two adjustments are independent), so a strict write can
-// succeed with non-empty diagnostics just like Write's.
+// WriteStrict is Deprecated: NaN/Infinity now fails unconditionally in
+// Write (spec section 8.3.8/8.3.9, updated 2026-08-24, issue #98), so
+// WriteStrict is now functionally identical to Write -- the distinction
+// this function used to draw (lenient substitution vs. strict failure)
+// no longer exists. Kept only for source compatibility with existing
+// callers; new code should call Write directly.
 func WriteStrict(d omnist.Document) (string, []omnist.Diagnostic, error) {
-	return writeJSONDocument(d, true)
+	return writeJSONDocument(d)
 }
 
-func writeJSONDocument(d omnist.Document, strict bool) (string, []omnist.Diagnostic, error) {
+func writeJSONDocument(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	var b strings.Builder
 	var diags []omnist.Diagnostic
 	if d.IsNode {
-		if err := writeJSONNode(&b, d.Node, "$", strict, &diags); err != nil {
+		if err := writeJSONNode(&b, d.Node, "$", &diags); err != nil {
 			return "", nil, err
 		}
 		return b.String(), diags, nil
 	}
-	if err := writeJSONValue(&b, d.Value, "$", strict, &diags); err != nil {
+	if err := writeJSONValue(&b, d.Value, "$", &diags); err != nil {
 		return "", nil, err
 	}
 	return b.String(), diags, nil
@@ -80,7 +86,7 @@ type jsonGroup struct {
 // format: group edges sharing a label (grouping rule), then render each
 // group as a bare value when it has exactly one child or as a list
 // otherwise (count-1 rule).
-func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool, diags *[]omnist.Diagnostic) error {
+func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, diags *[]omnist.Diagnostic) error {
 	groups := groupJSONEdges(n)
 	if n.HasLostInterleaving() {
 		*diags = append(*diags, omnist.Diagnostic{
@@ -101,7 +107,7 @@ func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool,
 		childPath := path + "." + g.label
 
 		if len(g.children) == 1 {
-			if err := writeJSONTarget(b, g.children[0], childPath, strict, diags); err != nil {
+			if err := writeJSONTarget(b, g.children[0], childPath, diags); err != nil {
 				return err
 			}
 			continue
@@ -111,7 +117,7 @@ func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, strict bool,
 			if j > 0 {
 				b.WriteString(", ")
 			}
-			if err := writeJSONTarget(b, t, fmt.Sprintf("%s[%d]", childPath, j), strict, diags); err != nil {
+			if err := writeJSONTarget(b, t, fmt.Sprintf("%s[%d]", childPath, j), diags); err != nil {
 				return err
 			}
 		}
@@ -143,39 +149,40 @@ func groupJSONEdges(n *omnist.Node) []jsonGroup {
 	return groups
 }
 
-func writeJSONTarget(b *strings.Builder, t omnist.Target, path string, strict bool, diags *[]omnist.Diagnostic) error {
+func writeJSONTarget(b *strings.Builder, t omnist.Target, path string, diags *[]omnist.Diagnostic) error {
 	if node, ok := t.Node(); ok {
-		return writeJSONNode(b, node, path, strict, diags)
+		return writeJSONNode(b, node, path, diags)
 	}
 	v, _ := t.Value()
-	return writeJSONValue(b, v, path, strict, diags)
+	return writeJSONValue(b, v, path, diags)
 }
 
-func writeJSONValue(b *strings.Builder, v omnist.Value, path string, strict bool, diags *[]omnist.Diagnostic) error {
+func writeJSONValue(b *strings.Builder, v omnist.Value, path string, diags *[]omnist.Diagnostic) error {
 	if v.IsNull {
 		b.WriteString("null")
 		return nil
 	}
-	return writeJSONScalar(b, v.Scalar, path, strict, diags)
+	return writeJSONScalar(b, v.Scalar, path, diags)
 }
 
 // writeJSONScalar renders one leaf. Per docs/formats/json.md: "a writer
 // MUST stringify a temporal leaf to ISO-8601" (KindDate/KindTime/
-// KindDateTime), and NaN/Infinity (KindNumber only — JSON's only floating
-// kind) substitute to `null` unless strict, in which case they fail
-// instead. For KindInteger, s.Int is assumed non-nil, mirroring
+// KindDateTime), and NaN/Infinity (KindNumber only -- JSON's only
+// floating kind) now fail the write unconditionally (spec section
+// 8.3.8/8.3.9, issue #98) rather than substituting -- see Write's doc
+// comment. For KindInteger, s.Int is assumed non-nil, mirroring
 // oml_writer.go's writeOMLScalar precondition: every omnist.Scalar of that kind
 // reaching this function was built by omnist.NewIntegerScalar (which always
 // copies a non-nil *big.Int) or produced by ReadJSON, neither of which
 // ever leaves Int nil for KindInteger.
-func writeJSONScalar(b *strings.Builder, s omnist.Scalar, path string, strict bool, diags *[]omnist.Diagnostic) error {
+func writeJSONScalar(b *strings.Builder, s omnist.Scalar, path string, diags *[]omnist.Diagnostic) error {
 	switch s.Kind {
 	case omnist.KindString:
 		writeJSONString(b, s.Str)
 	case omnist.KindInteger:
 		b.WriteString(s.Int.String())
 	case omnist.KindNumber:
-		return writeJSONNumber(b, s.Num, path, strict, diags)
+		return writeJSONNumber(b, s.Num, path)
 	case omnist.KindBoolean:
 		if s.Bool {
 			b.WriteString("true")
@@ -212,30 +219,21 @@ func writeJSONScalar(b *strings.Builder, s omnist.Scalar, path string, strict bo
 
 // writeJSONNumber renders a KindNumber leaf. A finite value always gets a
 // decimal point or exponent (never a bare integer-looking spelling) so
-// that ReadJSON's own integer/number split — decided purely by the
-// literal's shape — reads it back as a number, not an integer; without
+// that ReadJSON's own integer/number split -- decided purely by the
+// literal's shape -- reads it back as a number, not an integer; without
 // this, writing 5.0 as the JSON text `5` would silently flip its kind on
 // round-trip. NaN/Infinity have no valid JSON spelling at all (spec: "not
-// valid JSON... a writer MUST NOT emit them"); the default lenient mode
-// substitutes `null`, strict mode fails with write.unsupported-value.
-func writeJSONNumber(b *strings.Builder, f float64, path string, strict bool, diags *[]omnist.Diagnostic) error {
+// valid JSON... a writer MUST NOT emit them") and now fail the write
+// unconditionally (spec section 8.3.8/8.3.9, issue #98) -- see Write's
+// doc comment for why the old lenient-substitution default was removed.
+func writeJSONNumber(b *strings.Builder, f float64, path string) error {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
-		if strict {
-			return omnist.Diagnostic{
-				Path:     path,
-				Code:     omnist.CodeWriteUnsupportedValue,
-				Message:  "NaN/Infinity has no JSON representation",
-				Severity: omnist.SeverityError,
-			}
-		}
-		b.WriteString("null")
-		*diags = append(*diags, omnist.Diagnostic{
+		return omnist.Diagnostic{
 			Path:     path,
-			Code:     omnist.CodeFormatFloatSpecial,
-			Message:  "NaN/Infinity has no JSON representation, so it is substituted with null",
+			Code:     omnist.CodeWriteUnsupportedValue,
+			Message:  "NaN/Infinity has no JSON representation",
 			Severity: omnist.SeverityError,
-		})
-		return nil
+		}
 	}
 	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {

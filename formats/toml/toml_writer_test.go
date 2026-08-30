@@ -133,28 +133,25 @@ func TestWriteTOMLOffsetDateTimeRoundTrips(t *testing.T) {
 	}
 }
 
-// --- null: write-time adjustment, reported not invented ---
+// --- null: unconditional write failure, not a reported adjustment ---
 
-// Since issue #49, a null leaf is a non-fatal write-time adjustment: the
-// write still succeeds (err == nil), the null is dropped from the
-// output, and the drop is reported via the returned []omnist.Diagnostic
-// rather than aborting the whole write (spec §8.5.3's write-only
-// ok:true+diagnostics coexistence).
-func TestWriteTOMLNullReportsAdjustment(t *testing.T) {
+// Per spec section 8.3.8/8.3.9 (updated 2026-08-24, issue #97): a null
+// leaf with no TOML spelling now fails the write unconditionally
+// (omnist.CodeWriteUnsupportedValue) instead of being silently dropped
+// with a warning -- dropping the edge erased its existence entirely,
+// with zero trace on read-back.
+func TestWriteTOMLNullFailsUnconditionally(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("coupon", omnist.NullValue()))
 	out, diags, err := Write(d)
-	if err != nil {
-		t.Fatalf("Write: unexpected error: %v", err)
+	if err == nil {
+		t.Fatalf("Write: want error, got ok write out=%q diags=%v", out, diags)
 	}
-	if out != "" {
-		t.Errorf("out = %q, want empty (the only key was a dropped null)", out)
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("err = %T, want omnist.Diagnostic", err)
 	}
-	if len(diags) != 1 {
-		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
-	}
-	diag := diags[0]
-	if diag.Code != omnist.CodeFormatNullUnrepresentable {
-		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diag.Code, omnist.CodeFormatNullUnrepresentable)
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diag.Code, omnist.CodeWriteUnsupportedValue)
 	}
 	if diag.Path != "$.coupon" {
 		t.Errorf("omnist.Diagnostic.Path = %s, want $.coupon", diag.Path)
@@ -164,42 +161,98 @@ func TestWriteTOMLNullReportsAdjustment(t *testing.T) {
 	}
 }
 
-func TestWriteTOMLNullInsideNestedNodeReportsAdjustment(t *testing.T) {
+func TestWriteTOMLNullInsideNestedNodeFailsUnconditionally(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddNode("order", omnist.NewNode().AddValue("coupon", omnist.NullValue())))
-	out, diags, err := Write(d)
-	if err != nil {
-		t.Fatalf("Write: unexpected error: %v", err)
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error for a null leaf nested inside a table, got ok write")
 	}
-	if out != `"order" = {}`+"\n" {
-		t.Errorf("out = %q, want the order table with its only key (the dropped null) omitted", out)
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("err = %T, want omnist.Diagnostic", err)
 	}
-	if len(diags) != 1 {
-		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
-	}
-	if diags[0].Path != "$.order.coupon" {
-		t.Errorf("omnist.Diagnostic.Path = %s, want $.order.coupon", diags[0].Path)
+	if diag.Path != "$.order.coupon" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.order.coupon", diag.Path)
 	}
 }
 
-func TestWriteTOMLNullInsideListReportsAdjustment(t *testing.T) {
+func TestWriteTOMLNullInsideListFailsUnconditionally(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().
 		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
 		AddValue("m", omnist.NullValue()))
-	out, diags, err := Write(d)
-	if err != nil {
-		t.Fatalf("Write: unexpected error: %v", err)
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error for a null leaf inside a repeated-label array, got ok write")
 	}
-	if out != `"m" = ["A"]`+"\n" {
-		t.Errorf("out = %q, want the array with its dropped null element omitted", out)
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("err = %T, want omnist.Diagnostic", err)
 	}
-	if len(diags) != 1 {
-		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diag.Code, omnist.CodeWriteUnsupportedValue)
 	}
-	if diags[0].Code != omnist.CodeFormatNullUnrepresentable {
-		t.Errorf("omnist.Diagnostic.Code = %s, want %s", diags[0].Code, omnist.CodeFormatNullUnrepresentable)
+	if diag.Path != "$.m[1]" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.m[1]", diag.Path)
 	}
-	if diags[0].Path != "$.m[1]" {
-		t.Errorf("omnist.Diagnostic.Path = %s, want $.m[1]", diags[0].Path)
+}
+
+func TestWriteTOMLNullFailsAfterEarlierTopLevelKeySucceeded(t *testing.T) {
+	// Exercises writeTOMLTopLevel's error return on a later group after
+	// an earlier one already wrote successfully -- not just the
+	// single-group case.
+	d := omnist.NodeDocument(omnist.NewNode().
+		AddValue("a", omnist.ScalarValue(omnist.NewStringScalar("ok"))).
+		AddValue("b", omnist.NullValue()))
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error, got ok write")
+	}
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok || diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("error = %#v, want write.unsupported-value omnist.Diagnostic", err)
+	}
+	if diag.Path != "$.b" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.b", diag.Path)
+	}
+}
+
+func TestWriteTOMLNullFailsAfterEarlierInlineTableKeySucceeded(t *testing.T) {
+	// Exercises writeTOMLInlineTable's error return on a later group
+	// after an earlier one already wrote successfully.
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("order", omnist.NewNode().
+		AddValue("a", omnist.ScalarValue(omnist.NewStringScalar("ok"))).
+		AddValue("b", omnist.NullValue())))
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error, got ok write")
+	}
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok || diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("error = %#v, want write.unsupported-value omnist.Diagnostic", err)
+	}
+	if diag.Path != "$.order.b" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.order.b", diag.Path)
+	}
+}
+
+func TestWriteTOMLNullInsideListFailsAfterEarlierElementSucceeded(t *testing.T) {
+	// Exercises writeTOMLGroupValue's multi-child array branch: the
+	// error return after an earlier element already wrote successfully
+	// AND the eventual bool return path when nothing errors.
+	d := omnist.NodeDocument(omnist.NewNode().
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("A"))).
+		AddValue("m", omnist.ScalarValue(omnist.NewStringScalar("B"))).
+		AddValue("m", omnist.NullValue()))
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error, got ok write")
+	}
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok || diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("error = %#v, want write.unsupported-value omnist.Diagnostic", err)
+	}
+	if diag.Path != "$.m[2]" {
+		t.Errorf("omnist.Diagnostic.Path = %s, want $.m[2]", diag.Path)
 	}
 }
 

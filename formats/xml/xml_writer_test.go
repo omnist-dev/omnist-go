@@ -212,32 +212,77 @@ func TestWriteXMLNaNInfinity(t *testing.T) {
 	}
 }
 
-// --- null leaf: reported as a warning-severity adjustment (mirroring
-// WriteTOML's identical null handling, see TestWriteTOMLNullReportsAdjustment) ---
+// --- null leaf: unconditional write failure, not a reported adjustment ---
 
-func TestWriteXMLNullLeafReportsAdjustment(t *testing.T) {
+func TestWriteXMLNullLeafFailsUnconditionally(t *testing.T) {
+	// Per spec section 8.3.8/8.3.9 (updated 2026-08-24, issue #97/#96):
+	// a null leaf's only XML fallback -- an empty element -- collides
+	// with a genuinely different, independently-valid input (a real
+	// empty-string leaf writes identically), so the write now fails
+	// unconditionally instead of substituting the ambiguous empty
+	// element with a warning.
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.NullValue()))
-	out, diags, err := Write(d)
-	if err != nil {
-		t.Fatalf("Write: unexpected error: %v", err)
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error for a null leaf, got ok write")
 	}
-	if out != "<a></a>" {
-		t.Errorf("out = %q, want the null leaf written as an empty element", out)
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("err = %T, want omnist.Diagnostic", err)
 	}
-	if len(diags) != 1 {
-		t.Fatalf("diags = %v, want exactly one diagnostic", diags)
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Fatalf("got code %v, want omnist.CodeWriteUnsupportedValue", diag.Code)
 	}
-	diag := diags[0]
-	if diag.Code != omnist.CodeFormatNullUnrepresentable {
-		t.Fatalf("got code %v, want omnist.CodeFormatNullUnrepresentable", diag.Code)
-	}
-	if diag.Severity != omnist.SeverityWarning {
-		t.Errorf("got severity %v, want omnist.SeverityWarning", diag.Severity)
+	if diag.Severity != omnist.SeverityError {
+		t.Errorf("got severity %v, want omnist.SeverityError", diag.Severity)
 	}
 	if diag.Path != "$.a" {
 		t.Errorf("got path %q, want $.a", diag.Path)
 	}
 }
+
+// --- empty internal node: unconditional write failure ---
+
+func TestWriteXMLEmptyInternalNodeFailsUnconditionally(t *testing.T) {
+	// Per spec section 8.3.8/8.3.9 (updated 2026-08-24, issue #98): an
+	// internal node with zero edges has no XML spelling distinct from an
+	// empty-string leaf -- both would write as the self-closing form --
+	// so the write now fails unconditionally. This is a genuine gap fix
+	// (no diagnostic existed for this at all before), not a strictness
+	// flip.
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("a", omnist.NewNode()))
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("Write: want error for an empty internal node, got ok write")
+	}
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("err = %T, want omnist.Diagnostic", err)
+	}
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Fatalf("got code %v, want omnist.CodeWriteUnsupportedValue", diag.Code)
+	}
+	if diag.Path != "$.a" {
+		t.Errorf("got path %q, want $.a", diag.Path)
+	}
+}
+
+// TestWriteXMLEmptyStringLeafStillWrites confirms the empty-internal-node
+// failure above does NOT extend to a Value target holding an empty
+// string -- that case is fine and unrelated (writeXMLElement's own doc
+// comment on the self-closing form already discusses this distinction).
+func TestWriteXMLEmptyStringLeafStillWrites(t *testing.T) {
+	d := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewStringScalar(""))))
+	out, _, err := Write(d)
+	if err != nil {
+		t.Fatalf("Write: unexpected error for an empty-string leaf: %v", err)
+	}
+	if out != "<a></a>" {
+		t.Errorf("out = %q, want <a></a>", out)
+	}
+}
+
+// --- invalid element names are rejected, not silently mangled ---
 
 // --- invalid element names are rejected, not silently mangled ---
 
@@ -250,6 +295,30 @@ func TestWriteXMLRejectsInvalidLabel(t *testing.T) {
 	diag, ok := err.(omnist.Diagnostic)
 	if !ok || diag.Code != omnist.CodeWriteUnsupportedValue {
 		t.Fatalf("got %v (%T), want omnist.CodeWriteUnsupportedValue", err, err)
+	}
+}
+
+// TestWriteXMLRejectsSpaceInLabelMatchesVector backs conformance vector
+// formats-xml/basic/label-with-illegal-xml-characters-cannot-be-written
+// (issue #96): confirmed by cross-port verification that this port's
+// isValidXMLName/writeXMLElement already fail closed here (hard error,
+// no sanitize-and-succeed fallback), so this is a confirming test, not a
+// bug fix -- see the issue's own comment thread.
+func TestWriteXMLRejectsSpaceInLabelMatchesVector(t *testing.T) {
+	d := omnist.NodeDocument(omnist.NewNode().AddNode("root", omnist.NewNode().AddValue("my label", omnist.ScalarValue(omnist.NewStringScalar("hi")))))
+	_, _, err := Write(d)
+	if err == nil {
+		t.Fatal("expected an error for a space in a label")
+	}
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("error is %T, want omnist.Diagnostic", err)
+	}
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("got code %v, want omnist.CodeWriteUnsupportedValue", diag.Code)
+	}
+	if diag.Path != "$.root.my label" {
+		t.Errorf("got path %q, want $.root.my label", diag.Path)
 	}
 }
 
