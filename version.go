@@ -3,4 +3,4 @@ package omnist
 
 // SpecVersion is the omnist-spec version this module targets, pinned via
 // the vendor/omnist-spec git submodule. See docs/limitations.md.
-const SpecVersion = "v0.3.0-alpha"
+const SpecVersion = "v0.4.0-beta"

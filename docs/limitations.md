@@ -63,10 +63,11 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `7f7690c` (`v0.3.0-alpha`, 3 commits past the tag —
-closes D-3's spec gap, issue #93), pinned via the `vendor/omnist-spec`
-git submodule. This repo does not track the spec's `main` branch — the
-pin is bumped deliberately, in its own commit.
+`omnist-spec` at commit `0ac1eac` (`v0.4.0-beta`, 13 commits past the tag
+— omnist-spec has moved from alpha to beta upstream; pins the fixes for
+issues #95-103, a spec-correctness audit batch), pinned via the
+`vendor/omnist-spec` git submodule. This repo does not track the spec's
+`main` branch — the pin is bumped deliberately, in its own commit.
 
 See `omnist-spec`'s own [§9.3 status table](https://github.com/omnist-dev/omnist-spec/blob/main/docs/09-divergence-ledger.md#93-status-table)
 for the cross-implementation divergence ledger this repo reports into.
