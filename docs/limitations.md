@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.2.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.3.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,9 +17,10 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**152 pass / 0 fail / 1 skip** of 153 vectors. Track 1 (fixture-based,
-`conformance/fixtures/`) reports **19 pass / 0 fail / 0 skip** of 19
-fixtures. Both tracks are at zero real fails — the two prior fails, filed
+**170 pass / 0 fail / 2 skip** of 172 vectors (as of the #95-#103
+spec-correctness audit batch, `omnist-spec` v0.4.0-beta pin). Track 1
+(fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
+skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
 and [`omnist-spec#42`](https://github.com/omnist-dev/omnist-spec/issues/42),
 were independently verified by the spec maintainer against the reference
@@ -45,10 +46,34 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
-**`v0.2.0-alpha`**, a minor bump per `docs/workflow-playbook.md` §1's
-alpha-series rule: this release adds new public API (`xml.ReadWithSchema`,
-`Limits.Validate()`), patches a real security vulnerability
-(GO-2026-6088), and closes two real CPU-exhaustion DoS bugs — the Codex
+**`v0.3.0-alpha`**, a minor bump per `docs/workflow-playbook.md` §1's
+alpha-series rule: this release adds new public API
+(`ValidDate`/`ValidTime`/`ValidOffsetText` in the root package; six new
+`schema.*`/`parse.*` diagnostic codes) and closes several real
+correctness bugs where a value was silently corrupted or data was
+silently lost, not just narrow bug fixes -- the #95-#103 spec-correctness
+audit batch (`omnist-spec` v0.4.0-beta pin, commit `0ac1eac`):
+forbidding redundant `[0,0]` cardinality (#95); rejecting an empty or
+bracket-containing field label (#100, #103); making a null leaf, a
+NaN/Infinity leaf, and an empty internal node fail their write outright
+instead of substituting a lossy fallback that collided with a
+genuinely different, independently-valid input (#96-#98); escaping an
+XML carriage return as `&#13;` instead of writing it raw (#99); and
+rejecting a leading-zero numeric literal and an out-of-range calendar
+date or clock value (#101-#102) -- including a real bug where a
+tz-offset like `+00:60` silently normalized to a valid-looking
+`+01:00` instead of being rejected, the same "does the fallback
+collide with a different valid input" defect shape as the write-side
+fixes. Filed `omnist-spec#52` for a conformance-vector-authoring defect
+found along the way (an XML write vector baking in pretty-printed
+whitespace no other exact-text vector in its track requires). Minor,
+not patch, since new public API and several corrected-not-just-narrowed
+correctness bugs cross the stable-surface threshold.
+
+**`v0.2.0-alpha`** was a minor bump per `docs/workflow-playbook.md` §1's
+alpha-series rule: that release added new public API (`xml.ReadWithSchema`,
+`Limits.Validate()`), patched a real security vulnerability
+(GO-2026-6088), and closed two real CPU-exhaustion DoS bugs — the Codex
 audit cycle (#70-81, see above). Minor, not patch, since new public API
 and a security fix cross the stable-surface threshold.
 
