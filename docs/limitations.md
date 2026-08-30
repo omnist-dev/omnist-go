@@ -17,8 +17,8 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**170 pass / 0 fail / 2 skip** of 172 vectors (as of the #95-#103
-spec-correctness audit batch, `omnist-spec` v0.4.0-beta pin). Track 1
+**171 pass / 0 fail / 1 skip** of 172 vectors (as of the `omnist-spec#52`
+XML-whitespace-normalization fix, `omnist-spec` v0.5.0-beta pin). Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
