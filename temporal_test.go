@@ -105,6 +105,84 @@ func TestFormatISODate(t *testing.T) {
 // fuzzing: regexp.FindString("") == "" whether or not the regex actually
 // matched, so without this guard an empty string would spuriously
 // "match" every kind.
+// --- ValidDate/ValidTime/ValidOffsetText (spec section 4.2.4, issue #102) ---
+//
+// Direct tests restoring this package's own coverage of these functions,
+// independent of which downstream package (oml) happens to call them --
+// see TestParseISOTimeNegativeOffset's doc comment above for why that
+// matters given Go's per-package coverage attribution.
+
+func TestValidDate(t *testing.T) {
+	cases := []struct {
+		name string
+		d    DateValue
+		want bool
+	}{
+		{"ordinary date", DateValue{Year: 2024, Month: 6, Day: 15}, true},
+		{"month zero", DateValue{Year: 2024, Month: 0, Day: 1}, false},
+		{"month 13", DateValue{Year: 2024, Month: 13, Day: 1}, false},
+		{"april 31 (30-day month)", DateValue{Year: 2024, Month: 4, Day: 31}, false},
+		{"december 31", DateValue{Year: 2024, Month: 12, Day: 31}, true},
+		{"leap day in leap year", DateValue{Year: 2000, Month: 2, Day: 29}, true},
+		{"leap day in non-leap century year", DateValue{Year: 1900, Month: 2, Day: 29}, false},
+		{"leap day in ordinary non-leap year", DateValue{Year: 2023, Month: 2, Day: 29}, false},
+		{"feb 28 in non-leap year", DateValue{Year: 2023, Month: 2, Day: 28}, true},
+		{"day zero", DateValue{Year: 2024, Month: 1, Day: 0}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ValidDate(tc.d); got != tc.want {
+				t.Errorf("ValidDate(%+v) = %v, want %v", tc.d, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidTime(t *testing.T) {
+	cases := []struct {
+		name string
+		t    TimeValue
+		want bool
+	}{
+		{"ordinary time", TimeValue{Hour: 10, Minute: 30, Second: 15}, true},
+		{"hour 23 is valid", TimeValue{Hour: 23, Minute: 0, Second: 0}, true},
+		{"hour 24 is invalid", TimeValue{Hour: 24, Minute: 0, Second: 0}, false},
+		{"minute 59 is valid", TimeValue{Hour: 0, Minute: 59, Second: 0}, true},
+		{"minute 60 is invalid", TimeValue{Hour: 0, Minute: 60, Second: 0}, false},
+		{"second 59 is valid", TimeValue{Hour: 0, Minute: 0, Second: 59}, true},
+		{"leap second 60 is invalid", TimeValue{Hour: 23, Minute: 59, Second: 60}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ValidTime(tc.t); got != tc.want {
+				t.Errorf("ValidTime(%+v) = %v, want %v", tc.t, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidOffsetText(t *testing.T) {
+	cases := []struct {
+		name string
+		s    string
+		want bool
+	}{
+		{"no offset", "10:30:00", true},
+		{"offset within range", "10:30:00+05:30", true},
+		{"negative offset within range", "10:30:00-05:30", true},
+		{"offset hour out of range", "10:30+24:00", false},
+		{"offset minute out of range (the real bug)", "10:30+00:60", false},
+		{"datetime with offset minute out of range", "2024-01-01T10:30+00:60", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ValidOffsetText(tc.s); got != tc.want {
+				t.Errorf("ValidOffsetText(%q) = %v, want %v", tc.s, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMatchesISOKindEmptyString(t *testing.T) {
 	for _, kind := range []TemporalKind{TemporalDate, TemporalTime, TemporalDateTime} {
 		if MatchesISOKind("", kind) {
