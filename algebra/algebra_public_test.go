@@ -145,7 +145,21 @@ func TestPruneRemovesUnreachableRecords(t *testing.T) {
 }
 
 func TestPruneRemovesMaxZeroFields(t *testing.T) {
-	s := mustParseOSD(t, `record R { "a" [0,0]: string, "b": string } root R`)
+	// [0,0] itself is no longer expressible in OSD text (spec section 5.5,
+	// 2026-08-24 -- see issue #95): it is redundant with not declaring the
+	// field at all. Prune still needs to handle a Cardinality{Max: 0}
+	// field correctly wherever one arises structurally, so this test
+	// builds the schema directly instead of through osd.Read.
+	s := omnist.Schema{
+		Root: "R",
+		Env: map[string]*omnist.Record{
+			"R": {Name: "R", Fields: []omnist.Field{
+				{Label: "a", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Max: 0}},
+				{Label: "b", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+			}},
+		},
+		EnvOrder: []string{"R"},
+	}
 	p := algebra.Prune(s)
 	rec := p.Env["R"]
 	if len(rec.Fields) != 1 || rec.Fields[0].Label != "b" {
@@ -179,10 +193,21 @@ func TestPruneRemovesRecordsLeftUnreachableAfterFieldPruning(t *testing.T) {
 }
 
 func TestPruneRootUnsatisfiableKeepsRootFieldsUntouched(t *testing.T) {
-	s := mustParseOSD(t, `
-		record Node { "child": Node, "extra" [0,0]: string }
-		root Node
-	`)
+	// [0,0] itself is no longer expressible in OSD text (spec section 5.5,
+	// 2026-08-24 -- see issue #95): it is redundant with not declaring the
+	// field at all. Prune still needs to handle a Cardinality{Max: 0}
+	// field correctly wherever one arises structurally, so this test
+	// builds the schema directly instead of through osd.Read.
+	s := omnist.Schema{
+		Root: "Node",
+		Env: map[string]*omnist.Record{
+			"Node": {Name: "Node", Fields: []omnist.Field{
+				{Label: "child", Type: omnist.RefType("Node"), Cardinality: omnist.DefaultCardinality()},
+				{Label: "extra", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Max: 0}},
+			}},
+		},
+		EnvOrder: []string{"Node"},
+	}
 	p := algebra.Prune(s)
 	rec := p.Env["Node"]
 	// The root is unsatisfiable, so field pruning (including the max==0
@@ -198,11 +223,24 @@ func TestPruneRootUnsatisfiableReachabilityFollowsEveryRootField(t *testing.T) {
 	// once pruned -- but since the root is unsatisfiable, reachability MUST
 	// follow every field of the root, not just the surviving ones. OnlyViaBadField
 	// is reachable only through that [0,0] field, so it must be kept.
-	s := mustParseOSD(t, `
-		record Node { "child": Node, "hidden" [0,0]: OnlyViaBadField }
-		record OnlyViaBadField { "v": string }
-		root Node
-	`)
+	// [0,0] itself is no longer expressible in OSD text (spec section 5.5,
+	// 2026-08-24 -- see issue #95): it is redundant with not declaring the
+	// field at all. Prune still needs to handle a Cardinality{Max: 0} field
+	// correctly wherever one arises structurally, so this test builds the
+	// schema directly instead of through osd.Read.
+	s := omnist.Schema{
+		Root: "Node",
+		Env: map[string]*omnist.Record{
+			"Node": {Name: "Node", Fields: []omnist.Field{
+				{Label: "child", Type: omnist.RefType("Node"), Cardinality: omnist.DefaultCardinality()},
+				{Label: "hidden", Type: omnist.RefType("OnlyViaBadField"), Cardinality: omnist.Cardinality{Min: 0, Max: 0}},
+			}},
+			"OnlyViaBadField": {Name: "OnlyViaBadField", Fields: []omnist.Field{
+				{Label: "v", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+			}},
+		},
+		EnvOrder: []string{"Node", "OnlyViaBadField"},
+	}
 	p := algebra.Prune(s)
 	if _, ok := p.Env["OnlyViaBadField"]; !ok {
 		t.Fatalf("OnlyViaBadField must be kept: reachability at an unsatisfiable root follows every field, env = %+v", p.Env)

@@ -448,14 +448,15 @@ for _, f := range findings {
 // lint.unreachable-record Orphan
 ```
 
-`Prune` — removes a never-emittable field (cardinality `[0,0]`) and, as a
-consequence, the now-unreachable record it alone referenced:
+`Prune` — removes a field that can never be emitted (optional, referencing
+a record that is itself unsatisfiable) and, as a consequence, the
+now-unreachable record it alone referenced:
 
 <!-- verified-by: doc_examples_reference_test.go::Example_algebraPrune -->
 ```go
 s, _ := osd.Read(`
-    record Root { "id": string, "dead" [0,0]: Orphan }
-    record Orphan { "note": string }
+    record Root { "id": string, "dead" [0,1]: Orphan }
+    record Orphan { "self": Orphan }
     root Root
 `)
 

@@ -116,12 +116,15 @@ func TestCLIExampleSchemaNormalize(t *testing.T) {
 }
 
 // TestCLIExampleSchemaPrune backs cli.md's `schema prune` example: a
-// never-emittable field ([0,0]) and the record it alone referenced both
-// disappear.
+// field that can never be emitted -- optional (min 0) and referencing a
+// record that is itself unsatisfiable, so the record it alone referenced
+// also disappears. ([0,0] cardinality, the most direct spelling of
+// never emitted, was made a parse error by spec section 5.5 (2026-08-24):
+// it is redundant with not declaring the field at all.
 func TestCLIExampleSchemaPrune(t *testing.T) {
 	bin := buildOmnistBinary(t)
 	dir := t.TempDir()
-	schemaPath := writeFileT(t, dir, "dead.osd", "record Root { \"id\": string, \"dead\" [0,0]: Orphan }\nrecord Orphan { \"note\": string }\nroot Root\n")
+	schemaPath := writeFileT(t, dir, "dead.osd", "record Root { \"id\": string, \"dead\" [0,1]: Orphan }\nrecord Orphan { \"self\": Orphan }\nroot Root\n")
 
 	code, stdout, stderr := runBinary(t, bin, "", "schema", "prune", schemaPath)
 	if code != ExitOK {

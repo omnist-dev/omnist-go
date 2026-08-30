@@ -166,12 +166,13 @@ func Example_algebraLint() {
 }
 
 // Example_algebraPrune backs reference.md's `algebra` section: Prune
-// removes a never-emittable field (cardinality max 0) and, as a
-// consequence, the now-unreachable record it alone referenced.
+// removes a field that can never be emitted (optional, referencing a
+// record that is itself unsatisfiable) and, as a consequence, the
+// now-unreachable record it alone referenced.
 func Example_algebraPrune() {
 	s, err := osd.Read(`
-		record Root { "id": string, "dead" [0,0]: Orphan }
-		record Orphan { "note": string }
+		record Root { "id": string, "dead" [0,1]: Orphan }
+		record Orphan { "self": Orphan }
 		root Root
 	`)
 	if err != nil {

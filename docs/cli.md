@@ -103,8 +103,9 @@ record Root {
 root Root
 ```
 
-Prune a schema, removing a never-emittable field (`[0,0]`) and, as a
-consequence, the record it alone referenced:
+Prune a schema, removing a field that can never be emitted -- optional and
+referencing a record that is itself unsatisfiable -- and, as a consequence,
+the record it alone referenced:
 
 <!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleSchemaPrune -->
 ```console
