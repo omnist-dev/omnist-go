@@ -265,10 +265,22 @@ func TestCompatibleWithValueVersusObject(t *testing.T) {
 // emitted per record_sub's own skip, distinct from the optional-vacuous
 // skip) that B doesn't declare at all — must not cause a false rejection.
 func TestCompatibleWithFieldNeverEmitted(t *testing.T) {
-	a := mustParseOSD(t, `
-		record Root { "dead" [0,0]: string, "id": string }
-		root Root
-	`)
+	// [0,0] itself is no longer expressible in OSD text (spec section 5.5,
+	// 2026-08-24 -- see issue #95): it is redundant with not declaring the
+	// field at all. Prune and compatible_with still need to handle a
+	// Cardinality{Max: 0} field correctly wherever one arises structurally
+	// (e.g. produced by schema transformation, not by parsing OSD text), so
+	// this test builds the schema directly instead of through osd.Read.
+	a := omnist.Schema{
+		Root: "Root",
+		Env: map[string]*omnist.Record{
+			"Root": {Name: "Root", Fields: []omnist.Field{
+				{Label: "dead", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.Cardinality{Min: 0, Max: 0}},
+				{Label: "id", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+			}},
+		},
+		EnvOrder: []string{"Root"},
+	}
 	b := mustParseOSD(t, `
 		record Root { "id": string }
 		root Root

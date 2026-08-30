@@ -20,14 +20,14 @@ func TestOSDRoundTripProperty(t *testing.T) {
 				Root: "R",
 				Env: map[string]*omnist.Record{
 					"R": {Name: "R", Fields: []omnist.Field{
-						{Label: "a", Type: omnist.ScalarType(omnist.KindString, false)},
-						{Label: "b", Type: omnist.ScalarType(omnist.KindInteger, true)},
-						{Label: "c", Type: omnist.ScalarType(omnist.KindNumber, false)},
-						{Label: "d", Type: omnist.ScalarType(omnist.KindBoolean, false)},
-						{Label: "e", Type: omnist.ScalarType(omnist.KindDate, false)},
-						{Label: "f", Type: omnist.ScalarType(omnist.KindTime, false)},
-						{Label: "g", Type: omnist.ScalarType(omnist.KindDateTime, false)},
-						{Label: "h", Type: omnist.AnyType()},
+						{Label: "a", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "b", Type: omnist.ScalarType(omnist.KindInteger, true), Cardinality: omnist.DefaultCardinality()},
+						{Label: "c", Type: omnist.ScalarType(omnist.KindNumber, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "d", Type: omnist.ScalarType(omnist.KindBoolean, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "e", Type: omnist.ScalarType(omnist.KindDate, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "f", Type: omnist.ScalarType(omnist.KindTime, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "g", Type: omnist.ScalarType(omnist.KindDateTime, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: "h", Type: omnist.AnyType(), Cardinality: omnist.DefaultCardinality()},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -79,7 +79,7 @@ func TestOSDRoundTripProperty(t *testing.T) {
 				Root: "R",
 				Env: map[string]*omnist.Record{
 					"R": {Name: "R", Fields: []omnist.Field{
-						{Label: `a"b\c` + "\n" + "d", Type: omnist.ScalarType(omnist.KindString, false)},
+						{Label: `a"b\c` + "\n" + "d", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -208,7 +208,7 @@ func TestOSDLabelEscapingBackslashAndQuote(t *testing.T) {
 	schema := omnist.Schema{
 		Root: "R",
 		Env: map[string]*omnist.Record{
-			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false)}}},
+			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()}}},
 		},
 		EnvOrder: []string{"R"},
 	}
@@ -251,7 +251,7 @@ func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
 	schema := omnist.Schema{
 		Root: "R",
 		Env: map[string]*omnist.Record{
-			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false)}}},
+			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()}}},
 		},
 		EnvOrder: []string{"R"},
 	}

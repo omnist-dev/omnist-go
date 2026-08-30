@@ -339,6 +339,9 @@ func (p *osdParser) parseCardinality(recordName, label string) (omnist.Cardinali
 		if firstV < 0 {
 			return omnist.Cardinality{}, schemaError(path, omnist.CodeSchemaInvalidCardinality, "cardinality bound must be non-negative")
 		}
+		if firstV == 0 {
+			return omnist.Cardinality{}, schemaError(path, omnist.CodeSchemaInvalidCardinality, "cardinality [0,0] is redundant with not declaring the field")
+		}
 		return omnist.Cardinality{Min: uint64(firstV), Max: uint64(firstV)}, nil
 	case osdTokComma:
 		if err := p.advance(); err != nil {
@@ -362,6 +365,9 @@ func (p *osdParser) parseCardinality(recordName, label string) (omnist.Cardinali
 		}
 		if firstV < 0 || secondV < 0 || secondV < firstV {
 			return omnist.Cardinality{}, schemaError(path, omnist.CodeSchemaInvalidCardinality, "invalid cardinality range")
+		}
+		if firstV == 0 && secondV == 0 {
+			return omnist.Cardinality{}, schemaError(path, omnist.CodeSchemaInvalidCardinality, "cardinality [0,0] is redundant with not declaring the field")
 		}
 		return omnist.Cardinality{Min: uint64(firstV), Max: uint64(secondV)}, nil
 	default:

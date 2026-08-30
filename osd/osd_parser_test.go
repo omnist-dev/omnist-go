@@ -120,6 +120,22 @@ func TestWorkedInvertedCardinality(t *testing.T) {
 	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
 }
 
+func TestWorkedZeroZeroCardinalityIsError(t *testing.T) {
+	// spec section 5.5 (2026-08-24): [0,0] is redundant with not declaring
+	// the field at all -- a field that must occur zero times is
+	// indistinguishable from an undeclared field, which is already
+	// rejected by validate.unexpected-field.
+	err := mustFailOSD(t, `record R { "a" [0,0]: string } root R`)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
+}
+
+func TestWorkedZeroSingleValueCardinalityIsError(t *testing.T) {
+	// The single-value form [0] means min == max == 0, same redundant
+	// shape as [0,0].
+	err := mustFailOSD(t, `record R { "a" [0]: string } root R`)
+	wantDiagCode(t, err, omnist.CodeSchemaInvalidCardinality)
+}
+
 func TestWorkedNonIntegerCardinality(t *testing.T) {
 	err := mustFailOSD(t, `record R { "a" [1.5]: string } root R`)
 	wantDiagCode(t, err, omnist.CodeSchemaNonIntegerCardinality)
