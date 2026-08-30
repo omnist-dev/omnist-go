@@ -183,7 +183,24 @@ var (
 	reNumber  = regexp.MustCompile(`^-?\d+(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)`)
 	reInteger = regexp.MustCompile(`^-?\d+`)
 	reIdent   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*`)
+	// reIntPart isolates the integer part of a matched reNumber/reInteger
+	// literal (everything up to a '.' or 'e'/'E' exponent marker, or the
+	// whole thing for a plain integer), sign already stripped by the
+	// caller -- used only to test the leading-zero rule below.
+	reIntPart = regexp.MustCompile(`^\d+`)
 )
+
+// hasLeadingZeroIntPart reports whether m -- a literal already matched by
+// reNumber or reInteger -- has a leading zero in its integer part. Per
+// spec section 4.2.3 (added 2026-08-29): int-part = "0" / (a nonzero
+// digit followed by any digits) -- so "0" alone (with or without a
+// leading '-') is valid, but "01", "00.5", "-00" etc. are not: the
+// integer part is more than one digit long and starts with '0'.
+func hasLeadingZeroIntPart(m string) bool {
+	m = strings.TrimPrefix(m, "-")
+	intPart := reIntPart.FindString(m)
+	return len(intPart) > 1 && intPart[0] == '0'
+}
 
 // remainingString returns the source from the current position onward, as
 // a string, for regexp matching. Cheap enough: called once per token.
@@ -225,23 +242,47 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 	// Rule 3: DATETIME.
 	if m := omnist.ISODateTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDateTime, text: m, dateTimeVal: omnist.ParseISODateTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		dtVal := omnist.ParseISODateTime(m)
+		// Per spec section 4.2.4 (added 2026-08-29): a DATETIME's date
+		// and time portions must each be a valid calendar/clock value,
+		// not merely the right digit shape -- checked in that order so
+		// an out-of-range date is reported as parse.invalid-date even
+		// when the time portion also happens to be out of range.
+		if !omnist.ValidDate(dtVal.Date) {
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidDate, fmt.Sprintf("%q is not a valid calendar date", m))
+		}
+		if !omnist.ValidTime(dtVal.Time) || !omnist.ValidOffsetText(m) {
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidTime, fmt.Sprintf("%q is not a valid time of day", m))
+		}
+		return token{kind: tokDateTime, text: m, dateTimeVal: dtVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 4: DATE (not followed by a valid DATETIME, already excluded above).
 	if m := omnist.ISODateRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokDate, text: m, dateVal: omnist.ParseISODate(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		dateVal := omnist.ParseISODate(m)
+		if !omnist.ValidDate(dateVal) {
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidDate, fmt.Sprintf("%q is not a valid calendar date", m))
+		}
+		return token{kind: tokDate, text: m, dateVal: dateVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 5: TIME.
 	if m := omnist.ISOTimeRegexp.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokTime, text: m, timeVal: omnist.ParseISOTime(m), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		timeVal := omnist.ParseISOTime(m)
+		if !omnist.ValidTime(timeVal) || !omnist.ValidOffsetText(m) {
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidTime, fmt.Sprintf("%q is not a valid time of day", m))
+		}
+		return token{kind: tokTime, text: m, timeVal: timeVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
 	}
 
 	// Rule 6: NUMBER (decimal or exponent form).
 	if m := reNumber.FindString(rest); m != "" {
+		if hasLeadingZeroIntPart(m) {
+			l.consumeRunes(len([]rune(m)))
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseLeadingZero, fmt.Sprintf("numeric literal %q has a leading zero in its integer part", m))
+		}
 		l.consumeRunes(len([]rune(m)))
 		f, _ := strconv.ParseFloat(m, 64)
 		return token{kind: tokNumber, text: m, numVal: f, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
@@ -255,6 +296,10 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 
 	// Rule 8: INTEGER.
 	if m := reInteger.FindString(rest); m != "" {
+		if hasLeadingZeroIntPart(m) {
+			l.consumeRunes(len([]rune(m)))
+			return token{}, l.errAt(startLine, startCol, omnist.CodeParseLeadingZero, fmt.Sprintf("numeric literal %q has a leading zero in its integer part", m))
+		}
 		l.consumeRunes(len([]rune(m)))
 		digits := len(m)
 		if strings.HasPrefix(m, "-") {

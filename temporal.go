@@ -156,6 +156,98 @@ func ParseISODateTime(s string) DateTimeValue {
 // a real cross-codec dependency this project's package-restructuring plan
 // had not accounted for -- the same class of gap FormatISODate/
 // FormatISOTime/FormatISOFraction above were promoted to fix.
+// --- calendar/clock range validation (spec section 4.2.4, added 2026-08-29) ---
+//
+// ABNF alone can only constrain DATE/TIME/DATETIME tokens to digit
+// counts (e.g. a month is 2DIGIT, i.e. 00-99), not calendar/clock
+// validity -- it has no way to express that a month must be 01-12. This
+// section is what makes those range rules normative: DATE is a valid
+// proleptic Gregorian calendar date (month 01-12, day valid for
+// month/year including leap years); TIME (and DATETIME's time portion)
+// is hour 00-23, minute 00-59, second 00-59 with no leap-second spelling
+// (23:59:60 is an error); and a tz-offset shares TIME's exact hour/minute
+// range check -- deliberately the SAME rule, not a separately
+// implemented one, since a previously-undetected bug (confirmed live
+// against the Python reference) let a tz-offset like "+00:60" through
+// while an equivalent bare TIME "00:60:00" was correctly rejected.
+
+// daysInMonth returns the number of days in the given proleptic
+// Gregorian calendar month (1-12) for year, including the Gregorian leap
+// year rule (divisible by 4, except centuries not divisible by 400 --
+// e.g. 2000-02-29 is valid, 1900-02-29 is not). Only ever called after
+// month has already been range-checked to 1-12 by validDate.
+func daysInMonth(year, month int) int {
+	switch month {
+	case 1, 3, 5, 7, 8, 10, 12:
+		return 31
+	case 4, 6, 9, 11:
+		return 30
+	default: // 2
+		if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+			return 29
+		}
+		return 28
+	}
+}
+
+// ValidDate reports whether d is a valid proleptic Gregorian calendar
+// date: month 01-12, and day valid for that month/year.
+func ValidDate(d DateValue) bool {
+	if d.Month < 1 || d.Month > 12 {
+		return false
+	}
+	return d.Day >= 1 && d.Day <= daysInMonth(d.Year, d.Month)
+}
+
+// validClockRange reports whether an hour/minute/second triple is a
+// valid clock value: hour 00-23, minute 00-59, second 00-59. No
+// leap-second spelling exists -- 23:59:60 is invalid. This is the single
+// range check both validTime (for TIME/DATETIME's time portion) and
+// validTZOffset (for a tz-offset) call, per spec section 4.2.4's
+// explicit requirement that a tz-offset share TIME's exact range check
+// rather than a separately implemented, possibly looser one.
+func validClockRange(hour, minute, second int) bool {
+	return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 && second <= 59
+}
+
+// ValidTime reports whether t's hour/minute/second are a valid clock
+// value. It deliberately does NOT check t.OffsetSeconds -- see
+// ValidOffsetText below for why an offset must be range-checked from its
+// original source digits, not from this already-normalized field.
+func ValidTime(t TimeValue) bool {
+	return validClockRange(t.Hour, t.Minute, t.Second)
+}
+
+// tzOffsetTailRegexp matches a trailing tz-offset's sign and raw
+// hour/minute digit pair at the end of a string already matched by
+// ISOTimeRegexp or ISODateTimeRegexp.
+var tzOffsetTailRegexp = regexp.MustCompile(`[+-](\d{2}):(\d{2})$`)
+
+// ValidOffsetText reports whether s -- text already matched by
+// ISOTimeRegexp or ISODateTimeRegexp -- has no tz-offset suffix, or has
+// one whose hour/minute are each within TIME's own range (00-23, 00-59)
+// -- deliberately the SAME range check ValidTime/validClockRange applies
+// to TIME itself, per spec section 4.2.4.
+//
+// This checks the offset's raw source digits directly, not
+// TimeValue.OffsetSeconds: an out-of-range minute like "+00:60" folds
+// silently into a normalized total of 3600 seconds (60 minutes) once
+// converted to OffsetSeconds -- indistinguishable, after the fact, from a
+// correctly-written "+01:00". That was a real, previously-undetected bug
+// (confirmed live against the Python reference): "+00:60" was silently
+// accepted and normalized, even though a bare "00:60:00" TIME literal
+// was correctly rejected. Checking the raw digits before they are ever
+// folded into a total is the only way to catch it.
+func ValidOffsetText(s string) bool {
+	m := tzOffsetTailRegexp.FindStringSubmatch(s)
+	if m == nil {
+		return true
+	}
+	hour, _ := strconv.Atoi(m[1])
+	minute, _ := strconv.Atoi(m[2])
+	return validClockRange(hour, minute, 0)
+}
+
 func FracToNanos(digits string) int {
 	padded := (digits + "000000000")[:9]
 	n, _ := strconv.Atoi(padded)

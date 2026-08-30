@@ -20,6 +20,26 @@ const (
 	CodeParseEmptyArray         Code = "parse.empty-array"
 	CodeParseNestedArray        Code = "parse.nested-array"
 	CodeParseSeparatorInArray   Code = "parse.separator-in-array"
+	// CodeParseLeadingZero is raised when a NUMBER/INTEGER literal's
+	// integer part has a leading zero (e.g. "01", "00.5"). Per spec
+	// section 4.2.3 (added 2026-08-29): int-part = "0" / (a nonzero
+	// digit followed by any digits) -- a bare "0" alone, or "-0", is
+	// never a leading zero and remains valid.
+	CodeParseLeadingZero Code = "parse.leading-zero"
+	// CodeParseInvalidDate is raised when a DATE token (or DATETIME's
+	// date portion) is a valid ISO-8601 shape but not a valid calendar
+	// date -- month out of 01-12, or day invalid for month/year
+	// (including leap years). Per spec section 4.2.4 (added
+	// 2026-08-29).
+	CodeParseInvalidDate Code = "parse.invalid-date"
+	// CodeParseInvalidTime is raised when a TIME token (or DATETIME's
+	// time portion, or a tz-offset) is a valid ISO-8601 shape but not a
+	// valid clock value -- hour out of 00-23, minute or second out of
+	// 00-59 (no leap-second spelling), or -- for a tz-offset -- the
+	// same hour/minute ranges TIME itself uses. Per spec section 4.2.4
+	// (added 2026-08-29): tz-offset shares TIME's exact range check,
+	// not a separately implemented one.
+	CodeParseInvalidTime Code = "parse.invalid-time"
 )
 
 // document.* — building and limits (spec §8.3.2).

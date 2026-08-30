@@ -650,6 +650,144 @@ func TestNegativeDecimalWithExponent(t *testing.T) {
 	}
 }
 
+// --- leading-zero numeric literals (spec section 4.2.3, issue #101) ---
+
+func TestLeadingZeroIntegerIsAnError(t *testing.T) {
+	pe := mustFail(t, `n: 01`)
+	if pe.Code != omnist.CodeParseLeadingZero {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseLeadingZero)
+	}
+	if pe.Path != "1:4" {
+		t.Errorf("path = %s, want 1:4", pe.Path)
+	}
+}
+
+func TestLeadingZeroInDecimalIsAnError(t *testing.T) {
+	// The fractional part does not exempt the integer part.
+	pe := mustFail(t, `n: 00.5`)
+	if pe.Code != omnist.CodeParseLeadingZero {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseLeadingZero)
+	}
+}
+
+func TestLeadingZeroInExponentIsAnError(t *testing.T) {
+	pe := mustFail(t, `n: 01e5`)
+	if pe.Code != omnist.CodeParseLeadingZero {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseLeadingZero)
+	}
+}
+
+func TestLeadingZeroNegativeIntegerIsAnError(t *testing.T) {
+	pe := mustFail(t, `n: -01`)
+	if pe.Code != omnist.CodeParseLeadingZero {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseLeadingZero)
+	}
+}
+
+// TestSingleZeroAndNegativeFormsAreValid backs the conformance vector
+// oml-grammar/numbers/single-zero-and-negative-forms-are-valid: a bare 0
+// alone is never a leading zero.
+func TestSingleZeroAndNegativeFormsAreValid(t *testing.T) {
+	cases := []string{"0", "-0", "0.5", "-12"}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			mustParse(t, c)
+		})
+	}
+}
+
+// --- DATE/TIME/DATETIME calendar/clock range validation (spec section
+// 4.2.4, issue #102) ---
+
+func TestDateWithOutOfRangeMonthIsAnError(t *testing.T) {
+	pe := mustFail(t, `2024-13-01`)
+	if pe.Code != omnist.CodeParseInvalidDate {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidDate)
+	}
+}
+
+func TestDateWithDayInvalidForMonthIsAnError(t *testing.T) {
+	pe := mustFail(t, `2024-04-31`)
+	if pe.Code != omnist.CodeParseInvalidDate {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidDate)
+	}
+}
+
+func TestFebruary29InANonLeapYearIsAnError(t *testing.T) {
+	pe := mustFail(t, `1900-02-29`)
+	if pe.Code != omnist.CodeParseInvalidDate {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidDate)
+	}
+}
+
+func TestFebruary29InALeapYearIsValid(t *testing.T) {
+	mustParse(t, `2000-02-29`)
+}
+
+func TestLeapSecondIsAnError(t *testing.T) {
+	pe := mustFail(t, `23:59:60`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
+func TestTimeWithOutOfRangeHourIsAnError(t *testing.T) {
+	pe := mustFail(t, `24:00:00`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
+func TestTimeWithOutOfRangeMinuteIsAnError(t *testing.T) {
+	pe := mustFail(t, `00:60:00`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
+// TestTZOffsetMinuteOutOfRangeIsAnError is the real bug the issue calls
+// out: a tz-offset like "+00:60" was previously silently accepted and
+// normalized, even though a bare "00:60:00" TIME literal was correctly
+// rejected -- an author who wrote +00:60 by mistake and one who correctly
+// wrote +01:00 would produce indistinguishable results. tz-offset must
+// share TIME's exact range check.
+func TestTZOffsetMinuteOutOfRangeIsAnError(t *testing.T) {
+	pe := mustFail(t, `2024-01-01T10:30+00:60`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
+func TestTZOffsetHourOutOfRangeIsAnError(t *testing.T) {
+	pe := mustFail(t, `10:30+24:00`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
+func TestTZOffsetWithinRangeIsValid(t *testing.T) {
+	doc := mustParse(t, `2024-01-01T10:30+05:30`)
+	dt := doc.Value.Scalar.DateTime
+	if !dt.Time.HasOffset || dt.Time.OffsetSeconds != 5*3600+30*60 {
+		t.Errorf("got %+v", dt.Time)
+	}
+}
+
+func TestDateTimeWithInvalidDatePortionIsAnError(t *testing.T) {
+	// A DATETIME's date portion is checked before its time portion.
+	pe := mustFail(t, `2024-02-30T10:30:00`)
+	if pe.Code != omnist.CodeParseInvalidDate {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidDate)
+	}
+}
+
+func TestDateTimeWithInvalidTimePortionIsAnError(t *testing.T) {
+	pe := mustFail(t, `2024-02-15T25:00:00`)
+	if pe.Code != omnist.CodeParseInvalidTime {
+		t.Errorf("code = %s, want %s", pe.Code, omnist.CodeParseInvalidTime)
+	}
+}
+
 func TestReservedInfNumber(t *testing.T) {
 	doc := mustParse(t, `a: inf`)
 	v, _ := doc.Node.Edges[0].Target.Value()
