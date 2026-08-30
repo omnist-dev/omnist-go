@@ -328,31 +328,32 @@ func TestJSONRoundTripProperty(t *testing.T) {
 	}
 }
 
-// NaN/Infinity survive a write(lenient)->null->read round trip only in the
-// sense that reading the null back gives omnist.NullValue, not the original NaN
-// (that data is genuinely lost by design) — covered separately below, not
-// as part of the round-trip property (which is explicitly scoped to things
-// JSON CAN represent, per the issue's test list).
-func TestJSONNaNInfinityWriteThenReadBecomesNull(t *testing.T) {
+// TestJSONNaNInfinityWriteFails confirms NaN/Infinity now fails the
+// write outright (spec section 8.3.8/8.3.9, issue #98) instead of
+// surviving a write(lenient)->null->read round trip -- the old lenient
+// substitution this test used to exercise no longer exists (see
+// json_writer.go's Write doc comment).
+func TestJSONNaNInfinityWriteFails(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().
 		AddValue("n", omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))).
 		AddValue("ok", omnist.ScalarValue(omnist.NewStringScalar("still here"))))
-	text, _, err := Write(doc)
-	if err != nil {
-		t.Fatalf("WriteJSON failed: %v", err)
+	_, _, err := Write(doc)
+	if err == nil {
+		t.Fatal("WriteJSON: want error for a NaN leaf, got ok write")
 	}
-	got, err := Read(text, omnist.DefaultLimits())
-	if err != nil {
-		t.Fatalf("ReadJSON failed: %v", err)
+	diag, ok := err.(omnist.Diagnostic)
+	if !ok {
+		t.Fatalf("error is %T, want omnist.Diagnostic", err)
 	}
-	want := omnist.NodeDocument(omnist.NewNode().
-		AddValue("n", omnist.NullValue()).
-		AddValue("ok", omnist.ScalarValue(omnist.NewStringScalar("still here"))))
-	if !docEqual(want, got) {
-		t.Errorf("got %#v, want %#v", got, want)
+	if diag.Code != omnist.CodeWriteUnsupportedValue {
+		t.Errorf("diagnostic code = %s, want %s", diag.Code, omnist.CodeWriteUnsupportedValue)
+	}
+	if diag.Path != "$.n" {
+		t.Errorf("diagnostic path = %s, want $.n", diag.Path)
 	}
 }
 
+// TestJSONCrossFormatStructuralEqualityWithOML moved to
 // TestJSONCrossFormatStructuralEqualityWithOML moved to
 // json_reader_public_test.go (package omnist_test, issue #43): it is the
 // only test in this file that needs oml.Read, and an internal (package

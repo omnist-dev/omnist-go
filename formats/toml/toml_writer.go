@@ -50,32 +50,26 @@ import (
 //
 // # Null: no TOML spelling exists at all
 //
-// docs/formats/toml.md is explicit: "A null-valued leaf cannot be
-// written... Implementations MUST report this as a write-time
-// adjustment rather than inventing a representation." Unlike WriteJSON's
-// NaN/Infinity substitution (which has a lenient default and a strict
-// opt-in that fails instead), TOML has no lenient option to fall back to
-// here — there is no spelling of any kind, not even a lossy one. But
-// per spec §8.5.3, write is the one operation where a successful
-// `{ok: true, ...}` result and a non-empty diagnostics list coexist: the
-// rest of the document can still be written faithfully around a null
-// leaf, so this writer drops the null leaf (per docs/formats/toml.md's
-// own wording, "cannot be written... and is omitted") and reports it as
-// a omnist.Diagnostic (omnist.CodeFormatNullUnrepresentable, spec §8.3.8,
-// warning severity, carrying the omnist.Document path to the offending
-// leaf) rather than failing the whole write. A single-child group whose
-// one value is null omits the entire `key = value` line (there is
-// nothing left to assign the key to); a null inside a multi-child group
-// (an array) instead just omits that one element, keeping the rest of
-// the array intact — see writeTOMLGroupValue.
+// Per spec section 8.3.8/8.3.9 (updated 2026-08-24): writing a
+// null-valued leaf to TOML now fails unconditionally
+// (omnist.CodeWriteUnsupportedValue), whether or not strict mode is
+// requested. TOML has no spelling of any kind for null, not even a
+// lossy one, and unlike every other row in the (now-former)
+// codec-adjustments table there is no substitute value to fall back to
+// -- the only option was to silently drop the edge, which does not just
+// alter what is represented at that position, it erases the edge's
+// existence entirely. Read the output back and there is zero trace an
+// edge with that label ever existed -- the same collision shape as the
+// label-sanitization fix from issue #96, just sharper: there the two
+// possible written forms differed by one collision, here there is no
+// trace left at all. So this writer now fails the whole write the first
+// time it encounters a null leaf anywhere in the document, rather than
+// omitting it and continuing (see writeTOMLTargetOptional).
 //
-// This is different from strict mode's behavior (spec: "Implementations
-// MAY offer a strict mode that fails outright instead"): this repository
-// has no strict-mode parameter on Write today (tracked separately, see
-// tools/conformance/drivers.go's runWrite skip for
-// formats-toml/nulls/strict-mode-refuses-to-write-instead-of-omitting) —
-// out of scope for this change, which is about the diagnostics channel,
-// not adding a new write mode.
+// This repository has no strict-mode parameter on Write today (tracked
+// separately, see tools/conformance/drivers.go's runWrite skip for
+// formats-toml/nulls/null-leaf-cannot-be-written-strict-is-the-same) --
+// moot for this fix regardless, since the failure is unconditional.
 //
 // # Bare-scalar-root: a real error, not malformed output
 //
@@ -96,7 +90,9 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	}
 	var b strings.Builder
 	var diags []omnist.Diagnostic
-	writeTOMLTopLevel(&b, d.Node, &diags)
+	if err := writeTOMLTopLevel(&b, d.Node, &diags); err != nil {
+		return "", nil, err
+	}
 	return b.String(), diags, nil
 }
 
@@ -137,7 +133,7 @@ func groupTOMLEdges(n *omnist.Node) []tomlGroup {
 // per the grouping and count-1 rules — see Write's doc comment for
 // why nested tables are written as inline-table values here rather than
 // `[section]` headers, and for the null-drop reasoning below.
-func writeTOMLTopLevel(b *strings.Builder, n *omnist.Node, diags *[]omnist.Diagnostic) {
+func writeTOMLTopLevel(b *strings.Builder, n *omnist.Node, diags *[]omnist.Diagnostic) error {
 	groups := groupTOMLEdges(n)
 	if n.HasLostInterleaving() {
 		*diags = append(*diags, omnist.Diagnostic{
@@ -149,89 +145,72 @@ func writeTOMLTopLevel(b *strings.Builder, n *omnist.Node, diags *[]omnist.Diagn
 	}
 	for _, g := range groups {
 		var vb strings.Builder
-		if !writeTOMLGroupValue(&vb, g, "$."+g.label, diags) {
-			// The group's one child was a null leaf with no TOML
-			// spelling at all — see Write's doc comment. There is
-			// nothing to assign the key to, so the whole `key = value`
-			// line is omitted (the diagnostic was already recorded by
-			// writeTOMLGroupValue/writeTOMLTargetOptional).
-			continue
+		if err := writeTOMLGroupValue(&vb, g, "$."+g.label, diags); err != nil {
+			return err
 		}
 		writeTOMLKey(b, g.label)
 		b.WriteString(" = ")
 		b.WriteString(vb.String())
 		b.WriteByte('\n')
 	}
+	return nil
 }
 
-// writeTOMLGroupValue renders one group's value per §7.3.1's count-1
-// rule: a bare rendering of the single target when the group has exactly
-// one child, an inline array of renderings otherwise. The returned bool
-// reports whether anything was written at all — false only for a
-// single-child group whose one child is a dropped null leaf (see Write's
-// doc comment); a multi-child group always writes an array (possibly
-// missing some of its null elements, never entirely omitted, since a
-// `key = []` is a valid, faithful rendering of "some elements dropped").
-//
-// This (and writeTOMLTargetOptional/writeTOMLInlineTable below) carries
-// no error return: since the null-drop case became a diagnostic rather
-// than a hard failure, nothing below the root can fail at all — TOML's
-// only failure mode (a bare-scalar document root) is checked once, in
-// Write, before any of this is ever called.
-func writeTOMLGroupValue(b *strings.Builder, g tomlGroup, path string, diags *[]omnist.Diagnostic) bool {
+// writeTOMLGroupValue renders one group's value per section 7.3.1's
+// count-1 rule: a bare rendering of the single target when the group has
+// exactly one child, an inline array of renderings otherwise. Per spec
+// section 8.3.8/8.3.9 (2026-08-24, issue #97): a null leaf now fails the
+// write unconditionally rather than being silently dropped, so (unlike
+// before that fix) every target this function or writeTOMLTargetOptional
+// touches either writes something or returns a non-nil error -- there is
+// no longer an "ok but nothing was written" case to signal with a bool,
+// so this returns a plain error.
+func writeTOMLGroupValue(b *strings.Builder, g tomlGroup, path string, diags *[]omnist.Diagnostic) error {
 	if len(g.children) == 1 {
 		return writeTOMLTargetOptional(b, g.children[0], path, diags)
 	}
 	b.WriteByte('[')
-	first := true
 	for i, t := range g.children {
-		var eb strings.Builder
-		if !writeTOMLTargetOptional(&eb, t, fmt.Sprintf("%s[%d]", path, i), diags) {
-			continue
-		}
-		if !first {
+		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(eb.String())
-		first = false
+		if err := writeTOMLTargetOptional(b, t, fmt.Sprintf("%s[%d]", path, i), diags); err != nil {
+			return err
+		}
 	}
 	b.WriteByte(']')
-	return true
+	return nil
 }
 
 // writeTOMLTargetOptional renders one Target: an inline table for a
 // omnist.Node, a scalar literal for a non-null omnist.Value. A null
-// omnist.Value has no TOML spelling at all (see Write's doc comment); it
-// writes nothing, records the format.null-unrepresentable diagnostic, and
-// reports false so the caller (writeTOMLGroupValue/writeTOMLTopLevel)
-// knows to drop the key or the array element rather than emit an empty
-// placeholder.
-func writeTOMLTargetOptional(b *strings.Builder, t omnist.Target, path string, diags *[]omnist.Diagnostic) bool {
+// omnist.Value has no TOML spelling at all (see Write's doc comment); per
+// spec section 8.3.8/8.3.9 (2026-08-24), writing it is now an
+// unconditional failure (omnist.CodeWriteUnsupportedValue) -- there is no
+// substitute value to fall back to, and silently dropping the edge erases
+// its existence entirely with no trace on read-back (the null-leaf
+// analogue of the label-sanitization collision fixed in issue #96).
+func writeTOMLTargetOptional(b *strings.Builder, t omnist.Target, path string, diags *[]omnist.Diagnostic) error {
 	if node, ok := t.Node(); ok {
-		writeTOMLInlineTable(b, node, path, diags)
-		return true
+		return writeTOMLInlineTable(b, node, path, diags)
 	}
 	v, _ := t.Value()
 	if v.IsNull {
-		*diags = append(*diags, omnist.Diagnostic{
+		return omnist.Diagnostic{
 			Path:     path,
-			Code:     omnist.CodeFormatNullUnrepresentable,
-			Message:  "a null leaf cannot be written in TOML, so it is dropped",
-			Severity: omnist.SeverityWarning,
-		})
-		return false
+			Code:     omnist.CodeWriteUnsupportedValue,
+			Message:  "a null leaf has no TOML spelling and cannot be written",
+			Severity: omnist.SeverityError,
+		}
 	}
 	writeTOMLScalar(b, v.Scalar)
-	return true
+	return nil
 }
 
 // writeTOMLInlineTable renders n as a TOML inline table (`{k = v, ...}`),
 // applying the same grouping/count-1 rules writeTOMLTopLevel applies at
-// the root — an inline table is exactly a nested write(node, format).
-// Mirroring writeTOMLTopLevel, a group whose value is entirely dropped
-// (a single null child) omits its `k = v` entry from the table rather
-// than leaving a dangling key.
-func writeTOMLInlineTable(b *strings.Builder, n *omnist.Node, path string, diags *[]omnist.Diagnostic) {
+// the root -- an inline table is exactly a nested write(node, format).
+func writeTOMLInlineTable(b *strings.Builder, n *omnist.Node, path string, diags *[]omnist.Diagnostic) error {
 	groups := groupTOMLEdges(n)
 	if n.HasLostInterleaving() {
 		*diags = append(*diags, omnist.Diagnostic{
@@ -242,21 +221,20 @@ func writeTOMLInlineTable(b *strings.Builder, n *omnist.Node, path string, diags
 		})
 	}
 	b.WriteByte('{')
-	first := true
-	for _, g := range groups {
-		var vb strings.Builder
-		if !writeTOMLGroupValue(&vb, g, path+"."+g.label, diags) {
-			continue
-		}
-		if !first {
+	for i, g := range groups {
+		if i > 0 {
 			b.WriteString(", ")
+		}
+		var vb strings.Builder
+		if err := writeTOMLGroupValue(&vb, g, path+"."+g.label, diags); err != nil {
+			return err
 		}
 		writeTOMLKey(b, g.label)
 		b.WriteString(" = ")
 		b.WriteString(vb.String())
-		first = false
 	}
 	b.WriteByte('}')
+	return nil
 }
 
 // writeTOMLKey renders a label as a TOML quoted (basic string) key,
@@ -340,7 +318,7 @@ func writeTOMLNumber(b *strings.Builder, f float64) {
 
 // writeTOMLString renders s as a TOML basic string literal (double
 // quoted), escaping exactly what TOML's basic-string grammar requires:
-// '"', '\\', the named short escapes for backspace/formfeed/newline/
+// '"', '\', the named short escapes for backspace/formfeed/newline/
 // CR/tab, and \u00XX for every other control character — the same escape
 // set writeJSONString (json_writer.go) uses, which TOML's basic-string
 // grammar shares control-character-for-control-character with JSON's.
