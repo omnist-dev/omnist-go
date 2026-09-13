@@ -17,8 +17,8 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**174 pass / 0 fail / 25 skip** of 199 vectors (`omnist-spec` v0.7.0-beta
-pin). 24 of those 25 skips are the new OSD-OML extension
+**175 pass / 0 fail / 29 skip** of 204 vectors (`omnist-spec` v0.9.1-beta
+pin). 28 of those 29 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
 port, cited honestly per §9.5 rather than crashing or failing the
 driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
@@ -102,16 +102,33 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `c4141d0` (`v0.7.0-beta`), pinned via the
+`omnist-spec` at commit `47a84d6` (`v0.9.1-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
-its own commit. Past `0ac1eac` (the #95-103 spec-correctness audit
-batch), this pin also carries the fix for `omnist-spec#52` — a new
-§8.5.3 rule requiring a harness to strip insignificant inter-tag XML
-whitespace before comparing a `write` vector's expected/actual text,
-since the spec places no requirement on XML writer whitespace at all.
-This repo's own conformance-test skip for that vector (cited as
-`omnist-spec#52` in a prior revision of this doc) is removed —
+its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
+new §3.3 S-8 rule (a `Name` — record name or ref target — MUST match
+`[A-Za-z_][A-Za-z0-9_]*`) and a characterization-only clarification of
+S-3 (reserved-name matching is exact, case-sensitive) — both are
+no-op for this port: the OSD grammar already enforced S-8 implicitly,
+and `osd_parser.go`'s `scalarKeyword(name)`/`name == "any"` checks
+already match S-3 as clarified. The new
+`osd-grammar/reserved-names/case-mismatched-name-is-not-reserved`
+vector passed green-on-arrival, spot-checked against the actual
+parser rather than trusting a clean run alone. `extensions/osd-oml.md`
+was also reformalized into a numbered-rule grammar (E.5-E.9, extension
+v1.1) with a new `schema.invalid-name` error code; this doesn't affect
+Track 2 since Go doesn't implement the OSD-OML extension yet (4
+`extensions-osd-oml/*` vectors report as skip, tracked in
+[issue #111](https://github.com/omnist-dev/omnist-go/issues/111),
+which now also notes the new S-8/`schema.invalid-name` requirement
+for whenever that extension is implemented). Past `0ac1eac` (the
+#95-103 spec-correctness audit batch), this pin also carries the fix
+for `omnist-spec#52` — a new §8.5.3 rule requiring a harness to strip
+insignificant inter-tag XML whitespace before comparing a `write`
+vector's expected/actual text, since the spec places no requirement on
+XML writer whitespace at all. This repo's own conformance-test skip
+for that vector (cited as `omnist-spec#52` in a prior revision of this
+doc) is removed —
 `formats-xml/basic/carriage-return-written-as-numeric-character-reference`
 now passes outright. Past `aac3ce0`, this pin also carries 3 new §3.3
 canonical-serialization-order characterization vectors
