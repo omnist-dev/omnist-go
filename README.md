@@ -25,8 +25,7 @@ implementations are consulted only as narrow tie-breakers on spec gaps that
 already have a filed issue against `omnist-spec` — never as a substitute for
 what the spec says. Every place this port needed to guess is tracked as a
 spec issue, not silently resolved by copying another implementation. See
-[go.omnist.dev/workflow-playbook](https://go.omnist.dev/workflow-playbook/)
-for the full policy.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the full policy.
 
 ## Install
 

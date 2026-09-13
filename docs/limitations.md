@@ -4,7 +4,7 @@
 [Omnist](https://spec.omnist.dev) data-interchange spec, built without
 reference to the Python, TypeScript, or Rust implementations except as a
 narrow, after-the-fact tie-breaker on spec gaps that already have a filed
-`omnist-spec` issue. See `docs/workflow-playbook.md` for the full policy.
+`omnist-spec` issue. See `CONTRIBUTING.md` for the full policy.
 
 ## Status
 
@@ -50,7 +50,7 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
-**`v0.3.1-alpha`**, a patch bump per `docs/workflow-playbook.md` §1's
+**`v0.3.1-alpha`**, a patch bump per `CONTRIBUTING.md` §1's
 alpha-series rule: no library API or observable behavior changed, just
 conformance-harness/tooling and docs work — bumping the `omnist-spec`
 pin to `v0.7.0-beta` (`c4141d0`), adding an honest, cited skip for the
@@ -60,7 +60,7 @@ driver, and normalizing insignificant XML whitespace before comparing
 `write` vectors (PR #110, per `omnist-spec#52`). Patch, not minor,
 since nothing here touches the public contract.
 
-**`v0.3.0-alpha`**, a minor bump per `docs/workflow-playbook.md` §1's
+**`v0.3.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1's
 alpha-series rule: this release adds new public API
 (`ValidDate`/`ValidTime`/`ValidOffsetText` in the root package; six new
 `schema.*`/`parse.*` diagnostic codes) and closes several real
@@ -84,7 +84,7 @@ whitespace no other exact-text vector in its track requires). Minor,
 not patch, since new public API and several corrected-not-just-narrowed
 correctness bugs cross the stable-surface threshold.
 
-**`v0.2.0-alpha`** was a minor bump per `docs/workflow-playbook.md` §1's
+**`v0.2.0-alpha`** was a minor bump per `CONTRIBUTING.md` §1's
 alpha-series rule: that release added new public API (`xml.ReadWithSchema`,
 `Limits.Validate()`), patched a real security vulnerability
 (GO-2026-6088), and closed two real CPU-exhaustion DoS bugs — the Codex
@@ -92,7 +92,7 @@ audit cycle (#70-81, see above). Minor, not patch, since new public API
 and a security fix cross the stable-surface threshold.
 
 `v0.1.0-alpha` was the maintainer sign-off bump past `0.0.x` described in
-`docs/workflow-playbook.md` §1: core document model, all four codecs, OML,
+`CONTRIBUTING.md` §1: core document model, all four codecs, OML,
 OSD, and the CLI are implemented, both conformance tracks pass with zero
 real fails, the doc-example verification gate is CI-blocking (issue #62),
 and a source-audited self-check of the §2.4 resource caps (depth/node-count/

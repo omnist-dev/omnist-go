@@ -12,7 +12,7 @@ package omnist_test
 //
 // Document has no String() method (spec's Document model is an edge list,
 // not a map, and there's no single obviously-right stringification -- see
-// docs/workflow-playbook.md Sec2.3). formatDocument below is a small,
+// CONTRIBUTING.md Sec2.3). formatDocument below is a small,
 // test-local helper that renders a flat Node's edges as
 // `(label,"value"), ...`, purely so these examples have deterministic,
 // human-readable Output: text. It is intentionally not part of the public

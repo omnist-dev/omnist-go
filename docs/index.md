@@ -8,7 +8,7 @@ Most formats model an object as a map from key to value. That works fine until a
 
 ## Why "spec-first"
 
-This port is built directly from [omnist-spec](https://spec.omnist.dev), with no reference to the existing Python, TypeScript, or Rust implementations except as a narrow, after-the-fact tie-breaker on gaps that already have a filed spec issue. That's deliberate: it's the actual test of whether the spec is complete enough to build a fourth implementation from cold. Every place this port needed to guess became a real spec issue, not a silently-copied assumption. The [workflow playbook](workflow-playbook.md) has the full policy.
+This port is built directly from [omnist-spec](https://spec.omnist.dev), with no reference to the existing Python, TypeScript, or Rust implementations except as a narrow, after-the-fact tie-breaker on gaps that already have a filed spec issue. That's deliberate: it's the actual test of whether the spec is complete enough to build a fourth implementation from cold. Every place this port needed to guess became a real spec issue, not a silently-copied assumption. See [`CONTRIBUTING.md`](https://github.com/omnist-dev/omnist-go/blob/main/CONTRIBUTING.md) for the full policy.
 
 ## Install
 
