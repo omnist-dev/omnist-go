@@ -17,8 +17,12 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**171 pass / 0 fail / 1 skip** of 172 vectors (as of the `omnist-spec#52`
-XML-whitespace-normalization fix, `omnist-spec` v0.5.0-beta pin). Track 1
+**174 pass / 0 fail / 25 skip** of 199 vectors (`omnist-spec` v0.7.0-beta
+pin). 24 of those 25 skips are the new OSD-OML extension
+(`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
+port, cited honestly per §9.5 rather than crashing or failing the
+driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
+for implementing it. Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
@@ -88,19 +92,24 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `aac3ce0`, pinned via the `vendor/omnist-spec` git
-submodule. This repo does not track the spec's `main` branch — the pin is
-bumped deliberately, in its own commit. Past `0ac1eac` (the #95-103
-spec-correctness audit batch), this pin also carries the fix for
-`omnist-spec#52` — a new §8.5.3 rule requiring a harness to strip
-insignificant inter-tag XML whitespace before comparing a `write` vector's
-expected/actual text, since the spec places no requirement on XML writer
-whitespace at all. This repo's own conformance-test skip for that vector
-(cited as `omnist-spec#52` in a prior revision of this doc) is removed —
+`omnist-spec` at commit `c4141d0` (`v0.7.0-beta`), pinned via the
+`vendor/omnist-spec` git submodule. This repo does
+not track the spec's `main` branch — the pin is bumped deliberately, in
+its own commit. Past `0ac1eac` (the #95-103 spec-correctness audit
+batch), this pin also carries the fix for `omnist-spec#52` — a new
+§8.5.3 rule requiring a harness to strip insignificant inter-tag XML
+whitespace before comparing a `write` vector's expected/actual text,
+since the spec places no requirement on XML writer whitespace at all.
+This repo's own conformance-test skip for that vector (cited as
+`omnist-spec#52` in a prior revision of this doc) is removed —
 `formats-xml/basic/carriage-return-written-as-numeric-character-reference`
-now passes outright, bringing Track 2 to 171/0/1 (of 172; the one
-remaining skip is the pre-existing, unrelated TOML strict-mode gap noted
-above).
+now passes outright. Past `aac3ce0`, this pin also carries 3 new §3.3
+canonical-serialization-order characterization vectors
+(`osd-grammar/canonical-output/declaration-order-round-trips-exactly`,
+`prune/basic/survivors-keep-declaration-order-not-alphabetical`,
+`normalize/basic/output-order-is-alphabetical-not-declaration-order`) —
+all three passed green-on-arrival against this repo's existing behavior,
+no code change needed.
 
 See `omnist-spec`'s own [§9.3 status table](https://github.com/omnist-dev/omnist-spec/blob/main/docs/09-divergence-ledger.md#93-status-table)
 for the cross-implementation divergence ledger this repo reports into.

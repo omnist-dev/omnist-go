@@ -67,9 +67,10 @@ type findingExpect struct {
 // and compares the result against its "expect" per §8.5.2's rules. It
 // never panics on a vector it cannot execute -- a driver bug produces a
 // Result, not a crash, per the issue's "not yet implemented gets an
-// honest skip, not a crash or a forced pass" requirement (no operation
-// currently falls into that not-yet-implemented bucket as of issue #35,
-// which wired up materialize, the last one).
+// honest skip, not a crash or a forced pass" requirement. parse_schema_oml
+// and write_schema_oml (the OSD-OML extension) are the first operations
+// to actually land in that not-yet-implemented bucket, as cited skips --
+// every other operation below has a real driver.
 func RunVector(v Vector) Result {
 	switch v.Operation {
 	case "parse":
@@ -100,6 +101,17 @@ func RunVector(v Vector) Result {
 		return runInferWithReport(v)
 	case "lint":
 		return runLint(v)
+	case "parse_schema_oml", "write_schema_oml":
+		// OSD-OML extension (omnist-spec PR #53/#55): a schema expressed
+		// as an OML document, read/written via parse_schema_oml/
+		// write_schema_oml. Not yet implemented in this port -- an
+		// honest, cited skip per conformance-harness.md §9.5 ("skips are
+		// permitted and MUST be reported; they are how partial
+		// implementations are tracked honestly"), not a driver failure,
+		// since the spec itself already tracks this as unimplemented
+		// across every port (divergence ledger §9.6). See omnist-go
+		// issue #111 for this port's own implementation.
+		return Result{Vector: v, Status: StatusSkip, Reason: "OSD-OML extension not yet implemented in this port, see omnist-go issue #111"}
 	default:
 		return Result{Vector: v, Status: StatusFail, Reason: fmt.Sprintf("unknown operation %q", v.Operation)}
 	}
