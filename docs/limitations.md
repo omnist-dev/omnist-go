@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.3.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.3.1-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -49,6 +49,16 @@ tracks are strictly CI-gating as of issue #74.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.3.1-alpha`**, a patch bump per `docs/workflow-playbook.md` §1's
+alpha-series rule: no library API or observable behavior changed, just
+conformance-harness/tooling and docs work — bumping the `omnist-spec`
+pin to `v0.7.0-beta` (`c4141d0`), adding an honest, cited skip for the
+24 new OSD-OML-extension vectors this port doesn't implement yet
+(issue #111 tracks that as future work) rather than failing the
+driver, and normalizing insignificant XML whitespace before comparing
+`write` vectors (PR #110, per `omnist-spec#52`). Patch, not minor,
+since nothing here touches the public contract.
 
 **`v0.3.0-alpha`**, a minor bump per `docs/workflow-playbook.md` §1's
 alpha-series rule: this release adds new public API
