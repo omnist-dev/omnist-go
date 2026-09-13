@@ -10,7 +10,7 @@ import (
 // omnist.Document, stage 1"). limits configures the safety limits enforced while
 // reading (integer digit count at tokenize time, nesting depth at parse
 // time), per the design decision that omnist.Limits is always caller-configurable
-// rather than hardcoded (docs/workflow-playbook.md §2.4, limits.go).
+// rather than hardcoded (CONTRIBUTING.md §2.4, limits.go).
 //
 // On any parse failure the returned error is a *omnist.ParseError whose omnist.Path is a
 // text-position path ("line:col", 1-based) per spec §8.4 — no omnist.Document

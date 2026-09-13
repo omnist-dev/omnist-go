@@ -13,7 +13,7 @@
 // pre-existing unmarked blocks at the time this gate ships are not
 // retroactively flagged. It never gates on blocks that are unchanged.
 //
-// Known trap (see docs/workflow-playbook.md Sec7): running this against an
+// Known trap (see CONTRIBUTING.md Sec7): running this against an
 // uncommitted working tree gives a false "passed", because the diff is
 // against the base branch's committed history, not the working tree.
 // Commit before trusting a local run.

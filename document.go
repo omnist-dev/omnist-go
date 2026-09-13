@@ -82,7 +82,7 @@ type DateTimeValue struct {
 // Scalar is a tagged value holding exactly one of the seven scalar kinds.
 // Only the field matching Kind is meaningful; the others are zero.
 //
-// Per the design decision recorded in docs/workflow-playbook.md §2.2,
+// Per the design decision recorded in CONTRIBUTING.md §2.2,
 // integer uses *big.Int (not int64) because spec §2.4 requires supporting
 // integer literals up to 4,300 decimal digits.
 type Scalar struct {
@@ -242,7 +242,7 @@ type Edge struct {
 // guaranteed acyclic by construction; callers constructing Node trees
 // programmatically are responsible for preserving acyclicity.
 //
-// Per the design decision recorded in docs/workflow-playbook.md §2.3, Node
+// Per the design decision recorded in CONTRIBUTING.md §2.3, Node
 // stays edge-list-native everywhere: there is no separate map-collapsed
 // type. Callers append to Edges directly to build a Document; this
 // preserves invariant D-1 (edge order is exactly construction order) and

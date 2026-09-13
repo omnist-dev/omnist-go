@@ -193,7 +193,7 @@ func (d Diagnostic) Error() string {
 
 // ParseError is the structured error a stage-1 (text to Document) reader
 // reports, per the design decision recorded in
-// docs/workflow-playbook.md §2.4. Its Path field MUST be a text-position
+// CONTRIBUTING.md §2.4. Its Path field MUST be a text-position
 // path per spec §8.4 (e.g. "14:8"), since a parse.* diagnostic fires
 // before any Document exists to descend a Document-shaped path into.
 type ParseError struct {

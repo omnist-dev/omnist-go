@@ -141,7 +141,7 @@ jobs:
           # This is a doc-quality gate, not a judgment-call conformance
           # gate (unlike the `conformance` job below) -- a missing marker
           # is unambiguous, so this job is blocking. See
-          # docs/workflow-playbook.md Sec7 and tools/check_doc_examples/.
+          # CONTRIBUTING.md Sec7 and tools/check_doc_examples/.
           git fetch origin main
           go run ./tools/check_doc_examples -base=origin/main
 
