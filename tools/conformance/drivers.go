@@ -28,7 +28,23 @@ type parseInput struct {
 	DeclaredMaxDepth     *int   `json:"declared_max_depth"`
 	DeclaredMaxNodes     *int   `json:"declared_max_nodes"`
 	DeclaredMaxIntDigits *int   `json:"declared_max_int_digits"`
+	// DeclaredMaxAliasExpansion is the fourth declared-limit key
+	// (test-suite/README.md, §2.4.1's D-18). This port exposes no
+	// configuration surface for it and does not enforce D-18 at all
+	// (DIV-3), so a vector carrying it is skipped rather than run against
+	// this port's own behavior: running a boundary vector against a limit
+	// that does not exist would either fail for the wrong reason or, for
+	// expansion-at-declared-limit-succeeds, pass without pinning anything.
+	DeclaredMaxAliasExpansion *int `json:"declared_max_alias_expansion"`
 }
+
+// aliasExpansionSkipReason is the E-20 "not yet implemented" reason every
+// vector carrying declared_max_alias_expansion is skipped with. It is true for
+// all six: this port has no alias-expansion limit to configure (yaml.v3
+// decoding into a Node applies none, and none is layered on top), so none of
+// them can be honestly run. The category is E-20's first (not-yet-implemented),
+// not E-21's: DIV-3 is a rollout gap, not a structural limit of Go.
+const aliasExpansionSkipReason = "not yet implemented: D-18 alias-expansion limit is not enforced by this port and has no configuration surface (DIV-3, omnist-spec §9.4; tracked by omnist-go issue #117)"
 
 func limitsFromInput(in parseInput) omnist.Limits {
 	l := omnist.DefaultLimits()
@@ -74,6 +90,9 @@ func runParse(v Vector) Result {
 	var in parseInput
 	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
+	}
+	if in.DeclaredMaxAliasExpansion != nil {
+		return Result{Vector: v, Status: StatusSkip, Reason: aliasExpansionSkipReason}
 	}
 	expect, err := decodeExpect(v)
 	if err != nil {
@@ -305,9 +324,9 @@ func runWrite(v Vector) Result {
 	case "yaml":
 		text, gotDiags, werr = yaml.Write(doc)
 	case "toml":
-		if in.Strict {
-			return Result{Vector: v, Status: StatusSkip, Reason: "not yet implemented: WriteTOML has no strict-mode parameter in this repository (toml.Write(d Document) (string, []omnist.Diagnostic, error) only) -- flagged for a follow-up issue, not fixed here per issue #31's/#49's scope"}
-		}
+		// No strict parameter to pass: every TOML failure is unconditional
+		// (docs/formats/toml.md; the null-leaf vector's companion pair MUST
+		// produce the identical result), so toml.Write is the strict write.
 		text, gotDiags, werr = toml.Write(doc)
 	case "xml":
 		text, gotDiags, werr = xml.Write(doc)

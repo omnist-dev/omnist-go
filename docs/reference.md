@@ -175,7 +175,7 @@ that don't belong to a specific codec or the algebra package.
   _, err := json.Read(`{"name": }`, omnist.DefaultLimits())
   perr := err.(*omnist.ParseError)
   fmt.Println(perr.Line, perr.Col, perr.Code)
-  // 1 10 parse.unexpected-token
+  // 1 10 parse.codec-syntax
   ```
 
 ### Limits (`limits.go`)

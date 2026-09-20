@@ -74,12 +74,12 @@ func TestOSDRoundTripProperty(t *testing.T) {
 			},
 		},
 		{
-			"label needing escaping: quote, backslash, control char",
+			"label needing escaping: quote, backslash",
 			omnist.Schema{
 				Root: "R",
 				Env: map[string]*omnist.Record{
 					"R": {Name: "R", Fields: []omnist.Field{
-						{Label: `a"b\c` + "\n" + "d", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+						{Label: `a"b\c`, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
 					}},
 				},
 				EnvOrder: []string{"R"},
@@ -222,19 +222,23 @@ func TestOSDLabelEscapingBackslashAndQuote(t *testing.T) {
 	}
 }
 
-// TestOSDLabelEscapingControlCharacterTrap directly exercises the trap the
-// issue calls out: escaping a literal newline as the two-character
-// sequence \n would (per §5.3.1's weak, non-named-escape unescaping rule)
-// read back as the literal letter 'n', not a newline. The correct
-// approach — what escapeOSDLabel actually does — is to escape a raw
-// control character as a backslash immediately followed by that same
-// literal control byte, relying on the reader's "whatever follows a
-// backslash is written verbatim" behavior.
+// TestOSDLabelEscapingControlCharacterTrap pins what escapeOSDLabel does with
+// a raw control character, and what the reader now does with the result.
 //
-// The OSD STRING token's ABNF does permit a literal newline after a
-// backslash (any escaped code point is accepted per §5.3.1), so this
-// case does apply and is not a "doesn't exist in this grammar" edge case
-// to merely note.
+// The trap this test was written for still holds: escaping a literal newline
+// as the two-character sequence \n would (per §5.3.1's weak, non-named-escape
+// unescaping) read back as the letter 'n', so the writer emits a backslash
+// followed by the literal control byte instead.
+//
+// What changed is the reader. Spec v0.15.0-beta (§5.3.1, and the ABNF's
+// escape alternative, which now excludes %x00-1F) makes a control character
+// after a backslash a parse.control-character error exactly like an
+// unescaped one, so OSD has NO spelling for a label containing one and the
+// text this writer emits for such a label no longer parses. That conflicts
+// with OSD-11 ("for every schema, emits text that parses back to an equal
+// schema") and is reported as an open spec question in this port's PR rather
+// than papered over; this test records the current, honest behavior of both
+// halves so a future spec resolution has an obvious place to land.
 func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
 	label := "line one\nline two"
 	escaped := escapeOSDLabel(label)
@@ -248,20 +252,12 @@ func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
 			"newline byte, got %q", escaped)
 	}
 
-	schema := omnist.Schema{
-		Root: "R",
-		Env: map[string]*omnist.Record{
-			"R": {Name: "R", Fields: []omnist.Field{{Label: label, Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()}}},
-		},
-		EnvOrder: []string{"R"},
-	}
-	text := Write(schema, false)
-	got, err := Read(text)
-	if err != nil {
-		t.Fatalf("ReadOSD failed: %v\ntext:\n%s", err, text)
-	}
-	if got.Env["R"].Fields[0].Label != label {
-		t.Errorf("got label %q, want %q (text: %s)", got.Env["R"].Fields[0].Label, label, text)
+	// The reader refuses that text: parse.control-character, at the
+	// string's opening quote (E-23), on line 2 col 5 of the pretty layout.
+	_, err := Read("record R {\n    \"" + escaped + "\": string,\n}\nroot R\n")
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseControlCharacter || pe.Path != "2:5" {
+		t.Fatalf("Read = %#v, want parse.control-character at 2:5", err)
 	}
 }
 

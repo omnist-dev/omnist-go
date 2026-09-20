@@ -205,7 +205,6 @@ func (l *osdLexer) scanString() (osdToken, *omnist.ParseError) {
 		if l.atEOF() {
 			return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 		}
-		cLine, cCol := l.line, l.col
 		r := l.advance()
 		switch {
 		case r == '"':
@@ -215,12 +214,18 @@ func (l *osdLexer) scanString() (osdToken, *omnist.ParseError) {
 				return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated string")
 			}
 			// Weak unescaping (§5.3.1): the character right after the
-			// backslash is written verbatim, whatever it is, including a
-			// literal newline — the ABNF's string production explicitly
-			// allows "\" followed by any code point at all (%x00-10FFFF).
-			b.WriteRune(l.advance())
+			// backslash is written verbatim -- unless it is itself a control
+			// character, which the §5.3.1 ban covers in escape context too
+			// (a control character immediately after a backslash is still a
+			// control character in the body).
+			esc := l.advance()
+			if esc < 0x20 {
+				return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseControlCharacter, "control character in string")
+			}
+			b.WriteRune(esc)
 		case r < 0x20:
-			return osdToken{}, l.errAt(cLine, cCol, omnist.CodeParseControlCharacter, "control character in string")
+			// E-23: a string-body error reports the string's opening quote.
+			return osdToken{}, l.errAt(startLine, startCol, omnist.CodeParseControlCharacter, "control character in string")
 		default:
 			b.WriteRune(r)
 		}

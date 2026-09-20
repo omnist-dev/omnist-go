@@ -40,6 +40,12 @@ const (
 	// (added 2026-08-29): tz-offset shares TIME's exact range check,
 	// not a separately implemented one.
 	CodeParseInvalidTime Code = "parse.invalid-time"
+	// CodeParseCodecSyntax is raised when a codec (JSON, YAML, TOML, XML)
+	// cannot accept its input: the text is not well-formed in its own source
+	// format, or it fails the one byte-level precondition spec §8.3.1's E-24
+	// imposes ahead of the codec (D-21's rejection of a second leading
+	// U+FEFF). One code covers all four codecs deliberately.
+	CodeParseCodecSyntax Code = "parse.codec-syntax"
 )
 
 // document.* — building and limits (spec §8.3.2).
@@ -146,6 +152,12 @@ const (
 	CodeFormatNamespaceDropped    Code = "format.namespace-dropped"
 	CodeFormatInterleavingLost    Code = "format.interleaving-lost"
 	CodeFormatMultipleRoots       Code = "format.multiple-roots"
+	// The three data-XML profile refusals (docs/formats/xml.md). Each is
+	// reported at path "$" and only for input that is well-formed XML: a
+	// malformed document is CodeParseCodecSyntax, never one of these.
+	CodeFormatDTDForbidden    Code = "format.dtd-forbidden"
+	CodeFormatEntityForbidden Code = "format.entity-forbidden"
+	CodeFormatMixedContent    Code = "format.mixed-content"
 )
 
 // write.* (spec §8.3.9).

@@ -92,15 +92,13 @@ func TestWorkedMultilineFourClosingQuotes(t *testing.T) {
 
 func TestWorkedNanLabelError(t *testing.T) {
 	// nan is a NUMBER token and never reaches label position: the parser
-	// sees NUMBER, COLON. Per
-	// oml-grammar/reserved/nan-bare-is-a-number-token-not-a-label, this is
-	// parse.unexpected-token, not parse.trailing-content — unlike the
-	// analogous null/true/false case (TestWorkedNullAtTopLevel below), a
-	// leftover ':' after a NUMBER was never a candidate for label
-	// position at all, so it is simply out of place rather than a
-	// continuation of an almost-valid construct.
+	// sees NUMBER, COLON. Per OML-25 (spec §4.6.1) and
+	// oml-grammar/reserved/nan-bare-is-a-number-token-not-a-label, any scalar
+	// followed by leftover content at document level is
+	// parse.trailing-content at the first leftover token (the ':'), exactly
+	// as for null/true/false (TestWorkedNullAtTopLevel below).
 	pe := mustFail(t, `nan: 1`)
-	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
+	wantCode(t, pe, omnist.CodeParseTrailingContent)
 }
 
 func TestWorkedQuotedNan(t *testing.T) {

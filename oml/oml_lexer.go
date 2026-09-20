@@ -525,7 +525,6 @@ func (l *lexer) scanMultilineString() (token, *omnist.ParseError) {
 		if l.atEOF() {
 			return token{}, l.errAt(startLine, startCol, omnist.CodeParseUnterminatedString, "unterminated multiline string")
 		}
-		cLine, cCol := l.line, l.col
 		r := l.peekRune()
 		if r == '"' {
 			run := 0
@@ -546,6 +545,8 @@ func (l *lexer) scanMultilineString() (token, *omnist.ParseError) {
 			b.WriteRune(l.advance())
 			continue
 		}
-		return token{}, l.errAt(cLine, cCol, omnist.CodeParseControlCharacter, "control character in multiline string")
+		// E-23: a string-body error reports the string's opening quote, not
+		// the offending character.
+		return token{}, l.errAt(startLine, startCol, omnist.CodeParseControlCharacter, "control character in multiline string")
 	}
 }

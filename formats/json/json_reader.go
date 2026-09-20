@@ -35,6 +35,10 @@ import (
 //     with UseNumber, since a map value slot has no memory of the
 //     literal that filled it).
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
+	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseCodecSyntax)
+	if berr != nil {
+		return omnist.Document{}, berr
+	}
 	dec := encjson.NewDecoder(strings.NewReader(text))
 	dec.UseNumber()
 	r := &jsonReader{dec: dec, checker: omnist.NewLimitChecker(limits), text: text}
@@ -54,7 +58,7 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// tokens remain.
 	if _, err := r.dec.Token(); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return omnist.Document{}, r.errHere(omnist.CodeParseTrailingContent, "content remains after the document")
+			return omnist.Document{}, r.errHere(omnist.CodeParseCodecSyntax, "content remains after the document")
 		}
 		return omnist.Document{}, r.wrapDecodeErr(err)
 	}
@@ -86,14 +90,14 @@ func (r *jsonReader) next() (encjson.Token, error) {
 // wrapDecodeErr converts an error from the underlying encjson.Decoder into a
 // *omnist.ParseError. encoding/json does not expose its own error taxonomy in a
 // way this package's omnist.Code values can select between meaningfully, so every
-// low-level decode failure is reported as omnist.CodeParseUnexpectedToken with the
+// low-level decode failure is reported as omnist.CodeParseCodecSyntax with the
 // decoder's own message — the position (derived from InputOffset) is the
 // part worth preserving precisely.
 func (r *jsonReader) wrapDecodeErr(err error) error {
 	if errors.Is(err, io.EOF) {
-		return r.errHere(omnist.CodeParseUnexpectedToken, "unexpected end of input")
+		return r.errHere(omnist.CodeParseCodecSyntax, "unexpected end of input")
 	}
-	return r.errHere(omnist.CodeParseUnexpectedToken, err.Error())
+	return r.errHere(omnist.CodeParseCodecSyntax, "JSON: "+err.Error())
 }
 
 // errHere builds a *omnist.ParseError positioned at the decoder's current byte
@@ -383,7 +387,7 @@ func (r *jsonReader) numberToValue(n encjson.Number, path omnist.Path) (omnist.V
 	if strings.ContainsAny(s, ".eE") {
 		f, err := n.Float64()
 		if err != nil {
-			return omnist.Value{}, r.errHere(omnist.CodeParseUnexpectedToken, "invalid number literal: "+s)
+			return omnist.Value{}, r.errHere(omnist.CodeParseCodecSyntax, "JSON: invalid number literal: "+s)
 		}
 		return omnist.ScalarValue(omnist.NewNumberScalar(f)), nil
 	}

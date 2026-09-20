@@ -529,3 +529,48 @@ func TestInferEmptyLabelFallsBackToFieldName(t *testing.T) {
 		t.Fatalf("expected generated name 'omnist.Field', got %q", refName)
 	}
 }
+
+// S-21 (spec §3.7): infer MUST NOT emit `any` unless requested, and when it
+// is requested every opening it introduces MUST be reported. Both ways a
+// field can open to `any` -- conflicting scalar kinds and mixed object/scalar
+// shapes -- are exercised together, nested one record down, with the flag off
+// (a hard failure, nothing emitted) and on (both openings emitted and both
+// reported, at their nested record's own location).
+func TestInferS21NestedOpeningsAreReportedAndNeverImplicit(t *testing.T) {
+	s1 := strDoc(nodeEdge("o", func() *omnist.Node {
+		n := omnist.NewNode()
+		n.Edges = append(n.Edges, intEdge("a", 1), nodeEdge("b", strDoc(intEdge("c", 1)).Node))
+		return n
+	}()))
+	s2 := strDoc(nodeEdge("o", func() *omnist.Node {
+		n := omnist.NewNode()
+		n.Edges = append(n.Edges, strEdge("a", "s"), intEdge("b", 2))
+		return n
+	}()))
+
+	if s, err := Infer([]omnist.Document{s1, s2}, "", false); err == nil {
+		t.Fatalf("allowAny=false must fail, got schema %#v", s)
+	}
+
+	s, fallbacks, err := InferWithReport([]omnist.Document{s1, s2}, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []AnyFallback{
+		{Location: "O.a", Reason: "values of more than one scalar kind (integer, string)"},
+		{Location: "O.b", Reason: "mixes objects and values"},
+	}
+	if len(fallbacks) != len(want) || fallbacks[0] != want[0] || fallbacks[1] != want[1] {
+		t.Fatalf("fallbacks = %v, want %v", fallbacks, want)
+	}
+	for _, label := range []string{"a", "b"} {
+		if f := mustField(t, s, "O", label); f.Type.Kind != omnist.TypeAnyKind {
+			t.Errorf("O.%s type = %v, want any", label, f.Type)
+		}
+	}
+	// A schema with no conflict opens nothing and reports nothing, flag on or off.
+	_, fb, err := InferWithReport([]omnist.Document{s1, s1}, "", true)
+	if err != nil || len(fb) != 0 {
+		t.Fatalf("no-conflict samples: err=%v fallbacks=%v, want none", err, fb)
+	}
+}

@@ -309,7 +309,7 @@ func Example_parseError() {
 		panic("expected a *ParseError")
 	}
 	fmt.Println(perr.Line, perr.Col, perr.Code)
-	// Output: 1 10 parse.unexpected-token
+	// Output: 1 10 parse.codec-syntax
 }
 
 // Example_documentsEqual backs reference.md's Operations section:

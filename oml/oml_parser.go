@@ -17,6 +17,10 @@ import (
 // path is possible, since a parse.* failure occurs before an omnist.Document
 // exists.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
+	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseUnexpectedToken)
+	if berr != nil {
+		return omnist.Document{}, berr
+	}
 	checker := omnist.NewLimitChecker(limits)
 	p := &parser{lex: newLexer(text, checker), checker: checker}
 	if err := p.advance(); err != nil {
@@ -116,25 +120,19 @@ func (p *parser) parseDocument() (omnist.Document, error) {
 		return omnist.NodeDocument(node), nil
 	}
 
-	startTok := p.cur
 	val, err := p.parseScalarValue()
 	if err != nil {
 		return omnist.Document{}, err
 	}
 	if p.cur.kind != tokEOF {
-		// A leftover ':' is only "trailing content" when the scalar just
-		// consumed came from a reserved-word IDENT (null/true/false) that
-		// failed the §4.6.1 label lookahead — spec §4.6.1's own worked
-		// example ("null: 1 ... fails on the leftover ':' as trailing
-		// content") pins that case explicitly. Any other leftover ':' (for
-		// instance after a bare NUMBER like "nan") was never a candidate
-		// for label position at all, so it is simply an out-of-place
-		// token, not a continuation of an almost-valid construct —
-		// reported as parse.unexpected-token instead, per
-		// oml-grammar/reserved/nan-bare-is-a-number-token-not-a-label.
-		if p.cur.kind == tokColon && startTok.kind != tokIdent {
-			return omnist.Document{}, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "unexpected ':' after a value")
-		}
+		// OML-25 (spec §4.6.1, E-24): any scalar followed by leftover
+		// content at document level is parse.trailing-content, reported at
+		// the first leftover significant token -- whichever token that is.
+		// That includes a leftover ':' after a bare NUMBER (`nan: 1`,
+		// `5: 1`) as much as one after a reserved word (`null: 1`,
+		// `true: 1`): none of them was ever an edge label, and the code
+		// does not depend on which kind of scalar came first. A trailing
+		// comment is trivia, so it is never leftover.
 		return omnist.Document{}, p.errAt(p.cur, omnist.CodeParseTrailingContent, "content remains after the document")
 	}
 	return omnist.ValueDocument(val), nil

@@ -29,6 +29,10 @@ import (
 // be a text-position path. A ... schema.* ... diagnostic's path MUST be a
 // Document or Schema path ... never a text-position path."
 func Read(text string) (omnist.Schema, error) {
+	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseUnexpectedToken)
+	if berr != nil {
+		return omnist.Schema{}, berr
+	}
 	p := &osdParser{lex: newOSDLexer(text)}
 	if err := p.advance(); err != nil {
 		return omnist.Schema{}, err

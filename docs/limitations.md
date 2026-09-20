@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.3.1-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.4.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,12 +17,18 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**175 pass / 0 fail / 29 skip** of 204 vectors (`omnist-spec` v0.9.1-beta
-pin). 28 of those 29 skips are the OSD-OML extension
+**215 pass / 0 fail / 34 skip** of 249 vectors (`omnist-spec` v0.19.0-beta
+pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
+28 of the 34 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
 port, cited honestly per §9.5 rather than crashing or failing the
 driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
-for implementing it. Track 1
+for implementing it. The other 6 are the YAML alias-expansion vectors, which
+carry `declared_max_alias_expansion`: this port does not enforce D-18 and has
+no configuration surface for it, so the runner skips them citing `DIV-3` and
+[issue #117](https://github.com/omnist-dev/omnist-go/issues/117) rather than
+running them against the wrong limit. All 34 skips are E-20's "not yet
+implemented" category; none is a documented divergence (E-21). Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
@@ -40,8 +46,7 @@ was always correct (the reference implementation genuinely emits the bare
 `unreachable-record`, not a namespaced form); what was missing was
 extending §8.5.2 rule 4's code-agnostic comparison (already used for
 Track 2's diagnostics) to Track 1's finding `code` field, done in
-`tools/conformance/fixtures.go`. The one Track 2 skip needs a TOML
-strict-mode write parameter this repo hasn't built yet. Both conformance
+`tools/conformance/fixtures.go`. Both conformance
 tracks are strictly CI-gating as of issue #74.
 
 ### Codex audit cycle (#70–#81)
@@ -49,6 +54,59 @@ tracks are strictly CI-gating as of issue #74.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.4.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1's alpha-series
+rule: this release changes observable reader and writer behavior (new
+diagnostic codes, inputs that used to be accepted now refused) and adopts
+`omnist-spec` v0.19.0-beta (from v0.9.1-beta). Conformance against the new
+pin, Track 2: **194 pass / 26 fail / 29 skip of 249** before any code change;
+**215 pass / 0 fail / 34 skip of 249** after (Track 1 stayed 19/19).
+Compared as `(path, code)` sets, not code-agnostically. What changed:
+
+- **D-15 / D-21 (byte-order mark), every read surface.** One leading `U+FEFF`
+  is stripped on OML, OSD, JSON, YAML, TOML and XML (OML, OSD, JSON, TOML and
+  XML used to reject it), and a second is rejected at `1:1` —
+  `parse.unexpected-token` on OML and OSD, `parse.codec-syntax` on the four
+  codecs. YAML used to swallow the second mark silently, because `yaml.v3`
+  discards one on its own; the check now runs before the library sees the
+  text. Stripping lives in one place, `omnist.StripLeadingBOM` (`bom.go`).
+  A mark anywhere else is ordinary content. No writer emits one, and a test
+  fails if any file in the repository contains a raw `U+FEFF`.
+- **`parse.codec-syntax`** (§8.3.1) is now the code for input a codec cannot
+  accept: malformed JSON, YAML, TOML and XML used to report
+  `parse.unexpected-token` (and XML/JSON content after the document,
+  `parse.trailing-content`). Callers matching on the old codes must match on
+  the new one.
+- **The data-XML profile** (fixes #116). A `DOCTYPE` is refused on sight
+  (`format.dtd-forbidden`), an entity reference other than the five predefined
+  ones is refused (`format.entity-forbidden`), and mixed content — which used
+  to be silently dropped — is refused (`format.mixed-content`), each at path
+  `$`. The refusal runs after well-formedness: a malformed document is a
+  `parse.codec-syntax` error even when it also contains one of the three.
+  Writing a string with a C0 control character other than tab, LF and CR now
+  fails with `write.unsupported-value` instead of emitting ill-formed XML.
+- **YAML merge keys** (`<<: *a`, `<<: [*a, *b]`) were not implemented — `<<`
+  was read as an ordinary label. They now flatten into the referring mapping in
+  source order, merged entries first, with the collision, nested-merge and
+  repeated-alias rules of `docs/formats/yaml.md`.
+- **OML-25.** Any scalar followed by leftover content at document level is
+  `parse.trailing-content` (`nan: 1`, `inf: 1`, `5: 1`), not
+  `parse.unexpected-token`.
+- **E-23.** String-body errors report the string's opening quote: a control
+  character inside an OML multiline string, and inside any OSD string, used to
+  report the character's own position. An OSD control character immediately
+  after a backslash is now `parse.control-character`, as §5.3.1 requires.
+- **Conformance runner.** `declared_max_alias_expansion` joins the limit-key
+  allowlist (six vectors skipped, citing `DIV-3` and #117), and the
+  TOML `strict` write vector now runs instead of being skipped with a reason
+  that was not true (TOML's failures are unconditional, so there is no strict
+  mode to lack).
+- **Not changed.** D-18 (alias expansion limit) is not implemented — see #117.
+  `infer` was checked against S-21 and already complies (`any` only on
+  request, both openings reported, nested included); a regression test pins it.
+  The OSD writer still emits a backslash before a control character in a label,
+  which the reader now rejects; OSD has no spelling for such a label, which
+  sits uneasily with OSD-11 and is raised as an open spec question in the PR.
 
 **`v0.3.1-alpha`**, a patch bump per `CONTRIBUTING.md` §1's
 alpha-series rule: no library API or observable behavior changed, just
@@ -102,7 +160,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `47a84d6` (`v0.9.1-beta`), pinned via the
+`omnist-spec` at commit `d02458b` (`v0.19.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a

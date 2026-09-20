@@ -154,6 +154,10 @@ import (
 // stateless, is used directly and unmodified, exactly as every other
 // codec uses it.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
+	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseCodecSyntax)
+	if berr != nil {
+		return omnist.Document{}, berr
+	}
 	r := &tomlReader{
 		limits:  limits,
 		checker: omnist.NewLimitChecker(limits),
@@ -462,7 +466,7 @@ func (r *tomlReader) wrapParserError(err error) error {
 	pe := err.(*unstable.ParserError) //nolint:errorlint // see doc comment: the library's own error is always this concrete type
 	shape := r.p.Shape(r.p.Range(pe.Highlight))
 	path := itoa(shape.Start.Line) + ":" + itoa(shape.Start.Column)
-	return &omnist.ParseError{Line: shape.Start.Line, Col: shape.Start.Column, Path: path, Code: omnist.CodeParseUnexpectedToken, Message: pe.Message}
+	return &omnist.ParseError{Line: shape.Start.Line, Col: shape.Start.Column, Path: path, Code: omnist.CodeParseCodecSyntax, Message: "TOML: " + pe.Message}
 }
 
 // readScalar resolves a scalar-kind value node (String/Bool/Integer/
@@ -487,19 +491,19 @@ func (r *tomlReader) readScalar(v *unstable.Node) (omnist.Value, error) {
 	case unstable.LocalDate:
 		data := string(v.Data)
 		if !omnist.MatchesISOKind(data, omnist.TemporalDate) {
-			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed date literal"}
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseCodecSyntax, Message: "TOML: malformed date literal"}
 		}
 		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(data))), nil
 	case unstable.LocalTime:
 		data := string(v.Data)
 		if !omnist.MatchesISOKind(data, omnist.TemporalTime) {
-			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed time literal"}
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseCodecSyntax, Message: "TOML: malformed time literal"}
 		}
 		return omnist.ScalarValue(omnist.NewTimeScalar(omnist.ParseISOTime(data))), nil
 	default: // unstable.LocalDateTime, unstable.DateTime
 		dt, ok := parseTOMLDateTime(string(v.Data))
 		if !ok {
-			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseUnexpectedToken, Message: "malformed datetime literal"}
+			return omnist.Value{}, &omnist.ParseError{Path: r.posPath(v.Raw), Code: omnist.CodeParseCodecSyntax, Message: "TOML: malformed datetime literal"}
 		}
 		return omnist.ScalarValue(omnist.NewDateTimeScalar(dt)), nil
 	}
