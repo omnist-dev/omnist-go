@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,35 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 //     tokens until EOF, rejecting any further StartElement or non-whitespace
 //     CharData.
 //
+// # The data-XML profile, and why its refusals run last
+//
+// docs/formats/xml.md refuses three well-formed constructs: any DOCTYPE
+// declaration (format.dtd-forbidden), an entity reference other than the five
+// predefined ones (format.entity-forbidden), and mixed content
+// (format.mixed-content), each at path "$". They are refusals, not syntax
+// errors, and a document that is not well-formed is a parse.codec-syntax
+// failure even if it also contains one of the three. So this reader records the
+// first profile violation it meets and keeps reading; a syntax error anywhere in
+// the document wins, and the recorded refusal is returned only once the whole
+// document has been read successfully.
+//
+// Go's decoder never resolves a DOCTYPE-defined entity, so an undeclared entity
+// reference would be a fatal decode error that stops the read before the rest of
+// the document could be checked. To keep reading past one, every non-predefined
+// name that appears as &name; in the source is registered in Decoder.Entity with
+// a sentinel replacement: a private-use rune chosen because it does not occur in
+// the source, so it can only have come from an expansion. A sentinel found in
+// text or an attribute value is an entity reference actually used; one inside a
+// comment, CDATA section or processing instruction is never expanded and so
+// never flagged.
+//
+// # A leading byte-order mark
+//
+// Spec §2.5 D-15/D-21 apply before anything else: one leading U+FEFF is
+// stripped and a second is a parse.codec-syntax failure at 1:1
+// (omnist.StripLeadingBOM). encoding/xml would otherwise treat the first as
+// stray text before the document element.
+//
 // # Attribute and namespace-prefix dropping
 //
 // Per docs/formats/xml.md ("Attributes and namespace prefixes are
@@ -93,17 +123,25 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 // live in readStart, run once per StartElement token (root and every
 // child alike) as soon as that element's own Document path is known.
 func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
+	src, berr := omnist.StripLeadingBOM(src, omnist.CodeParseCodecSyntax)
+	if berr != nil {
+		return omnist.Document{}, nil, berr
+	}
 	if len(src) == 0 {
 		return omnist.Document{}, nil, &omnist.ParseError{
 			Path:    "1:0",
-			Code:    omnist.CodeParseUnexpectedToken,
-			Message: "unexpected end of input",
+			Code:    omnist.CodeParseCodecSyntax,
+			Message: "XML: unexpected end of input",
 		}
 	}
+	dec := encxml.NewDecoder(strings.NewReader(src))
+	sentinel := entitySentinel(src)
+	dec.Entity = entityMap(src, sentinel)
 	r := &xmlReader{
-		dec:     encxml.NewDecoder(strings.NewReader(src)),
-		checker: omnist.NewLimitChecker(limits),
-		schema:  schema,
+		dec:      dec,
+		checker:  omnist.NewLimitChecker(limits),
+		schema:   schema,
+		sentinel: sentinel,
 	}
 	label, node, isLeaf, leafText, err := r.readRoot()
 	if err != nil {
@@ -111,6 +149,11 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	}
 	if err := r.checkTrailing(); err != nil {
 		return omnist.Document{}, nil, err
+	}
+	// The whole document is well-formed; only now may a recorded profile
+	// refusal be reported (see "The data-XML profile" above).
+	if r.profile != nil {
+		return omnist.Document{}, nil, r.profile
 	}
 	root := omnist.NewNode()
 	if isLeaf {
@@ -136,13 +179,70 @@ type xmlReader struct {
 	checker *omnist.LimitChecker
 	schema  *omnist.Schema
 	diags   []omnist.Diagnostic
+	// profile is the first data-XML profile refusal seen so far, or nil.
+	profile *omnist.ParseError
+	// sentinel is the rune every non-predefined entity reference expands to.
+	sentinel rune
+}
+
+// entityRef matches a named entity reference. Numeric character references
+// (&#65; &#x41;) start with '#' and never match.
+var entityRef = regexp.MustCompile(`&([\p{L}_:][\p{L}\p{N}_:.\-]*);`)
+
+// predefinedEntity reports whether name is one of XML's five predefined
+// entities, which the decoder resolves itself.
+func predefinedEntity(name string) bool {
+	switch name {
+	case "lt", "gt", "amp", "quot", "apos":
+		return true
+	}
+	return false
+}
+
+// entitySentinel returns a private-use rune that does not occur in src, so any
+// occurrence of it in decoded text can only be the expansion of an entity.
+func entitySentinel(src string) rune {
+	r := rune(0xE000)
+	for strings.ContainsRune(src, r) {
+		r++
+	}
+	return r
+}
+
+// entityMap registers every non-predefined named entity referenced in src with
+// the sentinel as its replacement text, so the decoder keeps reading instead of
+// failing at the first one.
+func entityMap(src string, sentinel rune) map[string]string {
+	m := map[string]string{}
+	for _, sub := range entityRef.FindAllStringSubmatch(src, -1) {
+		if !predefinedEntity(sub[1]) {
+			m[sub[1]] = string(sentinel)
+		}
+	}
+	return m
+}
+
+// refuse records the first data-XML profile refusal. Later ones are dropped:
+// a read reports one diagnostic, and the earliest in document order is the
+// most useful.
+func (r *xmlReader) refuse(code omnist.Code, msg string) {
+	if r.profile == nil {
+		r.profile = &omnist.ParseError{Path: "$", Code: code, Message: msg}
+	}
+}
+
+// checkText flags a use of a non-predefined entity in decoded text.
+func (r *xmlReader) checkText(s string) {
+	if strings.ContainsRune(s, r.sentinel) {
+		r.refuse(omnist.CodeFormatEntityForbidden, "an entity reference other than the five predefined entities is outside the data-XML profile")
+	}
 }
 
 // readRoot finds the single document element, consumes it via
 // readElementBody, and returns its local name and body. Leading
 // whitespace, comments, and processing instructions are skipped. Any
 // non-whitespace text before the root element is rejected with
-// omnist.CodeParseUnexpectedToken.
+// omnist.CodeParseCodecSyntax.
 func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, leafText string, err error) {
 	for {
 		tok, err := r.next()
@@ -174,10 +274,18 @@ func (r *xmlReader) readRoot() (label string, node *omnist.Node, isLeaf bool, le
 			return label, node, isLeaf, leafText, err
 		case encxml.CharData:
 			if len(strings.TrimSpace(string(t))) != 0 {
-				return "", nil, false, "", r.errHere(omnist.CodeParseUnexpectedToken, "unexpected text outside the document element")
+				return "", nil, false, "", r.errHere(omnist.CodeParseCodecSyntax, "XML: unexpected text outside the document element")
 			}
 			// insignificant whitespace before the root element: skip
-		default: // encxml.ProcInst, encxml.Comment, encxml.Directive
+		case encxml.Directive:
+			// The prolog is the only place a DOCTYPE is well-formed. It is
+			// refused on sight (not when an entity it defines is used); any
+			// other <!...> construct is simply not XML.
+			if !strings.HasPrefix(string(t), "DOCTYPE") {
+				return "", nil, false, "", r.errHere(omnist.CodeParseCodecSyntax, "XML: unrecognized <!...> declaration")
+			}
+			r.refuse(omnist.CodeFormatDTDForbidden, "a DOCTYPE declaration is outside the data-XML profile")
+		default: // encxml.ProcInst, encxml.Comment
 			// prolog content: skip
 		}
 	}
@@ -199,12 +307,12 @@ func (r *xmlReader) checkTrailing() error {
 		switch t := tok.(type) {
 		case encxml.CharData:
 			if len(strings.TrimSpace(string(t))) != 0 {
-				return r.errHere(omnist.CodeParseTrailingContent, "content remains after the document element")
+				return r.errHere(omnist.CodeParseCodecSyntax, "XML: content remains after the document element")
 			}
-		case encxml.ProcInst, encxml.Comment, encxml.Directive:
+		case encxml.ProcInst, encxml.Comment:
 			// trailing prolog-like content: skip
-		default:
-			return r.errHere(omnist.CodeParseTrailingContent, "content remains after the document element")
+		default: // a second element, or a <!...> declaration after the root
+			return r.errHere(omnist.CodeParseCodecSyntax, "XML: content remains after the document element")
 		}
 	}
 }
@@ -223,13 +331,13 @@ func (r *xmlReader) next() (encxml.Token, error) {
 // *omnist.ParseError, mirroring ReadJSON's wrapDecodeErr (json_reader.go): the
 // stdlib decoder does not expose an error taxonomy this package's omnist.Code
 // values can select between meaningfully, so every low-level decode
-// failure reports omnist.CodeParseUnexpectedToken with the decoder's own message,
-// positioned by its InputOffset.
+// failure reports omnist.CodeParseCodecSyntax (spec §8.3.1) with the decoder's
+// own message, positioned by its InputPos.
 func (r *xmlReader) wrapDecodeErr(err error) error {
 	if errors.Is(err, io.EOF) {
-		return r.errHere(omnist.CodeParseUnexpectedToken, "unexpected end of input")
+		return r.errHere(omnist.CodeParseCodecSyntax, "XML: unexpected end of input")
 	}
-	return r.errHere(omnist.CodeParseUnexpectedToken, err.Error())
+	return r.errHere(omnist.CodeParseCodecSyntax, "XML: "+err.Error())
 }
 
 // errHere builds a *omnist.ParseError positioned at the decoder's current byte
@@ -261,8 +369,12 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record, docPath string) (
 			if children == nil {
 				return nil, true, text.String(), nil
 			}
+			if strings.TrimSpace(text.String()) != "" {
+				r.refuse(omnist.CodeFormatMixedContent, "text alongside child elements (mixed content) is outside the data-XML profile")
+			}
 			return children, false, "", nil
 		case encxml.CharData:
+			r.checkText(string(t))
 			text.Write(t)
 		case encxml.StartElement:
 			if children == nil {
@@ -290,8 +402,10 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record, docPath string) (
 			} else {
 				children.AddNode(label, childNode)
 			}
-		case encxml.ProcInst, encxml.Comment, encxml.Directive:
-			// ignored wherever it appears
+		case encxml.Directive:
+			return nil, false, "", r.errHere(omnist.CodeParseCodecSyntax, "XML: a <!...> declaration is not allowed inside an element")
+		case encxml.ProcInst, encxml.Comment:
+			// inert wherever they appear
 		}
 	}
 }
@@ -317,6 +431,9 @@ func (r *xmlReader) readChild(childRec *omnist.Record, start encxml.StartElement
 // (readRoot) and every child (readChild) alike -- as soon as that
 // element's docPath is known, before its body is read.
 func (r *xmlReader) readStart(start encxml.StartElement, docPath string) {
+	for _, a := range start.Attr {
+		r.checkText(a.Value)
+	}
 	if len(start.Attr) > 0 {
 		r.diags = append(r.diags, omnist.Diagnostic{
 			Path:     docPath,

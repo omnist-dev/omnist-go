@@ -71,11 +71,18 @@ import (
 // consulted for anything — so v3's YAML-1.2 choices on exactly those two
 // points are never allowed to leak through.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
+	// D-15/D-21 run here, on the raw text, before yaml.v3 sees it: the
+	// library discards a leading mark on its own, so it would swallow a
+	// second one silently (an undeclared second strip).
+	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseCodecSyntax)
+	if berr != nil {
+		return omnist.Document{}, berr
+	}
 	dec := yamllib.NewDecoder(strings.NewReader(text))
 	var root yamllib.Node
 	if err := dec.Decode(&root); err != nil {
 		if errors.Is(err, io.EOF) {
-			return omnist.Document{}, &omnist.ParseError{Line: 1, Col: 1, Path: "1:1", Code: omnist.CodeParseUnexpectedToken, Message: "unexpected end of input"}
+			return omnist.Document{}, &omnist.ParseError{Line: 1, Col: 1, Path: "1:1", Code: omnist.CodeParseCodecSyntax, Message: "YAML: unexpected end of input"}
 		}
 		return omnist.Document{}, wrapYAMLDecodeErr(err)
 	}
@@ -97,23 +104,37 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// root is always a DocumentNode wrapping exactly one child when Decode
 	// succeeds with io.EOF not yet reached above — yaml.v3's contract for
 	// decoding into a *yamllib.Node.
-	r := &yamlReader{checker: omnist.NewLimitChecker(limits)}
+	r := &yamlReader{checker: omnist.NewLimitChecker(limits), maxMergeDepth: limits.MaxDepth}
 	return r.readDocument(root.Content[0])
 }
 
-// wrapYAMLDecodeErr converts a yaml.v3 decode error into a *omnist.ParseError.
-// yaml.v3 does not expose a structured position for every syntax error (it
-// reports "yaml: line N: ..." as plain text), so — like ReadJSON's own
-// wrapDecodeErr for the same reason with encoding/json — this preserves the
-// library's message and falls back to position 1:1, which is not exact for
-// every syntax error but is what the library makes available.
+// yamlErrLine extracts the line number yaml.v3 embeds in its error text.
+var yamlErrLine = regexp.MustCompile(`line (\d+)`)
+
+// wrapYAMLDecodeErr converts a yaml.v3 decode error into a *omnist.ParseError
+// with code parse.codec-syntax (spec §8.3.1). yaml.v3 does not expose a
+// structured position for a syntax error (it reports "yaml: line N: ..." as
+// plain text), so the line is recovered from that text and the column is
+// reported as 1: exact on the line, approximate on the column, and 1:1 when
+// the library names no line at all.
 func wrapYAMLDecodeErr(err error) error {
-	return &omnist.ParseError{Line: 1, Col: 1, Path: "1:1", Code: omnist.CodeParseUnexpectedToken, Message: err.Error()}
+	line := 1
+	if m := yamlErrLine.FindStringSubmatch(err.Error()); m != nil {
+		if n, convErr := strconv.Atoi(m[1]); convErr == nil && n > 0 {
+			line = n
+		}
+	}
+	return &omnist.ParseError{Line: line, Col: 1, Path: fmt.Sprintf("%d:1", line), Code: omnist.CodeParseCodecSyntax, Message: "YAML: " + err.Error()}
 }
 
 // yamlReader holds the state for one Read call.
 type yamlReader struct {
 	checker *omnist.LimitChecker
+	// mergeDepth counts merge sources currently being read (a merged mapping
+	// that itself merges another), bounded by maxMergeDepth (the configured
+	// MaxDepth) so a self-referential merge cannot recurse without end.
+	mergeDepth    int
+	maxMergeDepth int
 	// path is the omnist.Document path (spec §8.4) of the node currently being
 	// read — the root path "$" at the top level, descending by label as
 	// readMember/readSequenceElements recurse into nested mappings/
@@ -179,7 +200,16 @@ func (r *yamlReader) readDocument(n *yamllib.Node) (omnist.Document, error) {
 // ReadJSON's readObjectBody convention.
 func (r *yamlReader) readMappingBody(n *yamllib.Node) (*omnist.Node, error) {
 	node := omnist.NewNode()
+	var sources [][]omnist.Edge
 	for i := 0; i+1 < len(n.Content); i += 2 {
+		if isMergeKey(n.Content[i]) {
+			srcs, err := r.readMergeSources(n.Content[i], n.Content[i+1])
+			if err != nil {
+				return nil, err
+			}
+			sources = append(sources, srcs...)
+			continue
+		}
 		keyNode := deref(n.Content[i])
 		label, err := r.readLabel(keyNode)
 		if err != nil {
@@ -189,7 +219,97 @@ func (r *yamlReader) readMappingBody(n *yamllib.Node) (*omnist.Node, error) {
 			return nil, err
 		}
 	}
-	return node, nil
+	if sources == nil {
+		return node, nil
+	}
+	return applyMerge(sources, node), nil
+}
+
+// isMergeKey reports whether a mapping key node is YAML's merge key `<<`
+// (yaml.v3 tags a plain `<<` scalar !!merge; a quoted "<<" is an ordinary
+// string key and stays a label).
+func isMergeKey(k *yamllib.Node) bool {
+	return k.Kind == yamllib.ScalarNode && k.Tag == "!!merge"
+}
+
+// readMergeSources reads the value of a `<<` entry into one edge list per
+// merged mapping, in source order: `<<: *x` is one source, `<<: [*a, *b]` is
+// two (a then b), and an inline mapping (or a sequence of them) merges the same
+// way. Each source is read in full, so a source that itself merges another
+// arrives already merged, with its own grandparent entries first.
+func (r *yamlReader) readMergeSources(key, val *yamllib.Node) ([][]omnist.Edge, error) {
+	if r.mergeDepth >= r.maxMergeDepth {
+		return nil, &omnist.ParseError{Line: key.Line, Col: key.Column, Path: "$", Code: omnist.CodeDocumentLimitDepth, Message: "merge nesting exceeds the configured depth limit"}
+	}
+	r.mergeDepth++
+	defer func() { r.mergeDepth-- }()
+
+	val = deref(val)
+	var elems []*yamllib.Node
+	switch val.Kind {
+	case yamllib.MappingNode:
+		elems = []*yamllib.Node{val}
+	case yamllib.SequenceNode:
+		elems = val.Content
+	}
+	if len(elems) == 0 {
+		return nil, r.errAt(val, omnist.CodeParseCodecSyntax, "YAML: a merge key's value must be a mapping or a sequence of mappings")
+	}
+	out := make([][]omnist.Edge, 0, len(elems))
+	for _, e := range elems {
+		e = deref(e)
+		if e.Kind != yamllib.MappingNode {
+			return nil, r.errAt(e, omnist.CodeParseCodecSyntax, "YAML: a merge key's value must be a mapping or a sequence of mappings")
+		}
+		body, err := r.readMappingBody(e)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, body.Edges)
+	}
+	return out, nil
+}
+
+// applyMerge combines merged sources with a mapping's own entries under
+// docs/formats/yaml.md's rules. Merged entries come first, sources in the
+// order written; a label supplied by several sources (or by a source and the
+// mapping itself) yields one group of edges, at the position of its first
+// appearance, carrying the mapping's own value when it writes one and
+// otherwise the earliest source's. The mapping's remaining own entries follow,
+// in their written order, wherever the `<<` entry itself sat.
+func applyMerge(sources [][]omnist.Edge, own *omnist.Node) *omnist.Node {
+	var order []string
+	owner := map[string]int{}
+	groups := map[string][]omnist.Edge{}
+	for i, src := range sources {
+		for _, e := range src {
+			if o, seen := owner[e.Label]; !seen {
+				owner[e.Label] = i
+				order = append(order, e.Label)
+			} else if o != i {
+				continue
+			}
+			groups[e.Label] = append(groups[e.Label], e)
+		}
+	}
+	ownByLabel := map[string][]omnist.Edge{}
+	for _, e := range own.Edges {
+		ownByLabel[e.Label] = append(ownByLabel[e.Label], e)
+	}
+	out := omnist.NewNode()
+	for _, label := range order {
+		if mine, ok := ownByLabel[label]; ok {
+			out.Edges = append(out.Edges, mine...)
+		} else {
+			out.Edges = append(out.Edges, groups[label]...)
+		}
+	}
+	for _, e := range own.Edges {
+		if _, merged := owner[e.Label]; !merged {
+			out.Edges = append(out.Edges, e)
+		}
+	}
+	return out
 }
 
 // readLabel resolves a mapping key node to the string label it must be.

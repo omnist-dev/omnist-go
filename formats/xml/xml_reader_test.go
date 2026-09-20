@@ -270,8 +270,8 @@ func TestReadXMLRejectsMultipleTopLevelElements(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *omnist.ParseError, got %T: %v", err, err)
 	}
-	if pe.Code != omnist.CodeParseTrailingContent {
-		t.Errorf("got code %v, want %v", pe.Code, omnist.CodeParseTrailingContent)
+	if pe.Code != omnist.CodeParseCodecSyntax {
+		t.Errorf("got code %v, want %v", pe.Code, omnist.CodeParseCodecSyntax)
 	}
 }
 
@@ -337,8 +337,8 @@ func TestReadXMLRejectsTextAfterRoot(t *testing.T) {
 		t.Fatal("expected an error for text after the root element")
 	}
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseTrailingContent {
-		t.Fatalf("got %v (%T), want omnist.CodeParseTrailingContent", err, err)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Fatalf("got %v (%T), want omnist.CodeParseCodecSyntax", err, err)
 	}
 }
 
@@ -399,20 +399,13 @@ func TestReadXMLUnterminatedElementReturnsParseError(t *testing.T) {
 	}
 }
 
-// --- mixed content: narrow/cosmetic, elements win over stray text ---
+// --- mixed content is refused (data-XML profile), no longer silently dropped ---
 
-func TestReadXMLMixedContentDiscardsStrayText(t *testing.T) {
-	d, _, err := Read(`<a>hello<b>x</b>world</a>`, omnist.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	node, ok := d.Node.Edges[0].Target.Node()
-	if !ok {
-		t.Fatalf("expected a as a node")
-	}
-	want := omnist.NewNode().AddValue("b", omnist.ScalarValue(omnist.NewStringScalar("x")))
-	if !nodeEqual(node, want) {
-		t.Errorf("got %+v, want %+v", node, want)
+func TestReadXMLMixedContentIsRefused(t *testing.T) {
+	_, _, err := Read(`<a>hello<b>x</b>world</a>`, omnist.DefaultLimits())
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeFormatMixedContent || pe.Path != "$" {
+		t.Fatalf("got %#v, want format.mixed-content at $", err)
 	}
 }
 

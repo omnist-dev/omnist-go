@@ -171,11 +171,32 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 			Severity: omnist.SeverityError,
 		}
 	}
-	writeXMLText(b, writeXMLScalarText(v.Scalar))
+	text := writeXMLScalarText(v.Scalar)
+	if i := strings.IndexFunc(text, isIllegalXMLControl); i >= 0 {
+		// XML 1.0 cannot represent a raw C0 control character other than
+		// tab, LF and CR, and offers no substitute spelling (a numeric
+		// reference to one is itself not well-formed in 1.0). U+0001 is a
+		// legal Document string, so this is a target-format limit reachable
+		// from a valid Document: fail unconditionally rather than drop or
+		// replace the character (spec §8.3.8/§8.3.9, write.unsupported-value).
+		return omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeWriteUnsupportedValue,
+			Message:  fmt.Sprintf("U+%04X is a C0 control character XML 1.0 cannot represent and cannot be written", []rune(text[i:])[0]),
+			Severity: omnist.SeverityError,
+		}
+	}
+	writeXMLText(b, text)
 	b.WriteString("</")
 	b.WriteString(label)
 	b.WriteByte('>')
 	return nil
+}
+
+// isIllegalXMLControl reports whether r is a C0 control character that XML 1.0
+// forbids in a document: everything below U+0020 except tab, LF and CR.
+func isIllegalXMLControl(r rune) bool {
+	return r < 0x20 && r != '\t' && r != '\n' && r != '\r'
 }
 
 // writeXMLText renders leaf text, escaping a literal carriage return as

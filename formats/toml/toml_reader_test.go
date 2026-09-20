@@ -520,8 +520,8 @@ func TestTOMLSyntaxErrorReported(t *testing.T) {
 		t.Fatal("expected a parse error for a signed radix literal")
 	}
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseUnexpectedToken {
-		t.Errorf("error = %#v, want omnist.CodeParseUnexpectedToken", err)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Errorf("error = %#v, want omnist.CodeParseCodecSyntax", err)
 	}
 	if !strings.Contains(pe.Message, "radix") {
 		t.Errorf("message = %q, want it to mention the radix-prefix rule", pe.Message)

@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"strings"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -120,5 +121,53 @@ func TestRunVectorUnknownOperationFails(t *testing.T) {
 	res := RunVector(v)
 	if res.Status != StatusFail {
 		t.Fatalf("want fail, got %v", res.Status)
+	}
+}
+
+// A vector carrying declared_max_alias_expansion (test-suite/README.md's
+// fourth declared-limit key) MUST be skipped, never run against this port's
+// own behavior: expansion-at-declared-limit-succeeds would otherwise pass
+// without pinning any boundary (the DIV-3 false pass), and the two D-18
+// rejection vectors would fail. The skip reason must cite DIV-3 and the
+// tracking issue.
+func TestAliasExpansionLimitKeyIsSkippedNotRun(t *testing.T) {
+	for _, limit := range []string{"2", "3", "50"} {
+		v := Vector{
+			Name:      "formats-yaml/alias-expansion/x",
+			Operation: "parse",
+			Input:     []byte(`{"format": "yaml", "declared_max_alias_expansion": ` + limit + `, "text": "a: 1\n"}`),
+			Expect:    []byte(`{"ok": true, "document": {"edges": [["a", {"scalar": {"kind": "integer", "value": 1}}]]}}`),
+		}
+		r := RunVector(v)
+		if r.Status != StatusSkip {
+			t.Fatalf("limit %s: status = %v, want skip (a run would pass or fail against the wrong limit)", limit, r.Status)
+		}
+		if !strings.Contains(r.Reason, "DIV-3") || !strings.Contains(r.Reason, "#117") {
+			t.Errorf("skip reason must cite DIV-3 and the tracking issue: %q", r.Reason)
+		}
+	}
+	// The same vector without the key runs normally.
+	v := Vector{
+		Name:      "x",
+		Operation: "parse",
+		Input:     []byte(`{"format": "yaml", "text": "a: 1\n"}`),
+		Expect:    []byte(`{"ok": true, "document": {"edges": [["a", {"scalar": {"kind": "integer", "value": 1}}]]}}`),
+	}
+	if r := RunVector(v); r.Status != StatusPass {
+		t.Errorf("status = %v (%s), want pass", r.Status, r.Reason)
+	}
+}
+
+// A TOML write vector with strict:true is not skippable: TOML's failures are
+// unconditional, so the strict flag changes nothing and the vector runs.
+func TestTOMLStrictWriteVectorRuns(t *testing.T) {
+	v := Vector{
+		Name:      "x",
+		Operation: "write",
+		Input:     []byte(`{"format": "toml", "strict": true, "document": {"edges": [["n", {"scalar": {"kind": null, "value": null}}]]}}`),
+		Expect:    []byte(`{"ok": false, "diagnostics": [{"path": "$.n", "code": "write.unsupported-value"}]}`),
+	}
+	if r := RunVector(v); r.Status != StatusPass {
+		t.Errorf("status = %v (%s), want pass", r.Status, r.Reason)
 	}
 }

@@ -630,8 +630,8 @@ func TestYAMLEmptyInputIsAnError(t *testing.T) {
 		t.Fatal("expected an error for empty input")
 	}
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseUnexpectedToken {
-		t.Errorf("error = %#v, want omnist.CodeParseUnexpectedToken", err)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Errorf("error = %#v, want omnist.CodeParseCodecSyntax", err)
 	}
 }
 
@@ -641,8 +641,8 @@ func TestYAMLMalformedSyntax(t *testing.T) {
 		t.Fatal("expected a syntax error")
 	}
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseUnexpectedToken {
-		t.Errorf("error = %#v, want omnist.CodeParseUnexpectedToken", err)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Errorf("error = %#v, want omnist.CodeParseCodecSyntax", err)
 	}
 }
 
@@ -663,8 +663,8 @@ func TestYAMLMalformedSecondDocument(t *testing.T) {
 		t.Fatal("expected a syntax error decoding the second document")
 	}
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseUnexpectedToken {
-		t.Errorf("error = %#v, want omnist.CodeParseUnexpectedToken", err)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Errorf("error = %#v, want omnist.CodeParseCodecSyntax", err)
 	}
 }
 
