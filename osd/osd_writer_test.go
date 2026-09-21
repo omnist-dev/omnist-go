@@ -90,7 +90,7 @@ func TestOSDRoundTripProperty(t *testing.T) {
 	for _, tc := range cases {
 		for _, compact := range []bool{false, true} {
 			t.Run(tc.name, func(t *testing.T) {
-				text := Write(tc.schema, compact)
+				text := mustWrite(t, tc.schema, compact)
 				got, err := Read(text)
 				if err != nil {
 					t.Fatalf("compact=%v Read(Write(schema)) failed: %v\ntext:\n%s", compact, err, text)
@@ -116,7 +116,7 @@ func TestOSDCanonicalFormMatchesWorkedExample(t *testing.T) {
 		EnvOrder: []string{"R"},
 	}
 	want := "record R {\n    \"a\" [0,3]: string?,\n}\nroot R\n"
-	if got := Write(schema, false); got != want {
+	if got := mustWrite(t, schema, false); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
@@ -131,7 +131,7 @@ func TestOSDCardinalityOneOneOmitted(t *testing.T) {
 		},
 		EnvOrder: []string{"R"},
 	}
-	text := Write(schema, false)
+	text := mustWrite(t, schema, false)
 	if strings.Contains(text, "[") {
 		t.Errorf("default [1,1] cardinality should be omitted entirely, got %q", text)
 	}
@@ -152,7 +152,7 @@ func TestOSDRootAlwaysLast(t *testing.T) {
 		},
 		EnvOrder: []string{"First", "Second"},
 	}
-	text := Write(schema, false)
+	text := mustWrite(t, schema, false)
 	rootIdx := strings.Index(text, "root Second")
 	if rootIdx == -1 {
 		t.Fatalf("root declaration not found: %q", text)
@@ -177,7 +177,7 @@ func TestOSDCompactModeMatchesSpecExample(t *testing.T) {
 		EnvOrder: []string{"R"},
 	}
 	want := `record R { "a": string } root R`
-	if got := Write(schema, true); got != want {
+	if got := mustWrite(t, schema, true); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 	got, err := Read(want)
@@ -196,7 +196,7 @@ func TestOSDCompactEmptyRecord(t *testing.T) {
 		EnvOrder: []string{"R"},
 	}
 	want := `record R {} root R`
-	if got := Write(schema, true); got != want {
+	if got := mustWrite(t, schema, true); got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
@@ -212,52 +212,13 @@ func TestOSDLabelEscapingBackslashAndQuote(t *testing.T) {
 		},
 		EnvOrder: []string{"R"},
 	}
-	text := Write(schema, false)
+	text := mustWrite(t, schema, false)
 	got, err := Read(text)
 	if err != nil {
 		t.Fatalf("ReadOSD failed: %v\ntext:\n%s", err, text)
 	}
 	if got.Env["R"].Fields[0].Label != label {
 		t.Errorf("got label %q, want %q (text: %s)", got.Env["R"].Fields[0].Label, label, text)
-	}
-}
-
-// TestOSDLabelEscapingControlCharacterTrap pins what escapeOSDLabel does with
-// a raw control character, and what the reader now does with the result.
-//
-// The trap this test was written for still holds: escaping a literal newline
-// as the two-character sequence \n would (per §5.3.1's weak, non-named-escape
-// unescaping) read back as the letter 'n', so the writer emits a backslash
-// followed by the literal control byte instead.
-//
-// What changed is the reader. Spec v0.15.0-beta (§5.3.1, and the ABNF's
-// escape alternative, which now excludes %x00-1F) makes a control character
-// after a backslash a parse.control-character error exactly like an
-// unescaped one, so OSD has NO spelling for a label containing one and the
-// text this writer emits for such a label no longer parses. That conflicts
-// with OSD-11 ("for every schema, emits text that parses back to an equal
-// schema") and is reported as an open spec question in this port's PR rather
-// than papered over; this test records the current, honest behavior of both
-// halves so a future spec resolution has an obvious place to land.
-func TestOSDLabelEscapingControlCharacterTrap(t *testing.T) {
-	label := "line one\nline two"
-	escaped := escapeOSDLabel(label)
-
-	if strings.Contains(escaped, `\n`) {
-		t.Fatalf("escapeOSDLabel used the named-escape spelling \\n, which the OSD reader "+
-			"decodes as the literal letter 'n' per §5.3.1, not a newline: %q", escaped)
-	}
-	if !strings.Contains(escaped, "\\\n") {
-		t.Fatalf("escapeOSDLabel should emit a backslash immediately followed by the literal "+
-			"newline byte, got %q", escaped)
-	}
-
-	// The reader refuses that text: parse.control-character, at the
-	// string's opening quote (E-23), on line 2 col 5 of the pretty layout.
-	_, err := Read("record R {\n    \"" + escaped + "\": string,\n}\nroot R\n")
-	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseControlCharacter || pe.Path != "2:5" {
-		t.Fatalf("Read = %#v, want parse.control-character at 2:5", err)
 	}
 }
 

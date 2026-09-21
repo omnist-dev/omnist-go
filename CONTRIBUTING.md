@@ -47,8 +47,8 @@ the §2.4 resource caps against `omnist-spec`'s divergence ledger found no
 gap (issue #60/#62/#63, `omnist-spec` commit `2af12e0`).
 
 The spec version this repo targets is stated here and in every release:
-currently **omnist-spec v0.19.0-beta** (pinned via `vendor/omnist-spec`
-submodule at `d02458b`). Ship pass/fail/skip counts alongside every release, per spec
+currently **omnist-spec v0.21.0-beta** (pinned via `vendor/omnist-spec`
+submodule at `103a8c9`). Ship pass/fail/skip counts alongside every release, per spec
 §10.3.
 
 **Minor vs. patch within the alpha series** (added at `v0.2.0-alpha`, the

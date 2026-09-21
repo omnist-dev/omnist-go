@@ -17,7 +17,7 @@ import (
 // path is possible, since a parse.* failure occurs before an omnist.Document
 // exists.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseUnexpectedToken)
+	text, berr := omnist.PrepareInput(text, omnist.CodeParseUnexpectedToken)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}
@@ -177,23 +177,19 @@ func (p *parser) parseNodeEdges(closing tokenKind) (*omnist.Node, error) {
 			return nil, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "unexpected end of input, expected '}'")
 		}
 		if !first && !p.cur.sepBefore {
-			// At the top level (closing == tokEOF), whether this is
-			// "trailing content" or "a missing separator between edges"
-			// depends on whether what follows still looks like an edge
-			// attempt (§4.6.1's own STRING/IDENT-plus-':' lookahead,
-			// applied here the same way it disambiguates the top level):
-			//   - "a: 1 b: 2" — "b" is followed by ':', so this reads as
-			//     a second edge with a missing separator before it
-			//     (parse.unexpected-token).
-			//   - "a: 2024-01-01T99" — "T99" is not followed by ':', so
-			//     it never looks like another edge attempt; per spec
-			//     §4.8's worked example this is trailing content instead
-			//     (parse.trailing-content), the same reading as a bare
-			//     scalar document's own leftover-content check above.
-			// Inside a brace-delimited node more structure is always
-			// still expected before '}', so the missing-separator reading
-			// applies unconditionally there.
-			if closing == tokEOF && !p.looksLikeEdgeStart() {
+			// OML-26/OML-27 (spec §4.6.1): the deciding fact is the
+			// enclosing delimiter, not the leftover token. At the top level
+			// (closing == tokEOF) a complete edge can end the document, so
+			// any significant token with no separator in front of it is
+			// content after the document has ended -- parse.trailing-content
+			// at that token, whatever it is: "a: 1 b: 2", "a: 2024-01-01T99",
+			// and a stray '}' or ',' alike. (Earlier versions of this port
+			// reported "a: 1 b: 2" as an unexpected token because "b" still
+			// looked like an edge start; OML-26 removed that distinction.)
+			// Inside a brace-delimited node a '}' is still owed, so the same
+			// missing separator is a token the grammar does not allow there:
+			// parse.unexpected-token (OML-27).
+			if closing == tokEOF {
 				return nil, p.errAt(p.cur, omnist.CodeParseTrailingContent, "content remains after the document")
 			}
 			return nil, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected a separator (newline or ';') between edges")

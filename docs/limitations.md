@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.4.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.5.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**215 pass / 0 fail / 34 skip** of 249 vectors (`omnist-spec` v0.19.0-beta
+**239 pass / 0 fail / 34 skip** of 273 vectors (`omnist-spec` v0.21.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 28 of the 34 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -54,6 +54,74 @@ tracks are strictly CI-gating as of issue #74.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.5.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1's alpha-series
+rule, and a **breaking** one: `osd.Write` now returns `(string, error)`
+instead of a bare `string` (OSD-14, below), and it adopts `omnist-spec`
+v0.21.0-beta (from v0.19.0-beta). Conformance against the new pin, Track 2:
+**224 pass / 15 fail / 34 skip of 273** before any code change (the 24 new
+vectors plus one behavior the port had had wrong); **239 pass / 0 fail / 34
+skip of 273** after. Track 1 stayed 19/19. Compared as `(path, code)` sets,
+not code-agnostically. What changed:
+
+- **`osd.Write` returns an error (OSD-14, §5.9/§8.3.9). Breaking.** A field
+  label containing a C0 control character (U+0000 to U+001F, tab and newline
+  included) has no OSD spelling: §5.3.1 bans the raw byte in a string body,
+  escape context included, and OSD's unescaping is weak. The writer used to
+  emit a backslash plus the raw byte, which this port's own reader rejects.
+  It now fails, unconditionally, with an `omnist.Diagnostic` (code
+  `write.unsupported-value`, path the *record* holding the field, `R` and
+  never `R.<label>`) and returns no text. The signature changed rather than a
+  second checked function being added because a `Write` that kept returning
+  text for a schema it must refuse would itself be the non-conformant entry
+  point, and the compiler is the only thing that makes every caller face the
+  new failure; the alpha series exists to make this change cheaply. Callers:
+  `text, err := osd.Write(s, compact)`. `omnist infer` is the one CLI route
+  that can reach the failure (a JSON key may carry such a character) and now
+  exits 2 with `write.unsupported-value` instead of printing unreadable text.
+  No conformance vector can pin OSD-14 (`DIV-5`: a vector gives a schema as
+  OSD text, and such a schema has none), so it is held by unit tests only,
+  including a randomized `Read(Write(s)) == s` property over arbitrary
+  labels.
+- **OSD-15, canonical escaping (§5.9).** Already what the writer did (a
+  backslash as `\\`, a quote as `\"`, nothing else); the four
+  `osd-grammar/canonical-output/label-*` vectors passed on arrival. What
+  changed is that the escaper now works on bytes, so a programmatically built
+  label holding invalid UTF-8 is written as given instead of being repaired to
+  U+FFFD by a rune loop.
+- **D-14, invalid UTF-8 (§2.5, E-27).** Every read surface (OML, OSD, JSON,
+  YAML, TOML, XML, and `xml.ReadWithSchema`) now rejects a `string` for which
+  `utf8.ValidString` is false with **`parse.invalid-encoding` at `1:1`**,
+  before D-15's BOM strip and D-21's second-mark check, so a truncated BOM
+  (`EF BB`) is a D-14 failure. JSON, OML and OSD used to accept invalid UTF-8
+  silently, and YAML, TOML and XML reported `parse.codec-syntax` (#119). The
+  check lives in one place, `omnist.PrepareInput` (`bom.go`), which every
+  reader calls first and which delegates the BOM rules to
+  `omnist.StripLeadingBOM`. New public API: `omnist.PrepareInput` and
+  `omnist.CodeParseInvalidEncoding`. There are no `[]byte` reader variants;
+  the CLI reads bytes, converts losslessly with `string(b)` and reaches the
+  same check, so `omnist parse` on invalid input exits 2 with
+  `parse.invalid-encoding` at `1:1` instead of repairing anything.
+- **OML-26 / OML-27 (§4.6.1).** A missing separator between two top-level
+  edges (`a: 1 b: 2`) is now `parse.trailing-content` at the first leftover
+  token, like `a: 1 }`, `a: 1 ,` and `a: 2024-01-01T99`; it used to be
+  `parse.unexpected-token` whenever the leftover token looked like the start
+  of another edge. Inside `{...}` and `[...]` the same missing separator stays
+  `parse.unexpected-token`. A separator *followed* by a stray token
+  (`a: 1` newline `}`) is outside the rule's "no separator in front of it"
+  wording, no vector pins it, and it is still `parse.unexpected-token`.
+- **Conformance runner (E-27).** Read-side vectors (`parse`, `parse_schema`)
+  now take their input as `text` or `bytes_hex`, exactly one. A `bytes_hex`
+  input is decoded to its raw bytes and handed, unchanged, to the same
+  string-taking reader (Go's `string` is a byte sequence, which is the rule §2.5
+  states for Go); it is never decoded with replacement. A missing or doubled
+  input field is a `fail`, not an empty input. All 14 `bytes_hex` vectors (8
+  invalid, 6 valid multi-byte controls) run and pass. There is no
+  runner-side list of known failures. The 34 skips are unchanged and all E-20
+  "not yet implemented": 28 OSD-OML extension vectors (#111) and 6 YAML
+  alias-expansion vectors (`DIV-3`, #117).
+- **Not changed.** D-18/D-19/D-20 (alias expansion) are still not
+  implemented (#117).
 
 **`v0.4.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1's alpha-series
 rule: this release changes observable reader and writer behavior (new
@@ -160,7 +228,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `d02458b` (`v0.19.0-beta`), pinned via the
+`omnist-spec` at commit `103a8c9` (`v0.21.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a

@@ -1,6 +1,8 @@
 package osd
 
 import (
+	"testing"
+
 	omnist "github.com/omnist-dev/omnist-go"
 )
 
@@ -65,4 +67,14 @@ func schemaEqual(a, b omnist.Schema) bool {
 		}
 	}
 	return true
+}
+
+// mustWrite is Write for a schema the test knows is writable.
+func mustWrite(t *testing.T, s omnist.Schema, compact bool) string {
+	t.Helper()
+	text, err := Write(s, compact)
+	if err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	return text
 }

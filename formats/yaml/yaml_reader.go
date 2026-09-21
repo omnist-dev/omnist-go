@@ -74,7 +74,7 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// D-15/D-21 run here, on the raw text, before yaml.v3 sees it: the
 	// library discards a leading mark on its own, so it would swallow a
 	// second one silently (an undeclared second strip).
-	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseCodecSyntax)
+	text, berr := omnist.PrepareInput(text, omnist.CodeParseCodecSyntax)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}

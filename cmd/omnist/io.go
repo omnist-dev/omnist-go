@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // maxInputBytes is the safety ceiling on raw input bytes read from stdin
@@ -54,4 +57,23 @@ func writeOutput(path string, content string, stdout io.Writer) error {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
+}
+
+// writeSchemaOutput renders s as canonical OSD and writes it to path (or
+// stdout), returning the command's exit code. osd.Write refuses a schema whose
+// field label has no OSD spelling (OSD-14: a C0 control character); that is an
+// operation-reported problem (ExitProblem), not a usage error. Parsed schemas
+// never trigger it, but `infer` builds a schema from document keys, and a JSON
+// key may carry such a character.
+func writeSchemaOutput(name, path string, s omnist.Schema, stdout, stderr io.Writer) int {
+	text, err := osd.Write(s, false)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
+		return ExitProblem
+	}
+	if err := writeOutput(path, text, stdout); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
+		return ExitUsage
+	}
+	return ExitOK
 }

@@ -53,7 +53,11 @@ func Example_osdRoundTrip() {
 		panic(err)
 	}
 
-	fmt.Println(osd.Write(schema, true))
+	text, err := osd.Write(schema, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(text)
 	// Output: record Person { "name": string, "tags" [0,]: string } root Person
 }
 
@@ -230,7 +234,11 @@ func Example_algebraInfer() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(osd.Write(schema, true))
+	text, err := osd.Write(schema, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(text)
 	// Output: record Root { "name": string, "tags" [0,1]: string } root Root
 }
 

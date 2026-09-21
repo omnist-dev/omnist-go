@@ -154,7 +154,7 @@ import (
 // stateless, is used directly and unmodified, exactly as every other
 // codec uses it.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	text, berr := omnist.StripLeadingBOM(text, omnist.CodeParseCodecSyntax)
+	text, berr := omnist.PrepareInput(text, omnist.CodeParseCodecSyntax)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}

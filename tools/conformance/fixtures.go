@@ -242,7 +242,7 @@ func runFixtureNormalize(fc FixtureCase) Result {
 	}
 	got := algebra.Normalize(s)
 	if !omnist.SchemasEqual(got, want, omnist.ModeExact) {
-		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osd.Write(got, false), osd.Write(want, false))
+		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osdText(got), osdText(want))
 	}
 	return fixPass(fc)
 }
@@ -258,7 +258,7 @@ func runFixturePrune(fc FixtureCase) Result {
 	}
 	got := algebra.Prune(s)
 	if !omnist.SchemasEqual(got, want, omnist.ModeExact) {
-		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osd.Write(got, false), osd.Write(want, false))
+		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osdText(got), osdText(want))
 	}
 	return fixPass(fc)
 }
@@ -576,7 +576,7 @@ func runFixtureExtract(fc FixtureCase) Result {
 		return fixFail(fc, "parsing expected/output.osd: %v", werr)
 	}
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeExact) {
-		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osd.Write(result, false), wantText)
+		return fixFail(fc, "schema mismatch (exact mode): got %q want %q", osdText(result), wantText)
 	}
 	return fixPass(fc)
 }
@@ -639,7 +639,7 @@ func runFixtureInfer(fc FixtureCase) Result {
 	// infer never normalizes its output (§6.10), so ModeIsomorphic -- same
 	// reasoning as Track 2's runInfer.
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeIsomorphic) {
-		return fixFail(fc, "schema mismatch (isomorphic mode): got %q want %q", osd.Write(result, false), wantText)
+		return fixFail(fc, "schema mismatch (isomorphic mode): got %q want %q", osdText(result), wantText)
 	}
 	return fixPass(fc)
 }

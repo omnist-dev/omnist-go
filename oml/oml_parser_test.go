@@ -444,9 +444,61 @@ func TestSingleLineCompactForm(t *testing.T) {
 	}
 }
 
-func TestMissingSeparatorBetweenEdgesError(t *testing.T) {
-	pe := mustFail(t, `a: 1 b: 2`)
-	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
+// OML-26 / OML-27 (spec §4.6.1): the deciding fact is the enclosing delimiter,
+// not the missing separator. At top level a complete edge can end the
+// document, so a significant token with no separator before it is content
+// after the document: parse.trailing-content at that token, whatever it is.
+// Inside { } or [ ] a closing delimiter is still owed, so the identical
+// missing separator is parse.unexpected-token.
+func TestTopLevelLeftoverAfterAnEdgeIsTrailingContent(t *testing.T) {
+	cases := []struct{ src, path string }{
+		{`a: 1 b: 2`, "1:6"},
+		{`a: 2024-01-01T99`, "1:14"},
+		{`a: 1 }`, "1:6"},
+		{`a: 1 ,`, "1:6"},
+		{`a: 1 ]`, "1:6"},
+		{`a: 1 "b"`, "1:6"},
+		{`a: 1 b`, "1:6"},
+		{`a: { b: 1 } }`, "1:13"},
+		{`a: { b: 1 }, c: 2`, "1:12"},
+		{`a: [1] ]`, "1:8"},
+		{"x: 1\na: 1 b: 2", "2:6"},
+		{"a: 1 # comment\nb: 2 c: 3", "2:6"},
+	}
+	for _, tc := range cases {
+		pe := mustFail(t, tc.src)
+		if pe.Code != omnist.CodeParseTrailingContent || pe.Path != tc.path {
+			t.Errorf("Read(%q) = %s at %s, want parse.trailing-content at %s", tc.src, pe.Code, pe.Path, tc.path)
+		}
+	}
+}
+
+func TestMissingSeparatorInsideABracketedValueIsUnexpectedToken(t *testing.T) {
+	cases := []struct{ src, path string }{
+		{`a: { b: 1 c: 2 }`, "1:11"},
+		{`a: [1 2]`, "1:7"},
+		{`a: { b: { c: 1 d: 2 } }`, "1:16"},
+		{`a: { b: [1 2] }`, "1:12"},
+	}
+	for _, tc := range cases {
+		pe := mustFail(t, tc.src)
+		if pe.Code != omnist.CodeParseUnexpectedToken || pe.Path != tc.path {
+			t.Errorf("Read(%q) = %s at %s, want parse.unexpected-token at %s", tc.src, pe.Code, pe.Path, tc.path)
+		}
+	}
+}
+
+// Outside OML-26's "no separator in front of it" wording: a separator WAS
+// written, so what follows is where an edge belongs and the failure is the
+// edge's own. A stray closing token with nothing before it cannot end a
+// document that has not begun.
+func TestLeftoverAfterASeparatorOrWithNoDocumentIsUnexpectedToken(t *testing.T) {
+	for _, src := range []string{"a: 1\n}", "a: 1; }", "}", ",", "]"} {
+		pe := mustFail(t, src)
+		if pe.Code != omnist.CodeParseUnexpectedToken {
+			t.Errorf("Read(%q) = %s at %s, want parse.unexpected-token", src, pe.Code, pe.Path)
+		}
+	}
 }
 
 func TestNestedNode(t *testing.T) {

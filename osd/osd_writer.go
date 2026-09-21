@@ -20,14 +20,67 @@ import (
 // this writer's own reasonable, deterministic, self-consistent choice —
 // §5.9 gives one worked example of compact mode and does not otherwise
 // pin its whitespace.
-func Write(s omnist.Schema, compact bool) string {
+//
+// # Failure (OSD-14)
+//
+// OSD text cannot spell a field label containing a C0 control character
+// (U+0000 to U+001F, tab and newline included): §5.3.1 bans the raw byte in a
+// string body, escape context included, and OSD's unescaping is weak (`\X`
+// yields X and nothing else). Write therefore fails, unconditionally, with
+// an omnist.Diagnostic (used as the error) carrying
+// omnist.CodeWriteUnsupportedValue, and returns no text. Its Path is the
+// Schema path of the record holding the field ("R", not "R.<label>": §8.4
+// has no way to quote such a label inside a path). Only the first
+// offending record, in declaration order, is reported. A schema Write
+// refuses can still travel as OSD-OML, whose escaping is real. Parsed
+// schemas never trigger this; a programmatically built one, or one inferred
+// from documents whose keys contain control characters, can.
+//
+// # Escaping (OSD-15)
+//
+// A backslash is written `\\` and a double quote `\"`; nothing else is escaped.
+func Write(s omnist.Schema, compact bool) (string, error) {
+	if err := checkWritable(s); err != nil {
+		return "", err
+	}
 	var b strings.Builder
 	if compact {
 		writeOSDCompact(&b, s)
 	} else {
 		writeOSDPretty(&b, s)
 	}
-	return b.String()
+	return b.String(), nil
+}
+
+// checkWritable implements OSD-14: it reports the first record, in
+// declaration order, that holds a field whose label has no OSD spelling.
+func checkWritable(s omnist.Schema) error {
+	for _, name := range s.EnvOrder {
+		rec := s.Env[name]
+		for _, f := range rec.Fields {
+			if hasC0Control(f.Label) {
+				return omnist.Diagnostic{
+					Path:     rec.Name,
+					Code:     omnist.CodeWriteUnsupportedValue,
+					Message:  "a field label contains a C0 control character (U+0000..U+001F), which has no OSD spelling; write the schema as OSD-OML instead (spec §5.9, OSD-14)",
+					Severity: omnist.SeverityError,
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// hasC0Control reports whether s contains a byte below 0x20. Every C0 code
+// point is a single byte and never occurs inside a multi-byte UTF-8 sequence,
+// so scanning bytes is exact.
+func hasC0Control(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 {
+			return true
+		}
+	}
+	return false
 }
 
 func writeOSDPretty(b *strings.Builder, s omnist.Schema) {
@@ -110,35 +163,30 @@ func osdTypeString(t omnist.Type) string {
 	}
 }
 
-// escapeOSDLabel implements the writer-side half of spec §5.3.1's weak
-// string-unescaping rule. This is the genuine trap the issue calls out:
-// the reader recognizes exactly two meaningful escapes, \\ -> \ and
-// \" -> ", and otherwise writes whatever character follows a backslash
-// verbatim (including a literal newline or other control character) —
-// there is no named-escape table, so a writer that (wrongly) emitted
-// "\n" for a literal newline byte would round-trip it back as the two
-// characters 'n', not a newline.
+// escapeOSDLabel implements OSD-15, the writer-side half of spec §5.3.1's
+// weak string-unescaping rule: the reader recognizes exactly one escape shape,
+// a backslash followed by X yielding X, so the canonical spelling escapes a
+// backslash as \\ and a double quote as \" and NOTHING else. Escaping an
+// ordinary character is harmless on read but would break OSD-11's
+// byte-identical guarantee between two writers that disagree about which
+// characters to escape. There is no named-escape table: a writer that emitted
+// \n for a newline would read back as the letter n. A label containing a C0
+// control character never reaches this function; Write refuses it first
+// (OSD-14).
 //
-// So this function escapes only backslash and double-quote using the two
-// meaningful escapes, and escapes any other control character (< 0x20,
-// which the reader's tokenizer rejects unescaped as
-// parse.control-character) by emitting a backslash followed by that exact
-// control character byte — relying on the reader's "whatever follows a
-// backslash is written verbatim" rule to reproduce it exactly. Every other
-// character, ASCII or not, passes through completely literally.
+// It scans bytes, not runes: a backslash and a quote are single bytes that
+// never occur inside a multi-byte UTF-8 sequence, and every other byte passes
+// through untouched, so nothing is decoded and nothing is repaired.
 func escapeOSDLabel(s string) string {
 	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r == '\\':
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\\':
 			b.WriteString(`\\`)
-		case r == '"':
+		case '"':
 			b.WriteString(`\"`)
-		case r < 0x20:
-			b.WriteByte('\\')
-			b.WriteRune(r)
 		default:
-			b.WriteRune(r)
+			b.WriteByte(c)
 		}
 	}
 	return b.String()
