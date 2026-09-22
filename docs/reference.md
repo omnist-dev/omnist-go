@@ -232,7 +232,17 @@ fmt.Println(text)
 ## `osd` — `github.com/omnist-dev/omnist-go/osd`
 
 OSD (the schema definition format) reader and writer: `Read(text string)
-(omnist.Schema, error)`, `Write(s omnist.Schema, compact bool) string`.
+(omnist.Schema, error)`, `Write(s omnist.Schema, compact bool) (string, error)`.
+
+`Write` fails, unconditionally, when a field label contains a C0 control
+character (U+0000 to U+001F, tab and newline included): OSD text has no
+spelling for one (spec §5.9, OSD-14). The error is an `omnist.Diagnostic`
+with code `write.unsupported-value` and, as its path, the *record* holding the
+field (`R`, never `R.<label>`). A schema that only a programmatic build or
+`algebra.Infer` over documents with such keys can produce; a parsed schema
+never has one. Every other label is written with exactly two escapes, `\\`
+and `\"` (OSD-15). Before v0.5.0-alpha `Write` returned a bare `string` and
+emitted text its own reader rejected for such a label.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_osdRoundTrip -->
 ```go
@@ -244,7 +254,11 @@ if err != nil {
     panic(err)
 }
 
-fmt.Println(osd.Write(schema, true))
+text, err := osd.Write(schema, true)
+if err != nil {
+    panic(err)
+}
+fmt.Println(text)
 // record Person { "name": string, "tags" [0,]: string } root Person
 ```
 
@@ -493,7 +507,11 @@ schema, err := algebra.Infer([]omnist.Document{s1, s2}, "", false)
 if err != nil {
     panic(err)
 }
-fmt.Println(osd.Write(schema, true))
+text, err := osd.Write(schema, true)
+if err != nil {
+    panic(err)
+}
+fmt.Println(text)
 // record Root { "name": string, "tags" [0,1]: string } root Root
 ```
 

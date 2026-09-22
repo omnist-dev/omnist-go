@@ -7,7 +7,6 @@ import (
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/algebra"
-	"github.com/omnist-dev/omnist-go/osd"
 )
 
 // cmdInfer implements `omnist infer`: read one or more sample documents
@@ -77,9 +76,5 @@ func cmdInfer(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	for _, fb := range fallbacks {
 		_, _ = fmt.Fprintf(stderr, "%s: opened to any: %s\n", fb.Location, fb.Reason)
 	}
-	if err := writeOutput(*out, osd.Write(schema, false), stdout); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
-		return ExitUsage
-	}
-	return ExitOK
+	return writeSchemaOutput(name, *out, schema, stdout, stderr)
 }

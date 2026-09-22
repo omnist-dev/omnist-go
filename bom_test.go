@@ -198,7 +198,11 @@ func TestWritersNeverEmitABOM(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, compact := range []bool{false, true} {
-		if out := osd.Write(schema, compact); strings.HasPrefix(out, bom) {
+		out, err := osd.Write(schema, compact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(out, bom) {
 			t.Errorf("osd.Write(compact=%v) begins with a byte-order mark: %q", compact, out)
 		}
 	}

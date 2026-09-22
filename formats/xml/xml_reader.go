@@ -103,9 +103,9 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 //
 // # A leading byte-order mark
 //
-// Spec §2.5 D-15/D-21 apply before anything else: one leading U+FEFF is
-// stripped and a second is a parse.codec-syntax failure at 1:1
-// (omnist.StripLeadingBOM). encoding/xml would otherwise treat the first as
+// Spec §2.5 applies before anything else (omnist.PrepareInput): D-14 rejects
+// invalid UTF-8 as parse.invalid-encoding at 1:1, then D-15 strips one leading
+// U+FEFF and D-21 makes a second a parse.codec-syntax failure at 1:1. encoding/xml would otherwise treat the first as
 // stray text before the document element.
 //
 // # Attribute and namespace-prefix dropping
@@ -123,7 +123,7 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 // live in readStart, run once per StartElement token (root and every
 // child alike) as soon as that element's own Document path is known.
 func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
-	src, berr := omnist.StripLeadingBOM(src, omnist.CodeParseCodecSyntax)
+	src, berr := omnist.PrepareInput(src, omnist.CodeParseCodecSyntax)
 	if berr != nil {
 		return omnist.Document{}, nil, berr
 	}

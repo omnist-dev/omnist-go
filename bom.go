@@ -1,6 +1,9 @@
 package omnist
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // byteOrderMark is U+FEFF, the Unicode byte-order mark. It is spelled as an
 // escape, never as a raw character: a raw U+FEFF in Go source is invisible
@@ -41,4 +44,31 @@ func StripLeadingBOM(text string, code Code) (string, *ParseError) {
 		}
 	}
 	return rest, nil
+}
+
+// PrepareInput is the one place every read surface (OML, OSD, JSON, YAML,
+// TOML, XML) applies spec §2.5's input rules, in the order §2.5 states them:
+//
+//  1. D-14: the input must be valid UTF-8. Go's string is a byte sequence, so
+//     a reader taking one is a byte-oriented entry point, and §2.5 states the
+//     testable rule for it: reject every s for which utf8.ValidString(s) is
+//     false. The failure is a *ParseError with code CodeParseInvalidEncoding at
+//     the fixed path "1:1" -- not a computed offset, whatever byte failed --
+//     and there is exactly one per input. Nothing is repaired or replaced.
+//  2. D-15/D-21: StripLeadingBOM.
+//
+// The order is not cosmetic: a byte-order mark is EF BB BF, so a truncated one
+// is malformed UTF-8 and step 1, not step 2, is the rule that fires on it.
+// bomCode is the code D-21 requires for a second leading mark on this surface.
+func PrepareInput(text string, bomCode Code) (string, *ParseError) {
+	if !utf8.ValidString(text) {
+		return "", &ParseError{
+			Line:    1,
+			Col:     1,
+			Path:    "1:1",
+			Code:    CodeParseInvalidEncoding,
+			Message: "input is not valid UTF-8 (spec §2.5, D-14)",
+		}
+	}
+	return StripLeadingBOM(text, bomCode)
 }

@@ -42,10 +42,16 @@ const (
 	CodeParseInvalidTime Code = "parse.invalid-time"
 	// CodeParseCodecSyntax is raised when a codec (JSON, YAML, TOML, XML)
 	// cannot accept its input: the text is not well-formed in its own source
-	// format, or it fails the one byte-level precondition spec §8.3.1's E-24
-	// imposes ahead of the codec (D-21's rejection of a second leading
-	// U+FEFF). One code covers all four codecs deliberately.
+	// format, or it fails the one precondition spec §8.3.1's E-24 imposes ahead of
+	// the codec (D-21's rejection of a second leading U+FEFF, run on text that
+	// has already decoded cleanly; invalid UTF-8 is CodeParseInvalidEncoding). One code covers all four codecs deliberately.
 	CodeParseCodecSyntax Code = "parse.codec-syntax"
+	// CodeParseInvalidEncoding is raised when the input is not valid UTF-8
+	// (spec §2.5 D-14). Its path is always "1:1", on every surface, whatever
+	// byte failed: a fixed value, not a computed position. It is checked before
+	// D-15's BOM strip and D-21's second-BOM check, so invalid UTF-8 is never
+	// parse.codec-syntax, whatever the codec's parsing library would have said.
+	CodeParseInvalidEncoding Code = "parse.invalid-encoding"
 )
 
 // document.* — building and limits (spec §8.3.2).

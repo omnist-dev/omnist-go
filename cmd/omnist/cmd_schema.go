@@ -100,11 +100,7 @@ func schemaTransform(args []string, stdin io.Reader, stdout, stderr io.Writer, n
 		return code
 	}
 	result := transform(schema)
-	if err := writeOutput(*out, osd.Write(result, false), stdout); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
-		return ExitUsage
-	}
-	return ExitOK
+	return writeSchemaOutput(name, *out, result, stdout, stderr)
 }
 
 // cmdSchemaExtract implements `omnist schema extract`.
@@ -156,11 +152,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return ExitUsage
 	}
-	if err := writeOutput(*out, osd.Write(result, false), stdout); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
-		return ExitUsage
-	}
-	return ExitOK
+	return writeSchemaOutput(name, *out, result, stdout, stderr)
 }
 
 // schemaBoolean implements the shared shape of `schema compatible-with`

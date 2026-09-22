@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"encoding/hex"
 	encjson "encoding/json"
 	"fmt"
 	"strings"
@@ -23,11 +24,17 @@ import (
 // --- parse ---
 
 type parseInput struct {
-	Format               string `json:"format"`
-	Text                 string `json:"text"`
-	DeclaredMaxDepth     *int   `json:"declared_max_depth"`
-	DeclaredMaxNodes     *int   `json:"declared_max_nodes"`
-	DeclaredMaxIntDigits *int   `json:"declared_max_int_digits"`
+	Format string `json:"format"`
+	// Text and BytesHex are the two ways a read-side vector gives its input
+	// (E-27, §8.5.3): exactly one is present. They are pointers so an absent
+	// field is distinguishable from an empty string -- an absent text is
+	// never treated as "" (that would run the reader on the wrong input and
+	// report whatever it said).
+	Text                 *string `json:"text"`
+	BytesHex             *string `json:"bytes_hex"`
+	DeclaredMaxDepth     *int    `json:"declared_max_depth"`
+	DeclaredMaxNodes     *int    `json:"declared_max_nodes"`
+	DeclaredMaxIntDigits *int    `json:"declared_max_int_digits"`
 	// DeclaredMaxAliasExpansion is the fourth declared-limit key
 	// (test-suite/README.md, §2.4.1's D-18). This port exposes no
 	// configuration surface for it and does not enforce D-18 at all
@@ -45,6 +52,34 @@ type parseInput struct {
 // them can be honestly run. The category is E-20's first (not-yet-implemented),
 // not E-21's: DIV-3 is a rollout gap, not a structural limit of Go.
 const aliasExpansionSkipReason = "not yet implemented: D-18 alias-expansion limit is not enforced by this port and has no configuration surface (DIV-3, omnist-spec §9.4; tracked by omnist-go issue #117)"
+
+// readSourceInput returns the exact source a read-side driver (parse,
+// parse_schema) feeds its reader, as a Go string. For text that is the JSON
+// string itself. For bytes_hex (E-27) it is the decoded bytes, unmodified:
+// Go's string is a byte sequence, so string(b) hands the reader exactly the
+// vector's bytes with no decoding, no U+FFFD replacement and no
+// surrogate-escape step. Feeding these bytes to a string-taking reader is
+// precisely how spec §2.5 states D-14's testable rule for Go (a conformant
+// reader rejects every s with !utf8.ValidString(s)). The reader under test is
+// therefore the same code path a caller's string takes; nothing here validates
+// or repairs. A vector carrying both fields, or neither, is malformed (E-27)
+// and reported as an error rather than run.
+func readSourceInput(text, bytesHex *string) (string, error) {
+	switch {
+	case text != nil && bytesHex != nil:
+		return "", fmt.Errorf("input carries both text and bytes_hex; exactly one is required (E-27)")
+	case text != nil:
+		return *text, nil
+	case bytesHex != nil:
+		b, err := hex.DecodeString(*bytesHex)
+		if err != nil {
+			return "", fmt.Errorf("input.bytes_hex is not valid hexadecimal: %v", err)
+		}
+		return string(b), nil
+	default:
+		return "", fmt.Errorf("input carries neither text nor bytes_hex; exactly one is required (E-27)")
+	}
+}
 
 func limitsFromInput(in parseInput) omnist.Limits {
 	l := omnist.DefaultLimits()
@@ -98,7 +133,11 @@ func runParse(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	doc, gotDiags, rerr := readByFormat(in.Format, in.Text, limitsFromInput(in))
+	src, ierr := readSourceInput(in.Text, in.BytesHex)
+	if ierr != nil {
+		return fail(v, "%v", ierr)
+	}
+	doc, gotDiags, rerr := readByFormat(in.Format, src, limitsFromInput(in))
 	wantOK := expectOK(expect)
 	if rerr != nil {
 		if wantOK {
@@ -148,7 +187,8 @@ func runParse(v Vector) Result {
 // --- parse_schema ---
 
 type parseSchemaInput struct {
-	Text string `json:"text"`
+	Text     *string `json:"text"`
+	BytesHex *string `json:"bytes_hex"`
 }
 
 func runParseSchema(v Vector) Result {
@@ -160,7 +200,11 @@ func runParseSchema(v Vector) Result {
 	if err != nil {
 		return fail(v, "decode expect: %v", err)
 	}
-	_, serr := osd.Read(in.Text)
+	src, ierr := readSourceInput(in.Text, in.BytesHex)
+	if ierr != nil {
+		return fail(v, "%v", ierr)
+	}
+	_, serr := osd.Read(src)
 	wantOK := expectOK(expect)
 	if serr != nil {
 		if wantOK {
@@ -483,7 +527,10 @@ func runNormalize(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := osd.Write(algebra.Normalize(s), false)
+	got, werr := osd.Write(algebra.Normalize(s), false)
+	if werr != nil {
+		return fail(v, "osd.Write failed: %v", werr)
+	}
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -496,7 +543,10 @@ func runPrune(v Vector) Result {
 	if serr != nil {
 		return fail(v, "input.schema failed to parse: %v", serr)
 	}
-	got := osd.Write(algebra.Prune(s), false)
+	got, werr := osd.Write(algebra.Prune(s), false)
+	if werr != nil {
+		return fail(v, "osd.Write failed: %v", werr)
+	}
 	return compareCanonicalSchemaText(v, got)
 }
 
@@ -615,7 +665,7 @@ func runExtract(v Vector) Result {
 	// value rather than pinning canonical text directly, so the referee
 	// (not a byte comparison) is the right tool here.
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeExact) {
-		return fail(v, "schema mismatch (exact mode): got %q want %q", osd.Write(result, false), wantText)
+		return fail(v, "schema mismatch (exact mode): got %q want %q", osdText(result), wantText)
 	}
 	return pass(v)
 }
@@ -688,7 +738,7 @@ func runInfer(v Vector) Result {
 	// this is the operation the porting guide specifically calls out
 	// isomorphic mode for.
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeIsomorphic) {
-		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osd.Write(result, false), wantText)
+		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osdText(result), wantText)
 	}
 	return pass(v)
 }
@@ -744,7 +794,7 @@ func runInferWithReport(v Vector) Result {
 		return fail(v, "expect.schema failed to parse: %v", werr)
 	}
 	if !omnist.SchemasEqual(result, wantSchema, omnist.ModeIsomorphic) {
-		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osd.Write(result, false), wantText)
+		return fail(v, "schema mismatch (isomorphic mode): got %q want %q", osdText(result), wantText)
 	}
 	// fallbacks is always present on success (spec §8.5.3), compared as a
 	// set of (location, reason) -- reason is prose but the spec's own
@@ -840,4 +890,15 @@ func expectDiagPairs(ds []diagExpect) []diagPair {
 		out[i] = diagPair(d)
 	}
 	return out
+}
+
+// osdText renders s as OSD for a failure message. It never fails the vector by
+// itself: a schema osd.Write refuses (OSD-14) is described in place of its
+// text, since the caller is already reporting a mismatch.
+func osdText(s omnist.Schema) string {
+	text, err := osd.Write(s, false)
+	if err != nil {
+		return fmt.Sprintf("<unwritable schema: %v>", err)
+	}
+	return text
 }
