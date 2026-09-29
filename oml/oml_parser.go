@@ -194,6 +194,16 @@ func (p *parser) parseNodeEdges(closing tokenKind) (*omnist.Node, error) {
 			}
 			return nil, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected a separator (newline or ';') between edges")
 		}
+		if !first && closing == tokEOF && p.cur.kind != tokString && p.cur.kind != tokIdent {
+			// OML-26 (as settled for omnist-spec#109): after a separator the
+			// top-level edge list continues if and only if the next token
+			// can begin an edge, i.e. is a STRING or an IDENT (the two
+			// alternatives of label). Anything else -- '}', ']', ',', ':',
+			// '{', '[' and every scalar-only token, nan/inf included -- is
+			// content after the document ended. A STRING/IDENT that turns
+			// out to be a malformed edge reports its own error instead.
+			return nil, p.errAt(p.cur, omnist.CodeParseTrailingContent, "content remains after the document")
+		}
 		edges, err := p.parseEdge()
 		if err != nil {
 			return nil, err
