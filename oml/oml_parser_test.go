@@ -488,16 +488,106 @@ func TestMissingSeparatorInsideABracketedValueIsUnexpectedToken(t *testing.T) {
 	}
 }
 
-// Outside OML-26's "no separator in front of it" wording: a separator WAS
-// written, so what follows is where an edge belongs and the failure is the
-// edge's own. A stray closing token with nothing before it cannot end a
-// document that has not begun.
-func TestLeftoverAfterASeparatorOrWithNoDocumentIsUnexpectedToken(t *testing.T) {
-	for _, src := range []string{"a: 1\n}", "a: 1; }", "}", ",", "]"} {
+// A stray closing token with nothing before it cannot end a document that has
+// not begun. The spec does not specify a document consisting only of such a
+// token, so this pins the port's current behaviour, not a rule.
+func TestBareStrayTokenDocumentIsUnexpectedToken(t *testing.T) {
+	for _, src := range []string{"}", ",", "]"} {
 		pe := mustFail(t, src)
 		if pe.Code != omnist.CodeParseUnexpectedToken {
 			t.Errorf("Read(%q) = %s at %s, want parse.unexpected-token", src, pe.Code, pe.Path)
 		}
+	}
+}
+
+// OML-26 / OML-25 (spec section 4.6.1, omnist-spec#109): after a complete
+// top-level edge or scalar document, the edge list continues only if a
+// separator is followed by a STRING or an IDENT. Every other leftover token
+// is parse.trailing-content at that token, with or without a separator.
+func TestOML26LeftoverTokenAfterASeparatorIsTrailingContent(t *testing.T) {
+	cases := []struct{ name, src, path string }{
+		{"lf-rbrace", "a: 1\n}\n", "2:1"},
+		{"semicolon-rbrace", "a: 1; }\n", "1:7"},
+		{"lf-rbracket", "a: 1\n]\n", "2:1"},
+		{"semicolon-rbracket", "a: 1;]", "1:6"},
+		{"lf-comma", "a: 1\n,\n", "2:1"},
+		{"semicolon-comma", "a: 1;,", "1:6"},
+		{"lf-colon", "a: 1\n:\n", "2:1"},
+		{"semicolon-colon", "a: 1;:", "1:6"},
+		{"lf-lbrace", "a: 1\n{\n", "2:1"},
+		{"semicolon-lbrace", "a: 1;{", "1:6"},
+		{"lf-lbracket", "a: 1\n[2]\n", "2:1"},
+		{"semicolon-lbracket", "a: 1;[2]", "1:6"},
+		{"lf-integer", "a: 1\n5\n", "2:1"},
+		{"lf-nan", "a: 1\nnan\n", "2:1"},
+		{"lf-inf", "a: 1\ninf\n", "2:1"},
+		{"lf-float", "a: 1\n5.5", "2:1"},
+		{"crlf-rbrace", "a: 1\r\n}\n", "2:1"},
+		{"braced-value-then-lf-rbrace", "a: {b: 1}\n}\n", "2:1"},
+		{"array-value-then-lf-rbracket", "a: [1]\n]\n", "2:1"},
+		{"scalar-lf-rbrace", "1\n}\n", "2:1"},
+		{"scalar-semicolon-rbrace", "1; }", "1:4"},
+		{"scalar-lf-integer", "1\n2", "2:1"},
+		{"scalar-space-rbrace", "1 }", "1:3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pe := mustFail(t, tc.src)
+			if pe.Code != omnist.CodeParseTrailingContent || pe.Path != tc.path {
+				t.Errorf("Read(%q) = %s at %s, want parse.trailing-content at %s", tc.src, pe.Code, pe.Path, tc.path)
+			}
+		})
+	}
+}
+
+// OML-26: a STRING or IDENT after a separator begins the next edge; if that
+// edge is malformed its own error is reported, not trailing-content.
+func TestOML26EdgeAfterASeparatorIsTheNextEdge(t *testing.T) {
+	doc := mustParse(t, "a: 1\nb: 2\n")
+	if len(doc.Node.Edges) != 2 {
+		t.Fatalf("got %d edges", len(doc.Node.Edges))
+	}
+	doc = mustParse(t, "a: 1; \"b\": 2")
+	if len(doc.Node.Edges) != 2 {
+		t.Fatalf("got %d edges", len(doc.Node.Edges))
+	}
+	cases := []struct {
+		src, path string
+		code      omnist.Code
+	}{
+		{"a: 1\nnull: 2", "2:1", omnist.CodeParseReservedWordLabel},
+		{"a: 1\ntrue: 2", "2:1", omnist.CodeParseReservedWordLabel},
+		{"a: 1; false: 2", "1:7", omnist.CodeParseReservedWordLabel},
+		{"a: 1\nb 2", "2:3", omnist.CodeParseUnexpectedToken},
+		{"a: 1\n\"b\" 2", "2:5", omnist.CodeParseUnexpectedToken},
+	}
+	for _, tc := range cases {
+		pe := mustFail(t, tc.src)
+		if pe.Code != tc.code || pe.Path != tc.path {
+			t.Errorf("Read(%q) = %s at %s, want %s at %s", tc.src, pe.Code, pe.Path, tc.code, tc.path)
+		}
+	}
+}
+
+// E-28 / E-29 (spec section 8.4): the column counts Unicode code points and a
+// CRLF is one line break. The failure is an invalid escape, reported at the
+// opening quote of its string, so no judgement about which character is blamed.
+func TestColumnCountsCodePoints(t *testing.T) {
+	comb := "e" + string(rune(0x301))
+	cases := []struct{ name, src, path string }{
+		{"astral", "a: \"" + string(rune(0x1F600)) + "\"; b: \"\\q\"\n", "1:12"},
+		{"bmp-non-ascii", "a: \"" + string(rune(0xE9)) + "\"; b: \"\\q\"\n", "1:12"},
+		{"combining-mark", "a: \"" + comb + "\"; b: \"\\q\"\n", "1:13"},
+		{"tab", "\ta: \"\\q\"\n", "1:5"},
+		{"crlf", "a: 1\r\nb: \"\\q\"\r\n", "2:4"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pe := mustFail(t, tc.src)
+			if pe.Code != omnist.CodeParseInvalidEscape || pe.Path != tc.path {
+				t.Errorf("Read(%q) = %s at %s, want parse.invalid-escape at %s", tc.src, pe.Code, pe.Path, tc.path)
+			}
+		})
 	}
 }
 

@@ -693,3 +693,29 @@ func TestOSDPeekRuneAtEOF(t *testing.T) {
 		t.Errorf("expected 0 at EOF, got %v", r)
 	}
 }
+
+// E-28 / E-29 (spec section 8.4): the column counts Unicode code points and a
+// CRLF is one line break. The failure is a control character inside a string,
+// reported at the string's opening quote (E-23).
+func TestOSDColumnCountsCodePoints(t *testing.T) {
+	tail := "\"b\x01\": string,\n}\nroot R\n"
+	cases := []struct{ name, src, path string }{
+		{"astral", "record R {\n    \"" + string(rune(0x1F600)) + "\": string, " + tail, "2:18"},
+		{"bmp-non-ascii", "record R {\n    \"" + string(rune(0xE9)) + "\": string, " + tail, "2:18"},
+		{"combining-mark", "record R {\n    \"e" + string(rune(0x301)) + "\": string, " + tail, "2:19"},
+		{"tab", "record R {\n\t\"a\": string, " + tail, "2:15"},
+		{"crlf", "record R {\r\n \"b\x01\": string\r\n}\r\nroot R\r\n", "2:2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := mustFailOSD(t, tc.src)
+			pe, ok := err.(*omnist.ParseError)
+			if !ok {
+				t.Fatalf("error is not *ParseError: %T %v", err, err)
+			}
+			if pe.Code != omnist.CodeParseControlCharacter || pe.Path != tc.path {
+				t.Errorf("Read(%q) = %s at %s, want parse.control-character at %s", tc.src, pe.Code, pe.Path, tc.path)
+			}
+		})
+	}
+}

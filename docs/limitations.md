@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.5.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.5.1-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**239 pass / 0 fail / 34 skip** of 273 vectors (`omnist-spec` v0.21.0-beta
+**253 pass / 0 fail / 34 skip** of 287 vectors (`omnist-spec` v0.22.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 28 of the 34 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -54,6 +54,33 @@ tracks are strictly CI-gating as of issue #74.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.5.1-alpha`**, a patch bump per `CONTRIBUTING.md` §1 (no new public
+API; a narrow, spec-driven error-code fix), adopting `omnist-spec`
+v0.22.0-beta (from v0.21.0-beta). Conformance against the new pin, Track 2:
+**243 pass / 10 fail / 34 skip of 287** before any code change (the 14 new
+vectors, of which the port already passed 4: the two code-point column
+vectors, the scalar-then-`}` vector and the two-edge negative control);
+**253 pass / 0 fail / 34 skip of 287** after. Track 1 stayed 19/19. What
+changed:
+
+- **OML-26 with a separator (omnist-spec#109, DIV-7).** After a complete
+  top-level edge, the edge list continues only if a separator is followed by
+  a STRING or an IDENT. Any other leftover token (`}`, `]`, `,`, `:`, `{`,
+  `[`, and every scalar-only token, `nan`/`inf` included) is
+  `parse.trailing-content` at that token, with or without a separator. The
+  port used to report `parse.unexpected-token` when a separator preceded it.
+  A STRING/IDENT after a separator is the next edge and reports its own error
+  if malformed (`a: 1` newline `null: 2` is `parse.reserved-word-label` at
+  `2:1`). Inside `{...}` and `[...]` (OML-27) nothing changed.
+- **E-28/E-29.** OML and OSD columns already counted code points and a CRLF
+  as one break; tests now pin combining marks, tabs, BMP non-ASCII and CRLF.
+  Codec positions are untouched (omnist-spec#114).
+- Unspecified and unchanged: a document of only `}`, `,` or `]`, a lone CR,
+  and an unterminated array (`a: [1` newline reports `parse.separator-in-array`
+  here; the spec has no vector or rule for it).
+
+### Previous: v0.5.0-alpha
 
 **`v0.5.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1's alpha-series
 rule, and a **breaking** one: `osd.Write` now returns `(string, error)`
@@ -228,7 +255,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `103a8c9` (`v0.21.0-beta`), pinned via the
+`omnist-spec` at commit `8b8a746` (`v0.22.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
