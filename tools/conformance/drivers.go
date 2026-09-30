@@ -36,22 +36,11 @@ type parseInput struct {
 	DeclaredMaxNodes     *int    `json:"declared_max_nodes"`
 	DeclaredMaxIntDigits *int    `json:"declared_max_int_digits"`
 	// DeclaredMaxAliasExpansion is the fourth declared-limit key
-	// (test-suite/README.md, §2.4.1's D-18). This port exposes no
-	// configuration surface for it and does not enforce D-18 at all
-	// (DIV-3), so a vector carrying it is skipped rather than run against
-	// this port's own behavior: running a boundary vector against a limit
-	// that does not exist would either fail for the wrong reason or, for
-	// expansion-at-declared-limit-succeeds, pass without pinning anything.
+	// (test-suite/README.md, §2.4.1's D-18). It is passed to the reader as
+	// Limits.MaxAliasExpansion, and only for a vector that carries it: every
+	// other vector runs with the reference default of 50.
 	DeclaredMaxAliasExpansion *int `json:"declared_max_alias_expansion"`
 }
-
-// aliasExpansionSkipReason is the E-20 "not yet implemented" reason every
-// vector carrying declared_max_alias_expansion is skipped with. It is true for
-// all six: this port has no alias-expansion limit to configure (yaml.v3
-// decoding into a Node applies none, and none is layered on top), so none of
-// them can be honestly run. The category is E-20's first (not-yet-implemented),
-// not E-21's: DIV-3 is a rollout gap, not a structural limit of Go.
-const aliasExpansionSkipReason = "not yet implemented: D-18 alias-expansion limit is not enforced by this port and has no configuration surface (DIV-3, omnist-spec §9.4; tracked by omnist-go issue #117)"
 
 // readSourceInput returns the exact source a read-side driver (parse,
 // parse_schema) feeds its reader, as a Go string. For text that is the JSON
@@ -92,6 +81,9 @@ func limitsFromInput(in parseInput) omnist.Limits {
 	if in.DeclaredMaxIntDigits != nil {
 		l.MaxIntDigits = *in.DeclaredMaxIntDigits
 	}
+	if in.DeclaredMaxAliasExpansion != nil {
+		l.MaxAliasExpansion = *in.DeclaredMaxAliasExpansion
+	}
 	return l
 }
 
@@ -125,9 +117,6 @@ func runParse(v Vector) Result {
 	var in parseInput
 	if err := encjson.Unmarshal(v.Input, &in); err != nil {
 		return fail(v, "decode input: %v", err)
-	}
-	if in.DeclaredMaxAliasExpansion != nil {
-		return Result{Vector: v, Status: StatusSkip, Reason: aliasExpansionSkipReason}
 	}
 	expect, err := decodeExpect(v)
 	if err != nil {

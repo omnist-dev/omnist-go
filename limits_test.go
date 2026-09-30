@@ -119,3 +119,33 @@ func TestLimitsValidate(t *testing.T) {
 		t.Error("expected error for MaxIntDigits > MaxRecommendedIntDigits")
 	}
 }
+
+func TestMaxAliasExpansionLimitsAndValidate(t *testing.T) {
+	if DefaultLimits().MaxAliasExpansion != DefaultMaxAliasExpansion || DefaultMaxAliasExpansion != 50 {
+		t.Errorf("default alias expansion = %d, want 50", DefaultLimits().MaxAliasExpansion)
+	}
+	// Effective: positive values are used, zero and negatives select the
+	// default and never mean unbounded (D-10).
+	for _, tc := range []struct{ in, want int }{{1, 1}, {7, 7}, {50, 50}, {10_000, 10_000}, {0, 50}, {-1, 50}, {-1 << 62, 50}} {
+		if got := (Limits{MaxAliasExpansion: tc.in}).EffectiveMaxAliasExpansion(); got != tc.want {
+			t.Errorf("Effective(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+	base := Limits{MaxDepth: 10, MaxNodes: 100, MaxIntDigits: 10}
+	// Zero (a pre-existing literal) is valid: it selects the default.
+	if err := base.Validate(); err != nil {
+		t.Errorf("Validate with MaxAliasExpansion unset: %v", err)
+	}
+	base.MaxAliasExpansion = MaxRecommendedAliasExpansion
+	if err := base.Validate(); err != nil {
+		t.Errorf("Validate at the ceiling: %v", err)
+	}
+	base.MaxAliasExpansion = -1
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for negative MaxAliasExpansion")
+	}
+	base.MaxAliasExpansion = MaxRecommendedAliasExpansion + 1
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for MaxAliasExpansion > MaxRecommendedAliasExpansion")
+	}
+}

@@ -18,15 +18,42 @@ type Limits struct {
 	// MaxIntDigits is the maximum decimal digits in an integer literal,
 	// sign excluded.
 	MaxIntDigits int
+	// MaxAliasExpansion is the maximum expansion factor E(a) = W(a) / S(a)
+	// of any anchored definition in a format with an anchor/reference
+	// mechanism (spec D-18, §2.4.1). YAML is the only such codec today;
+	// every other reader ignores the field. It is a finite bound like the
+	// others (D-10), never "unbounded": zero means "unset" and selects
+	// DefaultMaxAliasExpansion, so a Limits literal written before this
+	// field existed keeps a finite limit; a negative value is invalid
+	// (Validate reports it) and readers treat it as "unset" too, never as
+	// "no limit". EffectiveMaxAliasExpansion gives the value a reader
+	// enforces.
+	MaxAliasExpansion int
+}
+
+// DefaultMaxAliasExpansion is the spec §2.4 reference default for the alias
+// expansion factor (D-18): 50.
+const DefaultMaxAliasExpansion = 50
+
+// EffectiveMaxAliasExpansion returns the alias expansion factor a YAML
+// reader enforces for l: MaxAliasExpansion when it is positive, otherwise
+// DefaultMaxAliasExpansion. A non-positive configuration never widens the
+// limit and never disables it (D-10).
+func (l Limits) EffectiveMaxAliasExpansion() int {
+	if l.MaxAliasExpansion > 0 {
+		return l.MaxAliasExpansion
+	}
+	return DefaultMaxAliasExpansion
 }
 
 // DefaultLimits returns the spec §2.4 reference defaults: depth 200, node
-// count 1,000,000, integer digits 4,300.
+// count 1,000,000, integer digits 4,300, alias expansion factor 50.
 func DefaultLimits() Limits {
 	return Limits{
-		MaxDepth:     200,
-		MaxNodes:     1_000_000,
-		MaxIntDigits: 4300,
+		MaxDepth:          200,
+		MaxNodes:          1_000_000,
+		MaxIntDigits:      4300,
+		MaxAliasExpansion: DefaultMaxAliasExpansion,
 	}
 }
 
@@ -118,6 +145,10 @@ const (
 	MaxRecommendedNodes = 100_000_000
 	// MaxRecommendedIntDigits is the upper bound above which arbitrary-precision integer parsing risks CPU exhaustion.
 	MaxRecommendedIntDigits = 1_000_000
+	// MaxRecommendedAliasExpansion is the upper bound above which the alias expansion check no
+	// longer meaningfully bounds amplification (the spec measures its weakest dangerous document
+	// at about E = 170).
+	MaxRecommendedAliasExpansion = 10_000
 )
 
 // Validate checks that l specifies strictly positive values within sane, recommended safety
@@ -144,6 +175,12 @@ func (l Limits) Validate() error {
 	}
 	if l.MaxIntDigits > MaxRecommendedIntDigits {
 		return fmt.Errorf("MaxIntDigits %d exceeds recommended safety ceiling (%d)", l.MaxIntDigits, MaxRecommendedIntDigits)
+	}
+	if l.MaxAliasExpansion < 0 {
+		return fmt.Errorf("MaxAliasExpansion must not be negative, got %d (zero selects the default %d)", l.MaxAliasExpansion, DefaultMaxAliasExpansion)
+	}
+	if l.MaxAliasExpansion > MaxRecommendedAliasExpansion {
+		return fmt.Errorf("MaxAliasExpansion %d exceeds recommended safety ceiling (%d)", l.MaxAliasExpansion, MaxRecommendedAliasExpansion)
 	}
 	return nil
 }

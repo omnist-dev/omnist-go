@@ -104,6 +104,12 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// root is always a DocumentNode wrapping exactly one child when Decode
 	// succeeds with io.EOF not yet reached above — yaml.v3's contract for
 	// decoding into a *yamllib.Node.
+	// D-18/D-19/D-20: bound alias expansion from the reference graph alone,
+	// before any alias is expanded. The node-count and depth limits below stay
+	// as the second line of defence.
+	if aerr := checkAliasExpansion(root.Content[0], limits.EffectiveMaxAliasExpansion()); aerr != nil {
+		return omnist.Document{}, aerr
+	}
 	r := &yamlReader{checker: omnist.NewLimitChecker(limits), maxMergeDepth: limits.MaxDepth}
 	return r.readDocument(root.Content[0])
 }

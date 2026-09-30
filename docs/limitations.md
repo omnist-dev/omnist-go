@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.5.2-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.6.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,18 +17,18 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**268 pass / 0 fail / 34 skip** of 302 vectors (`omnist-spec` v0.24.0-beta
+**274 pass / 0 fail / 28 skip** of 302 vectors (`omnist-spec` v0.24.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
-28 of the 34 skips are the OSD-OML extension
+All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
 port, cited honestly per §9.5 rather than crashing or failing the
 driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
-for implementing it. The other 6 are the YAML alias-expansion vectors, which
-carry `declared_max_alias_expansion`: this port does not enforce D-18 and has
-no configuration surface for it, so the runner skips them citing `DIV-3` and
-[issue #117](https://github.com/omnist-dev/omnist-go/issues/117) rather than
-running them against the wrong limit. All 34 skips are E-20's "not yet
-implemented" category; none is a documented divergence (E-21). Track 1
+for implementing it. All 28 are E-20's "not yet implemented" category;
+none is a documented divergence (E-21). The six YAML alias-expansion
+vectors, which carry `declared_max_alias_expansion`, now run and pass: the
+runner passes the vector's declared maximum to the reader as
+`Limits.MaxAliasExpansion`, and only for a vector that carries the key.
+Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
 as [`omnist-spec#41`](https://github.com/omnist-dev/omnist-spec/issues/41)
@@ -49,11 +49,80 @@ Track 2's diagnostics) to Track 1's finding `code` field, done in
 `tools/conformance/fixtures.go`. Both conformance
 tracks are strictly CI-gating as of issue #74.
 
+### Safety limits (D-9 to D-11, D-18 to D-20)
+
+Every reader enforces finite limits, set through `omnist.Limits` and defaulted
+by `omnist.DefaultLimits()` (spec §2.4, D-11). `Limits.Validate()` is an opt-in
+sanity check.
+
+| Limit | `Limits` field | Default | Applies to |
+|---|---|---|---|
+| Nesting depth | `MaxDepth` | 200 | every reader |
+| Node count | `MaxNodes` | 1,000,000 | every reader |
+| Integer digits | `MaxIntDigits` | 4,300 | every reader |
+| Alias expansion factor | `MaxAliasExpansion` | 50 | YAML only (the one codec with an anchor/alias mechanism); every other reader ignores it |
+
+**The alias expansion factor** (D-18, D-19, D-20). For each anchored node `a`,
+`E(a) = W(a) / S(a)`, where `W` is the number of value slots materialized when
+`a` is expanded and `S` the number written in its own definition (an alias
+counts as one written slot; a merge key `<<` likewise, however many aliases it
+holds). The YAML reader computes `E` for every anchor from the `yaml.Node`
+reference graph in linear time, BEFORE it expands anything, with saturating
+arithmetic, and rejects the first anchor whose `E` exceeds the maximum with
+`document.limit.alias-expansion` at path `$`. An anchor that refers to itself,
+directly or through other anchors (merge keys included), is rejected with the
+same code (D-20). `W` is the spec's conservative structural count: where a
+merged key is overridden locally it may exceed what is finally materialized,
+never the reverse. Only anchored definitions are checked; the node-count and
+depth limits remain the second line of defence for everything else. A
+programmatically built Document, and every other format, is unaffected.
+
+**Invalid values.** "No limit" is not a legal choice (D-10). A zero
+`MaxAliasExpansion` means "unset" and selects the default of 50, so a `Limits`
+literal written before the field existed keeps a finite limit; a negative
+value is also treated as unset (never as unbounded) and `Validate()` reports
+it as an error, as it does a value above `MaxRecommendedAliasExpansion`
+(10,000). `Limits.EffectiveMaxAliasExpansion()` returns the value a reader
+enforces.
+
 ### Codex audit cycle (#70–#81)
 
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.6.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1: it adds new public
+API (`Limits.MaxAliasExpansion`, `DefaultMaxAliasExpansion`,
+`Limits.EffectiveMaxAliasExpansion`, `MaxRecommendedAliasExpansion`,
+`CodeDocumentLimitAliasExpansion`) and closes a CPU-exhaustion path (a YAML
+alias bomb was bounded only after the fact, by the node cap). It implements
+omnist-spec D-18, D-19 and D-20 (`DIV-3`, issue #117); the `omnist-spec` pin
+stays v0.24.0-beta. Conformance, Track 2: **268 pass / 0 fail / 34 skip of
+302** before, **274 pass / 0 fail / 28 skip of 302** after (the six
+alias-expansion vectors moved from skip to pass; the 28 remaining skips are the
+OSD-OML extension). Track 1 stayed 19/19. What changed:
+
+- **Alias expansion limit (D-18, D-19, D-20).** `yaml.Read` now computes every
+  anchor's expansion factor from the node graph before building the Document
+  (see "Safety limits" above) and rejects an over-limit anchor, or an anchor
+  that refers to itself, with `document.limit.alias-expansion` at `$`. The
+  nested-anchor bomb shapes that took seconds (branching 4 over 10 levels
+  accepted after 5 s; branching 10 over 7 levels refused by the node cap after
+  25 s) are now refused in well under a millisecond. The self-merge
+  `a: &a {<<: *a}` was stopped only by the depth limit; it is now a D-20
+  rejection.
+- **Configurable.** `Limits.MaxAliasExpansion`, default 50; zero or negative
+  means the default, never unbounded.
+- **Conformance runner.** `declared_max_alias_expansion` is no longer a skip
+  key: the driver passes the vector's declared maximum through the new option,
+  for vectors that carry it only. `(path, code)` sets are still compared
+  strictly and there is no known-failing list.
+- **Inline merge sources.** The spec text defines contributions for merged
+  aliases only. An inline mapping merged in place (`<<: {k: 1}`) is counted as
+  a merged anonymous anchor: its container is flattened (contributes `w-1` to
+  `W`) and the slots it writes count in `S`.
+
+### Previous: v0.5.2-alpha
 
 **`v0.5.2-alpha`**, a patch bump per `CONTRIBUTING.md` §1 (no new public
 API, no DoS or correctness-corruption fix: parse diagnostics and the set of
