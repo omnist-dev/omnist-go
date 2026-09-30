@@ -80,13 +80,19 @@ where a merged key is overridden locally it may exceed what is finally
 materialized, never the reverse. A programmatically built Document, and every
 other format, is unaffected.
 
-What `MaxNodes` and `MaxDepth` still do: they bound the absolute size and depth
-of what is admitted. They are no longer the defence against an amplifying
-input, because every such input is now refused by the alias check. They still
-cap an input the alias check accepts: a large document whose every candidate
-sits at or under `E = 50` can materialize up to about fifty times what it
-writes, and `MaxNodes` refuses it if that exceeds the node count, while a long
-acyclic merge chain (each link at `E = 1.00`) is bounded by `MaxDepth`.
+What `MaxNodes` and `MaxDepth` still do: `MaxNodes` counts only materialized
+mappings, not scalars, so it does not bound a scalar-heavy expansion; that is
+bounded only by the alias check, which caps the whole document at
+`W <= MaxAliasExpansion x S(root)`. A huge document whose containers each sit
+just under `E = 50` can therefore still materialize about fifty times what it
+writes and use a lot of memory. A long acyclic merge chain (each link at
+`E = 1.00`) is bounded by `MaxDepth`.
+
+**Known edge.** An anchored literal merge sequence `<<: &s [*p, *q]` is
+currently treated as an ordinary merge value rather than the syntactic carrier
+that `<<: [*p, *q]` is, so its slot inflates `S` and `E` is under-counted
+compared with the unanchored form. This is a spec-ambiguity edge; it is bounded
+by the root check, and the algorithm is unchanged.
 
 **A mapping that merges a large anchor has a high `E` by design.** `E` of
 `job: {<<: *base, script: x}` is `(keys + 2) / 3`: the referrer writes three

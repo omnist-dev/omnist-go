@@ -806,3 +806,22 @@ func TestAliasScalarsAreNeverChecked(t *testing.T) {
 	readOK(t, "scalar root", "5\n", limitsWith(1))
 	readOK(t, "scalar anchor + alias", "c: &c 5\nd: *c\n", limitsWith(1))
 }
+
+func TestAliasUnanchoredNestedSequenceIsCheckedOnItsOwn(t *testing.T) {
+	// An unanchored sequence [*b x 10] over a 100-scalar block has
+	// E = (1 + 10*101) / 11 = 91.9. Its enclosing mapping and the root stay
+	// far under the limit thanks to 2000 filler scalars, so only the
+	// sequence's own check can reject it.
+	var b strings.Builder
+	b.WriteString(blockText(100))
+	b.WriteString("m:\n  s: [" + strings.TrimSuffix(strings.Repeat("*b, ", 10), ", ") + "]\n")
+	for i := 0; i < 2000; i++ {
+		fmt.Fprintf(&b, "  f%d: 1\n", i)
+	}
+	text := b.String()
+	pe := aliasErrOf(t, text, omnist.DefaultLimits())
+	if pe.Line != 3 {
+		t.Errorf("rejected at line %d, want 3 (the sequence)", pe.Line)
+	}
+	readOK(t, "same shape at 92", text, limitsWith(92))
+}

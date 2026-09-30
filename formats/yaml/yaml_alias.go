@@ -38,6 +38,13 @@ import (
 //     flattened away in W (contribution w-1). The inline mapping is also a
 //     candidate on its own subtree.
 //
+// Known edge (a spec ambiguity, the algorithm is deliberately unchanged): an
+// ANCHORED literal merge sequence `<<: &s [*p, *q]` is treated as an ordinary
+// merge value (a container that is flattened, w-1), not as the syntactic
+// carrier of `<<: [*p, *q]`. Its slot is then counted in S, so E is
+// under-counted relative to the unanchored carrier form. Every other
+// candidate, and the document root, are still checked.
+//
 // W is the structural count of the spec, deliberately blind to key collisions
 // (D-19): it may exceed what is finally materialized, never fall below it.
 //
