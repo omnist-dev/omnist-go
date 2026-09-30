@@ -45,10 +45,6 @@ type token struct {
 	// containing at least one newline or ';', per spec §4.2.1) preceded
 	// this token. hspace/comment-only runs do not set this.
 	sepBefore bool
-	// sepLine/sepCol locate the first newline or ';' of that separator,
-	// for error reporting when a separator appears somewhere it must not
-	// (inside an array, per §4.3.1).
-	sepLine, sepCol int
 
 	// Decoded values, meaningful only for the corresponding kind.
 	strVal      string
@@ -139,44 +135,34 @@ func (l *lexer) advance() rune {
 // skipTrivia consumes horizontal space and comments (which emit no
 // token), and tracks whether a newline or ';' was seen among them (which
 // makes the following token separator-preceded, per §4.2.1).
-func (l *lexer) skipTrivia() (sawSep bool, sepLine, sepCol int) {
+func (l *lexer) skipTrivia() (sawSep bool) {
 	for !l.atEOF() {
 		r := l.peekRune()
 		switch r {
 		case ' ', '\t':
 			l.advance()
 		case '\r':
-			// CRLF or lone CR both count as a newline separator. The
-			// reported position is where valid content would have had to
-			// start instead of the separator — i.e. just past it, not the
-			// separator character's own position — per the conformance
-			// vector oml-grammar/arrays/newline-inside-array-is-an-error.
+			// CRLF or lone CR both count as a newline separator.
 			l.advance()
 			if l.peekRune() == '\n' {
 				l.advance()
 			}
-			if !sawSep {
-				sawSep, sepLine, sepCol = true, l.line, l.col
-			}
+			sawSep = true
 		case '\n':
 			l.advance()
-			if !sawSep {
-				sawSep, sepLine, sepCol = true, l.line, l.col
-			}
+			sawSep = true
 		case ';':
 			l.advance()
-			if !sawSep {
-				sawSep, sepLine, sepCol = true, l.line, l.col
-			}
+			sawSep = true
 		case '#':
 			for !l.atEOF() && l.peekRune() != '\n' {
 				l.advance()
 			}
 		default:
-			return sawSep, sepLine, sepCol
+			return sawSep
 		}
 	}
-	return sawSep, sepLine, sepCol
+	return sawSep
 }
 
 var (
@@ -211,11 +197,11 @@ func (l *lexer) remainingString() string {
 // next returns the next token, or a *omnist.ParseError. It is the single entry
 // point implementing §4.2's priority order.
 func (l *lexer) next() (token, *omnist.ParseError) {
-	sawSep, sepLine, sepCol := l.skipTrivia()
+	sawSep := l.skipTrivia()
 	startLine, startCol := l.line, l.col
 
 	if l.atEOF() {
-		return token{kind: tokEOF, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokEOF, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	r := l.peekRune()
@@ -227,14 +213,14 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 			return token{}, err
 		}
 		tok.line, tok.col = startLine, startCol
-		tok.sepBefore, tok.sepLine, tok.sepCol = sawSep, sepLine, sepCol
+		tok.sepBefore = sawSep
 		return tok, nil
 	}
 
 	// Rule 2: punctuation.
 	if k, ok := punctKind(r); ok {
 		l.advance()
-		return token{kind: k, text: string(r), line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: k, text: string(r), line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	rest := l.remainingString()
@@ -254,7 +240,7 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 		if !omnist.ValidTime(dtVal.Time) || !omnist.ValidOffsetText(m) {
 			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidTime, fmt.Sprintf("%q is not a valid time of day", m))
 		}
-		return token{kind: tokDateTime, text: m, dateTimeVal: dtVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDateTime, text: m, dateTimeVal: dtVal, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 4: DATE (not followed by a valid DATETIME, already excluded above).
@@ -264,7 +250,7 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 		if !omnist.ValidDate(dateVal) {
 			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidDate, fmt.Sprintf("%q is not a valid calendar date", m))
 		}
-		return token{kind: tokDate, text: m, dateVal: dateVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokDate, text: m, dateVal: dateVal, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 5: TIME.
@@ -274,7 +260,7 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 		if !omnist.ValidTime(timeVal) || !omnist.ValidOffsetText(m) {
 			return token{}, l.errAt(startLine, startCol, omnist.CodeParseInvalidTime, fmt.Sprintf("%q is not a valid time of day", m))
 		}
-		return token{kind: tokTime, text: m, timeVal: timeVal, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokTime, text: m, timeVal: timeVal, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 6: NUMBER (decimal or exponent form).
@@ -285,13 +271,13 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 		}
 		l.consumeRunes(len([]rune(m)))
 		f, _ := strconv.ParseFloat(m, 64)
-		return token{kind: tokNumber, text: m, numVal: f, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokNumber, text: m, numVal: f, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 7: reserved float spellings, emitted as NUMBER.
 	if m, val, ok := matchReservedFloat(rest); ok {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokNumber, text: m, numVal: val, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokNumber, text: m, numVal: val, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 8: INTEGER.
@@ -313,13 +299,13 @@ func (l *lexer) next() (token, *omnist.ParseError) {
 			return token{}, &omnist.ParseError{Line: startLine, Col: startCol, Path: digitPath, Code: diag.Code, Message: diag.Message}
 		}
 		bi, _ := new(big.Int).SetString(m, 10)
-		return token{kind: tokInteger, text: m, intVal: bi, intDigits: digits, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokInteger, text: m, intVal: bi, intDigits: digits, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	// Rule 9: IDENT.
 	if m := reIdent.FindString(rest); m != "" {
 		l.consumeRunes(len([]rune(m)))
-		return token{kind: tokIdent, text: m, line: startLine, col: startCol, sepBefore: sawSep, sepLine: sepLine, sepCol: sepCol}, nil
+		return token{kind: tokIdent, text: m, line: startLine, col: startCol, sepBefore: sawSep}, nil
 	}
 
 	return token{}, &omnist.ParseError{

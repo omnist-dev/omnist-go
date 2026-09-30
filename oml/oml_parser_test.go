@@ -346,9 +346,13 @@ func TestArrayTrailingComma(t *testing.T) {
 	}
 }
 
-func TestArrayNewlineSeparatorError(t *testing.T) {
-	pe := mustFail(t, "a: [1,\n2]")
-	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
+func TestArrayNewlineAfterCommaIsInsignificant(t *testing.T) {
+	// grammars/oml.abnf: COMMA [SEP] array-element. A newline after a real
+	// comma is decorative (spec §4.3.1).
+	doc := mustParse(t, "a: [1,\n2]")
+	if len(doc.Node.Edges) != 2 {
+		t.Fatalf("got %d edges", len(doc.Node.Edges))
+	}
 }
 
 func TestArraySemicolonSeparatorError(t *testing.T) {
@@ -372,11 +376,11 @@ func TestArrayMissingCommaError(t *testing.T) {
 	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
 }
 
-func TestArrayCommentFollowedByNewlineStillErrors(t *testing.T) {
-	// The comment itself is insignificant, but the newline after it is
-	// still a forbidden array separator - comments don't disable that rule.
-	pe := mustFail(t, "a: [1, # comment\n2]")
-	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
+func TestArrayCommentThenNewlineAfterCommaIsInsignificant(t *testing.T) {
+	doc := mustParse(t, "a: [1, # comment\n2]")
+	if len(doc.Node.Edges) != 2 {
+		t.Fatalf("got %d edges", len(doc.Node.Edges))
+	}
 }
 
 func TestArrayCommentSameLineAllowed(t *testing.T) {
@@ -1155,9 +1159,12 @@ func TestBareArrayAtTopLevelIsUnexpectedToken(t *testing.T) {
 
 // --- coverage: separator immediately after '[', and a malformed element ---
 
-func TestArraySeparatorRightAfterOpenBracket(t *testing.T) {
-	pe := mustFail(t, "a: [\n1]")
-	wantCode(t, pe, omnist.CodeParseSeparatorInArray)
+func TestArraySeparatorRightAfterOpenBracketIsInsignificant(t *testing.T) {
+	// grammars/oml.abnf: LBRACKET [SEP] array-element.
+	doc := mustParse(t, "a: [\n1]")
+	if len(doc.Node.Edges) != 1 {
+		t.Fatalf("got %d edges", len(doc.Node.Edges))
+	}
 }
 
 func TestArrayElementBareWordError(t *testing.T) {
@@ -1302,5 +1309,72 @@ func TestPeekRuneAtEOF(t *testing.T) {
 	l := newLexer("a", omnist.NewLimitChecker(omnist.DefaultLimits()))
 	if r := l.peekRuneAt(10); r != 0 {
 		t.Errorf("expected 0, got %v", r)
+	}
+}
+
+// --- OML-28 and the v0.24.0-beta array grammar (spec §4.3.1, §4.6.1) ---
+
+func TestArrayOML28Diagnostics(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code omnist.Code
+		path string
+	}{
+		{"separator then scalar, newline", "a: [1\n2]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"separator then scalar, semicolon", "a: [1;2]", omnist.CodeParseSeparatorInArray, "1:7"},
+		{"separator then ident", "a: [1\nfoo]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"separator then brace", "a: [1\n{x: 1}]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"separator then bracket", "a: [1\n[2]]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"separator then string", "a: [1\n\"s\"]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"after later element", "a: [1, 2\n3]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"CRLF before token", "a: [1\r\n2]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"lone CR is a separator but not a line break (E-29)", "a: [1\r2]", omnist.CodeParseSeparatorInArray, "1:7"},
+		{"blank lines and indent, blamed token not first newline", "a: [1\n\n   2]", omnist.CodeParseSeparatorInArray, "3:4"},
+		{"comment between", "a: [1 # c\n2]", omnist.CodeParseSeparatorInArray, "2:1"},
+		{"non-ASCII before token counts code points", "a: [\"é\";2]", omnist.CodeParseSeparatorInArray, "1:9"},
+		{"unterminated, trailing newline", "a: [1, 2\n", omnist.CodeParseUnexpectedToken, "2:1"},
+		{"one element, trailing newline", "a: [1\n", omnist.CodeParseUnexpectedToken, "2:1"},
+		{"closing brace after newline", "x: {a: [1, 2\n}", omnist.CodeParseUnexpectedToken, "2:1"},
+		{"colon after newline", "a: [1\n:", omnist.CodeParseUnexpectedToken, "2:1"},
+		{"semicolon at end of input", "a: [1;", omnist.CodeParseUnexpectedToken, "1:7"},
+		{"unterminated, no trailing newline", "a: [1, 2", omnist.CodeParseUnexpectedToken, "1:9"},
+		{"no separator, missing comma", "a: [1 2]", omnist.CodeParseUnexpectedToken, "1:7"},
+		{"empty array", "a: []", omnist.CodeParseEmptyArray, "1:4"},
+		{"nested array after comma", "a: [1,\n[2]]", omnist.CodeParseNestedArray, "2:1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pe := mustFail(t, tc.src)
+			wantCode(t, pe, tc.code)
+			if pe.Path != tc.path {
+				t.Errorf("Read(%q) path = %q, want %q", tc.src, pe.Path, tc.path)
+			}
+		})
+	}
+}
+
+func TestArrayInsignificantSeparators(t *testing.T) {
+	cases := []struct {
+		name  string
+		src   string
+		edges int
+	}{
+		{"newline before ] after first element", "a: [1\n]", 1},
+		{"newline before , after first element", "a: [1\n, 2]", 2},
+		{"newline before ] after later element", "a: [1, 2\n]", 2},
+		{"semicolon before ]", "a: [1;]", 1},
+		{"CRLF before ]", "a: [1\r\n]", 1},
+		{"newline before trailing comma", "a: [1, 2\n,]", 2},
+		{"comment and newline before ]", "a: [1 # c\n]", 1},
+		{"newline after [ and before ]", "a: [\n1\n]", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := mustParse(t, tc.src)
+			if len(doc.Node.Edges) != tc.edges {
+				t.Fatalf("Read(%q) gave %d edges, want %d", tc.src, len(doc.Node.Edges), tc.edges)
+			}
+		})
 	}
 }

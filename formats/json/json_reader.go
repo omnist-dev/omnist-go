@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/internal/textpos"
 )
 
 // Read parses JSON source text into a omnist.Document (spec
@@ -117,16 +118,7 @@ func (r *jsonReader) errHere(code omnist.Code, msg string) error {
 // elsewhere in this file, there is no defensive clamp here for a range
 // this function's only caller can never produce.
 func offsetToLineCol(text string, offset int64) (line, col int) {
-	line, col = 1, 1
-	for i := int64(0); i < offset; i++ {
-		if text[i] == '\n' {
-			line++
-			col = 1
-		} else {
-			col++
-		}
-	}
-	return line, col
+	return textpos.FromOffset(text, int(offset))
 }
 
 // readDocument builds the top-level omnist.Document from the already-read first

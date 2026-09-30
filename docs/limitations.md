@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.5.1-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.5.2-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**253 pass / 0 fail / 34 skip** of 287 vectors (`omnist-spec` v0.22.0-beta
+**268 pass / 0 fail / 34 skip** of 302 vectors (`omnist-spec` v0.24.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 28 of the 34 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -54,6 +54,49 @@ tracks are strictly CI-gating as of issue #74.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.5.2-alpha`**, a patch bump per `CONTRIBUTING.md` §1 (no new public
+API, no DoS or correctness-corruption fix: parse diagnostics and the set of
+accepted OML arrays move to what the spec now states), adopting `omnist-spec`
+v0.24.0-beta (from v0.22.0-beta; `v0.5.1-alpha` was never tagged, so this is
+the first tag to carry both adoptions). Conformance against the new pin,
+Track 2: **255 pass / 13 fail / 34 skip of 302** before any code change (the
+five OML-28 vectors and four valid-array vectors, plus the four codec-syntax
+vectors whose expected path is E-32's `"line:col"` placeholder, which the
+runner did not know); **268 pass / 0 fail / 34 skip of 302** after. Track 1
+stayed 19/19; the 28 OSD-OML and 6 alias-expansion skips are unchanged. What
+changed:
+
+- **OML-28 and the array rule (omnist-spec#115, #117; DIV-8, DIV-9).** Inside
+  `[...]`, a newline or `;` where a comma was owed is
+  `parse.separator-in-array` only when a value-start token follows (a scalar
+  token, any `IDENT`, `{` or `[`), at that token. When `}`, `:` or the end of
+  input follows, it is `parse.unexpected-token` at that token (an unterminated
+  `a: [1, 2` newline is `2:1`, without the newline `1:9`). A newline or `;`
+  before `,` or `]`, after any element, is insignificant: `a: [1` newline `]`,
+  `a: [1` newline `, 2]`, `a: [1, 2` newline `]` and `a: [1;]` are valid.
+  The ABNF also allows a separator after `[` and after a `,`, and the reader
+  now accepts both (`a: [` newline `1]`, `a: [1,` newline `2]`), which it had
+  rejected; the spec calls both decorative. The position is now always the
+  blamed token's own, not the first newline or `;` of a longer run.
+- **E-31 codec positions (omnist-spec#114, DIV-8).** A `parse.codec-syntax`
+  path is now a `line:col` inside the input. The XML reader reported `1:0` for
+  empty input and a byte column otherwise; it now reports `1:1` and converts
+  the decoder's line and byte column to code points (E-28), clamped to the
+  input. The JSON and TOML readers counted bytes for the column; both now
+  count code points through the same helper (`internal/textpos`). YAML is
+  unchanged: yaml.v3 exposes a line only in its message text, so the column
+  stays `1` and the line is the library's. D-21 and D-14 stay `1:1`.
+- **E-32 runner placeholder.** The Track 2 runner accepts the literal
+  `"line:col"` only on a lone `parse.codec-syntax` entry of a JSON, YAML, TOML
+  or XML parse vector: the code must match, the path must match
+  `^[1-9][0-9]*:[1-9][0-9]*$` and lie inside the input. Every other path is
+  still compared byte for byte, and elsewhere the placeholder is an ordinary
+  string that cannot match.
+- Not in this release: D-18/D-19/D-20 (`DIV-3`, issue #117) and construction
+  label checks (issue #121).
+
+### Previous: v0.5.1-alpha
 
 **`v0.5.1-alpha`**, a patch bump per `CONTRIBUTING.md` §1 (no new public
 API; a narrow, spec-driven error-code fix), adopting `omnist-spec`
@@ -255,7 +298,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `8b8a746` (`v0.22.0-beta`), pinned via the
+`omnist-spec` at commit `1e08b86` (`v0.24.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
