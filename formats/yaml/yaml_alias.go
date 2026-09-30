@@ -14,8 +14,10 @@ import (
 // omnist.Document, so an over-limit input is refused without ever paying for
 // the expansion it describes (D-19).
 //
-// For every anchored node a the check computes, from the reference graph
-// alone:
+// For every candidate node a (every anchored node, and every mapping and
+// sequence whether anchored or not, the document root and an inline merge
+// source included; scalars are never checked, E = 1.00 trivially) the check
+// computes, from the reference graph alone:
 //
 //	W(a) value slots materialized when a is expanded
 //	S(a) value slots written in a's own definition
@@ -30,11 +32,11 @@ import (
 //     flattened into the referring mapping, not reproduced);
 //   - a merge value that is a literal sequence `<<: [*p, *q]` is a syntactic
 //     carrier: it adds no slot of its own to W or S;
-//   - an INLINE mapping merged in place (`<<: {k: 1}`), which the spec text
-//     does not cover, is treated like a merged alias of an anonymous anchor:
-//     its container is flattened away (W contribution w-1) and the slots it
-//     writes count in S (s-1, its container excluded). This keeps the bound
-//     conservative-toward-1 rather than inventing amplification.
+//   - an INLINE mapping merged in place (`<<: {k: 1}`): the `<<` entry is the
+//     one slot in the referrer's S, the inline mapping's own written values
+//     add theirs (s-1, its container excluded), and its container is
+//     flattened away in W (contribution w-1). The inline mapping is also a
+//     candidate on its own subtree.
 //
 // W is the structural count of the spec, deliberately blind to key collisions
 // (D-19): it may exceed what is finally materialized, never fall below it.
@@ -42,7 +44,7 @@ import (
 // The walk is an explicit-stack depth-first traversal (no recursion, so a
 // deeply nested definition cannot exhaust the goroutine stack), each anchored
 // node's (W, S) is memoized when its frame completes, and E is checked at that
-// moment, so the first offending anchor stops the walk and no W held in
+// moment for every container, so the first offender stops the walk and no W held in
 // memory exceeds max*S of the anchor in hand. All arithmetic saturates at
 // math.MaxUint64 regardless, so an overflowing count can never wrap under the
 // limit (D-19).
@@ -142,17 +144,21 @@ func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots,
 		}
 		stack = append(stack, f)
 	}
-	// finish records a completed anchored node and checks its factor.
-	finish := func(n *yamllib.Node, w, s uint64) *omnist.ParseError {
-		if n.Anchor == "" {
+	// finish records a completed anchored node and checks the factor of every
+	// completed container, anchored or not.
+	finish := func(n *yamllib.Node, w, s uint64, carrier bool) *omnist.ParseError {
+		if carrier {
+			// A literal merge sequence is a syntactic carrier, not a candidate.
 			return nil
 		}
-		memo[n] = &aliasSlots{w: w, s: s, done: true}
+		if n.Anchor != "" {
+			memo[n] = &aliasSlots{w: w, s: s, done: true}
+		}
 		// A saturated W (true count at or past 2^64) is over the limit whatever
 		// the limit is: max*S saturates too, and equal saturated values must
 		// not compare as "within".
 		if w == math.MaxUint64 || w > satMul(limit, s) {
-			return aliasErr(n, "an anchored definition's alias expansion factor exceeds the configured maximum")
+			return aliasErr(n, "a mapping's or sequence's alias expansion factor exceeds the configured maximum")
 		}
 		return nil
 	}
@@ -216,7 +222,7 @@ func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots,
 		}
 		done := *f
 		stack = stack[:len(stack)-1]
-		if err := finish(done.n, done.w, done.s); err != nil {
+		if err := finish(done.n, done.w, done.s, done.carrier); err != nil {
 			return nil, err
 		}
 		if len(stack) > 0 {

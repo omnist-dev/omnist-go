@@ -186,8 +186,11 @@ that don't belong to a specific codec or the algebra package.
   implementation to enforce. Passed to every format reader. A zero or
   negative `MaxAliasExpansion` selects the default, never "no limit"
   (`Limits.EffectiveMaxAliasExpansion()` gives the enforced value); an
-  over-limit anchor, or an anchor that refers to itself, is rejected before
-  any expansion with `document.limit.alias-expansion` (see
+  over-limit mapping or sequence (anchored or not, the document root and inline
+  merge sources included), or an anchor that refers to itself, is rejected
+  before any expansion with `document.limit.alias-expansion`. A mapping that
+  merges a large anchor has `E` of about `(keys + 2) / 3`, so raise
+  `MaxAliasExpansion` for one (see
   [Limitations](limitations.md#safety-limits-d-9-to-d-11-d-18-to-d-20)).
 - **`Limits.Validate()`** — opt-in sanity check verifying that configured
   limits are strictly positive and within recommended safety ceilings

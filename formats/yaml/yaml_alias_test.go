@@ -606,3 +606,203 @@ func TestNodeCapStillBoundsAdmittedExpansion(t *testing.T) {
 		t.Errorf("got %#v, want document.limit.nodes", err)
 	}
 }
+
+// --- v0.25.0-beta: every mapping and sequence is a candidate (spec §2.4.1) ---
+
+// blockText is "b: &b {k0: 0, ..., k<n-1>: n-1}\n", an anchored n-scalar block.
+func blockText(n int) string {
+	var b strings.Builder
+	b.WriteString("b: &b {")
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "k%d: %d", i, i)
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+// mergeFanIn is an n-key anchored block plus an UNANCHORED mapping merging it
+// m times.
+func mergeFanIn(n, m int) string {
+	return blockText(n) + "t: {<<: [" + strings.TrimSuffix(strings.Repeat("*b, ", m), ", ") + "]}\n"
+}
+
+// aliasKeys is n root entries "a<i>: *b".
+func aliasKeys(n int) string {
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "a%d: *b\n", i)
+	}
+	return b.String()
+}
+
+func limitsWith(max int) omnist.Limits {
+	l := omnist.DefaultLimits()
+	l.MaxAliasExpansion = max
+	return l
+}
+
+func readOK(t *testing.T, name, text string, l omnist.Limits) {
+	t.Helper()
+	if _, err := Read(text, l); err != nil {
+		t.Errorf("%s: %v, want accepted", name, err)
+	}
+}
+
+func TestAliasUnanchoredContainersAreCandidates(t *testing.T) {
+	// The spec's worked unanchored case: W(t) = 13, S(t) = 2, E(t) = 6.50.
+	const spec = "b: &b {k1: 1, k2: 2, k3: 3}\nt: {<<: [*b, *b, *b, *b]}\n"
+	readOK(t, "limit 7", spec, limitsWith(7))
+	pe := aliasErrOf(t, spec, limitsWith(6))
+	if pe.Line != 2 {
+		t.Errorf("rejected at line %d, want 2 (the unanchored t)", pe.Line)
+	}
+	// Sequence of aliasing mappings, unanchored: each {k: *b} has E = 51/2.
+	list := blockText(50) + "l: [{k: *b}, {k: *b}]\n"
+	readOK(t, "list at 26", list, limitsWith(26))
+	_ = aliasErrOf(t, list, limitsWith(25))
+	// Root-only: a root mapping whose unanchored items are each fine but
+	// whose total is over: 100 plain aliases of a 100-scalar block.
+	_ = aliasErrOf(t, blockText(100)+aliasKeys(100), omnist.DefaultLimits())
+	// A root SEQUENCE is a candidate too.
+	seq := "- &b [" + strings.TrimSuffix(strings.Repeat("1, ", 100), ", ") + "]\n" + strings.Repeat("- *b\n", 100)
+	_ = aliasErrOf(t, seq, omnist.DefaultLimits())
+	seq60 := "- &b [" + strings.TrimSuffix(strings.Repeat("1, ", 100), ", ") + "]\n" + strings.Repeat("- *b\n", 60)
+	if err := checkAliasExpansion(parseRoot(t, seq60), 50); err != nil {
+		t.Errorf("root sequence aliased 60 times: %v, want accepted", err)
+	}
+}
+
+func TestAliasUnanchoredBoundaryIsStrictlyGreaterThan(t *testing.T) {
+	// E(t) = (1 + 9*11) / 2 = 50.00 exactly: accepted at the default 50
+	// (kills ">=" mutants and a shifted default), rejected at 49.
+	at := mergeFanIn(9, 11)
+	readOK(t, "E == 50 at default", at, omnist.DefaultLimits())
+	readOK(t, "E == 50 at explicit 50", at, limitsWith(50))
+	_ = aliasErrOf(t, at, limitsWith(49))
+	// E(t) = (1 + 9*12) / 2 = 54.50: rejected at the default.
+	_ = aliasErrOf(t, mergeFanIn(9, 12), omnist.DefaultLimits())
+	// Plain-alias container {a: *b}: E = (1 + W(b)) / 2 with W(b) = n + 1:
+	// n = 99 is 50.50 (rejected), 98 is 50.00 and 97 is 49.50 (accepted).
+	_ = aliasErrOf(t, blockText(99)+"t: {a: *b}\n", omnist.DefaultLimits())
+	readOK(t, "n=98", blockText(98)+"t: {a: *b}\n", omnist.DefaultLimits())
+	readOK(t, "n=97", blockText(97)+"t: {a: *b}\n", omnist.DefaultLimits())
+}
+
+func TestAliasBothBombsFromReviewAreRejectedFast(t *testing.T) {
+	// Scaled-down (milliseconds under -race) and full-size.
+	for _, tc := range []struct {
+		name string
+		text string
+	}{
+		{"merge fan-in 100x100", mergeFanIn(100, 100)},
+		{"merge fan-in 2000x2000", mergeFanIn(2000, 2000)},
+		{"root fan-out {k: *b} 1000x100", blockText(1000) + "l:\n" + strings.Repeat("  - {k: *b}\n", 100)},
+		{"root fan-out {k: *b} 1000x100000", blockText(1000) + "l:\n" + strings.Repeat("  - {k: *b}\n", 100000)},
+		{"root sequence of *b 1000x100000", "- &b [" + strings.TrimSuffix(strings.Repeat("1, ", 1000), ", ") + "]\n" + strings.Repeat("- *b\n", 100000)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The check alone (the YAML text parse, which dominates a
+			// 100,000-item document under -race, is not the check's cost).
+			root := parseRoot(t, tc.text)
+			start := time.Now()
+			if err := checkAliasExpansion(root, 50); err == nil {
+				t.Error("checkAliasExpansion accepted the bomb")
+			}
+			check := time.Since(start)
+			if check > time.Second {
+				t.Errorf("the check took %v, want well under a second", check)
+			}
+			// And the full Read, parse included: rejected with the right
+			// code, and far faster than materializing (which takes minutes
+			// and gigabytes for the largest of these).
+			start = time.Now()
+			_, err := Read(tc.text, omnist.DefaultLimits())
+			read := time.Since(start)
+			pe, ok := err.(*omnist.ParseError)
+			if !ok || pe.Code != omnist.CodeDocumentLimitAliasExpansion || pe.Path != "$" {
+				t.Errorf("got %#v, want document.limit.alias-expansion at $", err)
+			}
+			if read > 20*time.Second {
+				t.Errorf("Read took %v, want a pre-expansion rejection", read)
+			}
+			t.Logf("check %v, Read %v", check, read)
+		})
+	}
+}
+
+func TestAliasFalsePositiveGuardsForRealisticInput(t *testing.T) {
+	// Compose-style: 100 services merging a 20-key defaults anchor. Each
+	// service has E = (1 + 20 + 1) / 3 = 7.33, the root is far lower.
+	var b strings.Builder
+	b.WriteString("x-defaults: &defaults\n")
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&b, "  key%d: v%d\n", i, i)
+	}
+	b.WriteString("services:\n")
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&b, "  svc%d:\n    <<: *defaults\n    image: img%d\n", i, i)
+	}
+	readOK(t, "compose 100 x 20", b.String(), omnist.DefaultLimits())
+
+	// A 100-key block aliased 60 times at the root: E = 6162/162 = 38.04
+	// accepted; 100 times: 10202/202 = 50.50 rejected.
+	readOK(t, "100-key x60", blockText(100)+aliasKeys(60), omnist.DefaultLimits())
+	_ = aliasErrOf(t, blockText(100)+aliasKeys(100), omnist.DefaultLimits())
+}
+
+func TestAliasLargeAnchorMergeKeysPlusTwoOverThree(t *testing.T) {
+	// job: {<<: *base, script: x} has E = (keys + 2) / 3 (stated, intended):
+	// accepted with 60 base keys, 148 keys is E = 50.00 (accepted), 149 is
+	// 50.33 (rejected) and 150 is 50.67 (rejected) at the default 50.
+	job := func(keys int) string {
+		return strings.Replace(blockText(keys), "b: &b", "base: &b", 1) + "job: {<<: *b, script: x}\n"
+	}
+	readOK(t, "60 keys", job(60), omnist.DefaultLimits())
+	readOK(t, "148 keys (E = 50.00)", job(148), omnist.DefaultLimits())
+	_ = aliasErrOf(t, job(149), omnist.DefaultLimits())
+	_ = aliasErrOf(t, job(150), omnist.DefaultLimits())
+	// The documented escape hatch: raise the maximum.
+	readOK(t, "150 keys at 51", job(150), limitsWith(51))
+	readOK(t, "150 keys at 10000", job(150), limitsWith(10000))
+}
+
+func TestAliasInlineMergeSourceSlotCounting(t *testing.T) {
+	// The spec example: t: {<<: {a: 1}, z: 1} has W = 3, S = 4.
+	wantSlots(t, "inline", "t: &t {<<: {a: 1}, z: 1}\n", map[string][2]uint64{"t": {3, 4}})
+	// Aliases inside the inline mapping: the inline container is one slot in
+	// the referrer's S (the `<<` slot), its written values add theirs; in W it
+	// contributes w-1. Inline own: W = 1 + 2*2 = 5, S = 3.
+	wantSlots(t, "inline aliases", "p: &p {k: 1}\nt: &t {<<: {x: *p, y: *p}}\n", map[string][2]uint64{"p": {2, 2}, "t": {5, 4}})
+	// Inline one-past: {<<: {x: *b x M}} with an n-key block. The inline
+	// mapping has E = (1 + M*(n+1)) / (1 + M); n = 99, M = 1 gives 50.50.
+	_ = aliasErrOf(t, blockText(99)+"t: {<<: {x: *b}}\n", omnist.DefaultLimits())
+	// The inline mapping is rejected on its own even when the referrer
+	// dilutes it below the limit with many plain scalars (the referrer's E
+	// would be about 3).
+	var b strings.Builder
+	b.WriteString(blockText(100))
+	b.WriteString("t: {<<: {")
+	for i := 0; i < 10; i++ {
+		fmt.Fprintf(&b, "x%d: *b, ", i)
+	}
+	b.WriteString("y: 1}")
+	for i := 0; i < 500; i++ {
+		fmt.Fprintf(&b, ", o%d: 1", i)
+	}
+	b.WriteString("}\n")
+	pe := aliasErrOf(t, b.String(), omnist.DefaultLimits())
+	if pe.Line != 2 {
+		t.Errorf("rejected at line %d, want 2", pe.Line)
+	}
+	// An inline mapping without aliases has E = 1.00: any size is accepted.
+	readOK(t, "inline plain", "t: {<<: {"+strings.TrimSuffix(strings.Repeat("a: 1, ", 1), ", ")+"}, z: 1}\n", limitsWith(1))
+}
+
+func TestAliasScalarsAreNeverChecked(t *testing.T) {
+	// A scalar document and scalar anchors are accepted at the smallest limit.
+	readOK(t, "scalar root", "5\n", limitsWith(1))
+	readOK(t, "scalar anchor + alias", "c: &c 5\nd: *c\n", limitsWith(1))
+}

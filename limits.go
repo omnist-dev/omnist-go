@@ -19,8 +19,10 @@ type Limits struct {
 	// sign excluded.
 	MaxIntDigits int
 	// MaxAliasExpansion is the maximum expansion factor E(a) = W(a) / S(a)
-	// of any anchored definition in a format with an anchor/reference
-	// mechanism (spec D-18, §2.4.1). YAML is the only such codec today;
+	// of any candidate node in a format with an anchor/reference mechanism
+	// (spec D-18, §2.4.1): every anchored definition and every mapping and
+	// sequence, anchored or not, including the document root and an inline
+	// merge source. YAML is the only such codec today;
 	// every other reader ignores the field. It is a finite bound like the
 	// others (D-10), never "unbounded": zero means "unset" and selects
 	// DefaultMaxAliasExpansion, so a Limits literal written before this
