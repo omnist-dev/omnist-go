@@ -9,6 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2/unstable"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/internal/textpos"
 )
 
 // Read parses TOML source text into a omnist.Document (spec §7.1,
@@ -166,6 +167,7 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	p := &unstable.Parser{}
 	p.Reset([]byte(text))
 	r.p = p
+	r.text = text
 
 	for p.NextExpression() {
 		expr := p.Expression()
@@ -184,6 +186,7 @@ type tomlReader struct {
 	limits    omnist.Limits
 	checker   *omnist.LimitChecker
 	p         *unstable.Parser
+	text      string // the input after PrepareInput, for code-point columns (E-28)
 	root      *omnist.Node
 	current   *omnist.Node // insertion point for a bare (non-dotted) KeyValue
 	nodeCount int
@@ -447,7 +450,8 @@ func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*omn
 // omnist.Path convention (spec §8.4).
 func (r *tomlReader) posPath(raw unstable.Range) string {
 	shape := r.p.Shape(raw)
-	return itoa(shape.Start.Line) + ":" + itoa(shape.Start.Column)
+	line, col := textpos.FromLineByteCol(r.text, shape.Start.Line, shape.Start.Column)
+	return itoa(line) + ":" + itoa(col)
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -465,8 +469,9 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func (r *tomlReader) wrapParserError(err error) error {
 	pe := err.(*unstable.ParserError) //nolint:errorlint // see doc comment: the library's own error is always this concrete type
 	shape := r.p.Shape(r.p.Range(pe.Highlight))
-	path := itoa(shape.Start.Line) + ":" + itoa(shape.Start.Column)
-	return &omnist.ParseError{Line: shape.Start.Line, Col: shape.Start.Column, Path: path, Code: omnist.CodeParseCodecSyntax, Message: "TOML: " + pe.Message}
+	line, col := textpos.FromLineByteCol(r.text, shape.Start.Line, shape.Start.Column)
+	path := itoa(line) + ":" + itoa(col)
+	return &omnist.ParseError{Line: line, Col: col, Path: path, Code: omnist.CodeParseCodecSyntax, Message: "TOML: " + pe.Message}
 }
 
 // readScalar resolves a scalar-kind value node (String/Bool/Integer/

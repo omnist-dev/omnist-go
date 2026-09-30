@@ -423,25 +423,17 @@ func (p *parser) parseScalarValue() (omnist.Value, error) {
 // caller (parseEdge), since an array is not itself an omnist.Document-model
 // construct.
 //
-// SPEC NOTE (narrow, resolved per prose): grammars/oml.abnf's `array`
-// production includes `[SEP]` around elements, which — since SEP's own
-// definition includes newline and ';' — would literally permit a newline
-// or ';' inside `[...]`. Prose §4.3.1 is explicit and unambiguous that
-// this is an error ("Comma is the only element separator. A newline or ';'
-// inside [...] is an error"), and only the prose defines the
-// parse.separator-in-array error code this behavior requires. Per
-// grammars/oml.abnf's own header, "where [ABNF and prose] disagree, that
-// is a defect to be fixed, not a choice" — this repo cannot fix
-// omnist-spec, so this is implemented per prose (hspace/comments are
-// still skipped silently inside arrays; a newline or ';' is rejected) and
-// is flagged prominently in the issue report as a genuine ABNF/prose
-// disagreement, not silently resolved.
+// Separators inside the brackets (spec §4.3.1, OML-28, grammars/oml.abnf):
+// a newline or ';' is insignificant after '[', after a ',' and before a ','
+// or ']' (after any element, the first included). Where a ',' or ']' was owed
+// and a newline or ';' stands instead, the code turns on the NEXT token: a
+// value-start token (scalar, IDENT, '{', '[') is parse.separator-in-array at
+// that token; anything else ('}', ':', end of input, ...) is
+// parse.unexpected-token at that token, as is a token with no separator in
+// front of it (`[1 2]`).
 func (p *parser) parseArray() ([]omnist.Target, error) {
 	openTok := p.cur
 	if err := p.advance(); err != nil { // consume '['
-		return nil, err
-	}
-	if err := p.rejectArraySep(); err != nil {
 		return nil, err
 	}
 
@@ -460,16 +452,9 @@ func (p *parser) parseArray() ([]omnist.Target, error) {
 		}
 		targets = append(targets, target)
 
-		if err := p.rejectArraySep(); err != nil {
-			return nil, err
-		}
-
 		switch p.cur.kind {
 		case tokComma:
 			if err := p.advance(); err != nil {
-				return nil, err
-			}
-			if err := p.rejectArraySep(); err != nil {
 				return nil, err
 			}
 			if p.cur.kind == tokRBracket {
@@ -485,22 +470,22 @@ func (p *parser) parseArray() ([]omnist.Target, error) {
 			}
 			return targets, nil
 		default:
+			if p.cur.sepBefore && startsArrayValue(p.cur) {
+				return nil, p.errAt(p.cur, omnist.CodeParseSeparatorInArray, "newline or ';' is not a valid array separator")
+			}
 			return nil, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected ',' or ']' in array")
 		}
 	}
 }
 
-// rejectArraySep checks whether the current token is separator-preceded
-// by a newline or ';' — illegal inside '[...]' per §4.3.1 — and returns
-// the parse.separator-in-array error if so.
-func (p *parser) rejectArraySep() error {
-	if p.cur.sepBefore {
-		return &omnist.ParseError{
-			Line: p.cur.sepLine, Col: p.cur.sepCol,
-			Path:    fmt.Sprintf("%d:%d", p.cur.sepLine, p.cur.sepCol),
-			Code:    omnist.CodeParseSeparatorInArray,
-			Message: "newline or ';' is not a valid array separator",
-		}
+// startsArrayValue reports whether t is a value-start token in OML-28's
+// sense: a scalar token, any IDENT (including null, true, false, nan and inf
+// spellings), '{' or '['.
+func startsArrayValue(t token) bool {
+	switch t.kind {
+	case tokString, tokDateTime, tokDate, tokTime, tokNumber, tokInteger, tokIdent, tokLBrace, tokLBracket:
+		return true
+	default:
+		return false
 	}
-	return nil
 }

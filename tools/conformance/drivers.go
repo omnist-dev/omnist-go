@@ -149,7 +149,7 @@ func runParse(v Vector) Result {
 		}
 		got := []diagPair{singleErrDiag(rerr)}
 		want := expectDiagPairs(wantDiags)
-		if !diagnosticSetsEqual(got, want) {
+		if !parseDiagnosticsEqual(got, want, in.Format, src) {
 			return fail(v, "diagnostics mismatch: got %v want %v", diagStrings(got), diagStrings(want))
 		}
 		return pass(v)

@@ -3,7 +3,11 @@ package conformance
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
@@ -185,6 +189,58 @@ func diagnosticSetsEqual(actual, expected []diagPair) bool {
 		}
 	}
 	return true
+}
+
+// pathPlaceholder is E-32's literal expected path: "compare the code, and that
+// the path is a well-formed text position inside the input, nothing closer".
+const pathPlaceholder = "line:col"
+
+// wellFormedTextPosition is E-32b's pattern: two decimal numbers of at least 1,
+// no sign, no leading zero, no whitespace, joined by a colon.
+var wellFormedTextPosition = regexp.MustCompile(`^[1-9][0-9]*:[1-9][0-9]*$`)
+
+// placeholderApplies reports whether expected is exactly the one entry E-32a
+// allows the placeholder on: a lone parse.codec-syntax diagnostic of a JSON,
+// YAML, TOML or XML parse vector. Anywhere else the string "line:col" is an
+// ordinary path, compared byte for byte, and so can never match.
+func placeholderApplies(expected []diagPair, format string) bool {
+	if len(expected) != 1 || expected[0].Path != pathPlaceholder || expected[0].Code != "parse.codec-syntax" {
+		return false
+	}
+	switch format {
+	case "json", "yaml", "toml", "xml":
+		return true
+	}
+	return false
+}
+
+// positionInsideInput reports whether path is a well-formed text position that
+// lies inside input per E-31/E-32b: line at most one more than the number of
+// LF characters (E-29), col at most one more than the code points on that line
+// (E-28).
+func positionInsideInput(input, path string) bool {
+	if !wellFormedTextPosition.MatchString(path) {
+		return false
+	}
+	lineStr, colStr, _ := strings.Cut(path, ":")
+	line, errL := strconv.Atoi(lineStr)
+	col, errC := strconv.Atoi(colStr)
+	lines := strings.Split(input, "\n")
+	if errL != nil || errC != nil || line > len(lines) {
+		return false
+	}
+	return col <= utf8.RuneCountInString(lines[line-1])+1
+}
+
+// parseDiagnosticsEqual compares a parse vector's reported diagnostics with its
+// expected ones: diagnosticSetsEqual, except that E-32's placeholder entry is
+// satisfied by one reported diagnostic with the same code and a well-formed
+// position inside input. Every other path stays byte for byte.
+func parseDiagnosticsEqual(actual, expected []diagPair, format, input string) bool {
+	if !placeholderApplies(expected, format) {
+		return diagnosticSetsEqual(actual, expected)
+	}
+	return len(actual) == 1 && actual[0].Code == expected[0].Code && positionInsideInput(input, actual[0].Path)
 }
 
 func diagStrings(pairs []diagPair) []string {

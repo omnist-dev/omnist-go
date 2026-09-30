@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/internal/textpos"
 )
 
 // Read parses XML source text into an omnist.Document without a schema.
@@ -129,7 +130,9 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	}
 	if len(src) == 0 {
 		return omnist.Document{}, nil, &omnist.ParseError{
-			Path:    "1:0",
+			Line:    1,
+			Col:     1,
+			Path:    "1:1",
 			Code:    omnist.CodeParseCodecSyntax,
 			Message: "XML: unexpected end of input",
 		}
@@ -139,6 +142,7 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	dec.Entity = entityMap(src, sentinel)
 	r := &xmlReader{
 		dec:      dec,
+		src:      src,
 		checker:  omnist.NewLimitChecker(limits),
 		schema:   schema,
 		sentinel: sentinel,
@@ -176,6 +180,7 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 
 type xmlReader struct {
 	dec     *encxml.Decoder
+	src     string // the input after PrepareInput, for code-point columns (E-28)
 	checker *omnist.LimitChecker
 	schema  *omnist.Schema
 	diags   []omnist.Diagnostic
@@ -345,12 +350,21 @@ func (r *xmlReader) wrapDecodeErr(err error) error {
 // (json_reader.go), which is format-agnostic (it walks raw text bytes, not
 // anything JSON-specific).
 func (r *xmlReader) errHere(code omnist.Code, msg string) error {
-	return &omnist.ParseError{Path: r.pathHere(), Code: code, Message: msg}
+	line, col := r.posHere()
+	return &omnist.ParseError{Line: line, Col: col, Path: strconv.Itoa(line) + ":" + strconv.Itoa(col), Code: code, Message: msg}
 }
 
 func (r *xmlReader) pathHere() string {
-	line, col := r.dec.InputPos()
+	line, col := r.posHere()
 	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
+}
+
+// posHere is the decoder's current position: its line (LF-counted, like E-29)
+// and its 1-based BYTE column converted to code points (E-28), clamped to lie
+// inside the input (E-31).
+func (r *xmlReader) posHere() (line, col int) {
+	dl, dc := r.dec.InputPos()
+	return textpos.FromLineByteCol(r.src, dl, dc)
 }
 
 // readElementBody reads one element's children up to and including the matching
