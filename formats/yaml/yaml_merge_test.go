@@ -116,13 +116,15 @@ func TestMergeKeyValueMustBeMappings(t *testing.T) {
 	}
 }
 
-// A merge that refers back to itself is bounded by the depth limit rather than
-// recursing without end.
-func TestSelfReferentialMergeIsBoundedByTheDepthLimit(t *testing.T) {
+// A merge that refers back to itself is an anchor referring to itself, so D-20
+// rejects it as document.limit.alias-expansion before any merge is attempted
+// (it used to be caught only by the depth limit; that guard is still covered
+// by TestLongMergeChainIsStillBoundedByTheDepthLimit).
+func TestSelfReferentialMergeIsRejectedUnderD20(t *testing.T) {
 	_, err := Read("a: &a {<<: *a, y: 1}\n", omnist.DefaultLimits())
 	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
-		t.Errorf("got %#v, want document.limit.depth", err)
+	if !ok || pe.Code != omnist.CodeDocumentLimitAliasExpansion || pe.Path != "$" {
+		t.Errorf("got %#v, want document.limit.alias-expansion at $", err)
 	}
 }
 

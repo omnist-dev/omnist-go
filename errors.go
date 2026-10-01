@@ -56,10 +56,15 @@ const (
 
 // document.* — building and limits (spec §8.3.2).
 const (
-	CodeDocumentLimitDepth       Code = "document.limit.depth"
-	CodeDocumentLimitNodes       Code = "document.limit.nodes"
-	CodeDocumentLimitIntDigits   Code = "document.limit.int-digits"
-	CodeDocumentUnlabeledElement Code = "document.unlabeled-element"
+	CodeDocumentLimitDepth     Code = "document.limit.depth"
+	CodeDocumentLimitNodes     Code = "document.limit.nodes"
+	CodeDocumentLimitIntDigits Code = "document.limit.int-digits"
+	// CodeDocumentLimitAliasExpansion is D-18/D-19/D-20's rejection: an
+	// anchored definition's expansion factor exceeds the configured maximum,
+	// or an anchor refers to itself. Only a format with an anchor mechanism
+	// (YAML) raises it.
+	CodeDocumentLimitAliasExpansion Code = "document.limit.alias-expansion"
+	CodeDocumentUnlabeledElement    Code = "document.unlabeled-element"
 )
 
 // schema.* — schema well-formedness (spec §8.3.3).

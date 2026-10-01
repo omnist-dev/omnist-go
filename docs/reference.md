@@ -181,12 +181,23 @@ that don't belong to a specific codec or the algebra package.
 ### Limits (`limits.go`)
 
 - **`Limits`** / **`DefaultLimits()`** — the finite, documented safety
-  bounds (depth, node count, integer digit count) spec §2.4 requires every
-  implementation to enforce. Passed to every format reader.
+  bounds (depth, node count, integer digit count, and for YAML the alias
+  expansion factor `MaxAliasExpansion`, default 50) spec §2.4 requires every
+  implementation to enforce. Passed to every format reader. A zero or
+  negative `MaxAliasExpansion` selects the default, never "no limit"
+  (`Limits.EffectiveMaxAliasExpansion()` gives the enforced value); an
+  over-limit mapping or sequence (anchored or not, the document root and inline
+  merge sources included), or an anchor that refers to itself, is rejected
+  before any expansion with `document.limit.alias-expansion`. A mapping that
+  merges a large anchor has `E` of about `(keys + 2) / 3`, so raise
+  `MaxAliasExpansion` for one (see
+  [Limitations](limitations.md#safety-limits-d-9-to-d-11-d-18-to-d-20)).
 - **`Limits.Validate()`** — opt-in sanity check verifying that configured
   limits are strictly positive and within recommended safety ceilings
   (`MaxRecommendedDepth = 10_000`, `MaxRecommendedNodes = 100_000_000`,
-  `MaxRecommendedIntDigits = 1_000_000`).
+  `MaxRecommendedIntDigits = 1_000_000`, `MaxRecommendedAliasExpansion =
+  10_000`); an unset (zero) `MaxAliasExpansion` is accepted as "use the
+  default", a negative one is an error.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_limitsValidate -->
 ```go
@@ -202,6 +213,23 @@ huge := omnist.Limits{
 fmt.Println(huge.Validate())
 // <nil>
 // MaxNodes 200000000 exceeds recommended safety ceiling (100000000)
+```
+
+Raising or lowering the alias expansion factor, and what a rejection looks
+like (the chain below has `E(c) = 21/5 = 4.20`):
+
+<!-- verified-by: doc_examples_reference_test.go::Example_limitsAliasExpansion -->
+```go
+text := "a: &a leaf\nb: &b {p: *a, q: *a, r: *a, s: *a}\nc: &c {p: *b, q: *b, r: *b, s: *b}\n"
+
+limits := omnist.DefaultLimits() // MaxAliasExpansion is 50
+_, err := yaml.Read(text, limits)
+fmt.Println(err)
+
+limits.MaxAliasExpansion = 4
+_, err = yaml.Read(text, limits)
+pe := err.(*omnist.ParseError)
+fmt.Println(pe.Code, pe.Path)
 ```
 
 ## `oml` — `github.com/omnist-dev/omnist-go/oml`

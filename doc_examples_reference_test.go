@@ -433,6 +433,25 @@ func Example_limitsValidate() {
 	// MaxNodes 200000000 exceeds recommended safety ceiling (100000000)
 }
 
+// Example_limitsAliasExpansion backs reference.md's alias expansion example:
+// the chain has E(c) = 21/5 = 4.20, accepted at the default of 50 and
+// rejected at 4 with document.limit.alias-expansion at "$".
+func Example_limitsAliasExpansion() {
+	text := "a: &a leaf\nb: &b {p: *a, q: *a, r: *a, s: *a}\nc: &c {p: *b, q: *b, r: *b, s: *b}\n"
+
+	limits := omnist.DefaultLimits() // MaxAliasExpansion is 50
+	_, err := yaml.Read(text, limits)
+	fmt.Println(err)
+
+	limits.MaxAliasExpansion = 4
+	_, err = yaml.Read(text, limits)
+	pe := err.(*omnist.ParseError)
+	fmt.Println(pe.Code, pe.Path)
+	// Output:
+	// <nil>
+	// document.limit.alias-expansion $
+}
+
 // Example_xmlReadWithSchema backs reference.md's `formats/xml` section:
 // XML carries no native type information, so plain `Read` leaves every
 // leaf as a string. `ReadWithSchema` uses an OSD schema to pre-type

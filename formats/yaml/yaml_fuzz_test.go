@@ -83,8 +83,14 @@ func FuzzRead(f *testing.F) {
 	f.Fuzz(func(t *testing.T, text string) {
 		doc, err := Read(text, fuzzLimits())
 		if err != nil {
-			if _, ok := err.(*omnist.ParseError); !ok {
+			pe, ok := err.(*omnist.ParseError)
+			if !ok {
 				t.Fatalf("Read returned a non-*omnist.ParseError error: %T: %v", err, err)
+			}
+			// A document.* code carries the Document path "$" here (D-18/D-20
+			// rejections are reported at the root, never at a position).
+			if pe.Code == omnist.CodeDocumentLimitAliasExpansion && pe.Path != "$" {
+				t.Fatalf("alias-expansion error at path %q, want $", pe.Path)
 			}
 			return
 		}
