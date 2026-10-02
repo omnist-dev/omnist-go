@@ -7,9 +7,11 @@ package osd
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/algebra"
 )
 
 var strT = omnist.ScalarType(omnist.KindString, false)
@@ -52,6 +54,11 @@ func badSchemaCases() []badSchemaCase {
 		{"reserved scalar name", handSchema("string", []string{"string"}, rec("string")), omnist.CodeSchemaReservedName, "string"},
 		{"reserved any name", handSchema("any", []string{"any"}, rec("any")), omnist.CodeSchemaReservedName, "any"},
 		{"nullable ref", handSchema("R", []string{"R"}, rec("R", fld("a", omnist.Type{Kind: omnist.TypeRefKind, RefName: "R", Nullable: true}, one))), omnist.CodeSchemaNullableRef, "R.a"},
+		{"invalid-utf8 label", handSchema("R", []string{"R"}, rec("R", fld("a\xffb", strT, one))), omnist.CodeSchemaInvalidLabel, "R"},
+		{"invalid record name", handSchema("a b", []string{"a b"}, rec("a b")), omnist.CodeSchemaInvalidName, "$"},
+		{"invalid ref target", handSchema("R", []string{"R"}, rec("R", fld("a", omnist.RefType("x y"), one))), omnist.CodeSchemaInvalidName, "$"},
+		{"ordering names absent record", handSchema("R", []string{"R", "Ghost"}, rec("R", fld("a", strT, one))), omnist.CodeSchemaUnknownRecord, "$"},
+		{"nil record entry", omnist.Schema{Root: "R", Env: map[string]*omnist.Record{"R": rec("R"), "N": nil}, EnvOrder: []string{"N", "R"}}, omnist.CodeSchemaUnknownRecord, "$"},
 		{"nullable any", handSchema("R", []string{"R"}, rec("R", fld("a", omnist.Type{Kind: omnist.TypeAnyKind, Nullable: true}, one))), omnist.CodeSchemaNullableAny, "R.a"},
 	}
 }
@@ -77,5 +84,56 @@ func TestWriteRefusesIllFormedSchemas(t *testing.T) {
 				t.Errorf("%s: Write returned text alongside an error", c.name)
 			}
 		}
+	}
+}
+
+// OSD-16 / S-24: a [0,0] field has no OSD spelling; Write fails with
+// write.unsupported-value at the record path, in both layouts, and prune is
+// the way out.
+func TestWriteRefusesMaxZero(t *testing.T) {
+	one := omnist.DefaultCardinality()
+	zero := omnist.Cardinality{Min: 0, Max: 0}
+	cases := []struct {
+		name   string
+		schema omnist.Schema
+		path   string
+	}{
+		{"only field", handSchema("R", []string{"R"}, rec("R", fld("a", strT, zero))), "R"},
+		{"after a good field", handSchema("R", []string{"R"}, rec("R", fld("g", strT, one), fld("a", strT, zero))), "R"},
+		{"second record", handSchema("R", []string{"R", "S"}, rec("R", fld("s", omnist.RefType("S"), one)), rec("S", fld("dead", strT, zero))), "S"},
+		{"first offender wins", handSchema("R", []string{"R", "S"}, rec("R", fld("x", strT, zero)), rec("S", fld("y", strT, zero))), "R"},
+	}
+	for _, c := range cases {
+		for _, compact := range []bool{false, true} {
+			text, err := Write(c.schema, compact)
+			var d omnist.Diagnostic
+			if !errors.As(err, &d) || d.Code != omnist.CodeWriteUnsupportedValue || d.Path != c.path || text != "" {
+				t.Errorf("%s (compact=%v): got %q, %v; want write.unsupported-value at %q", c.name, compact, text, err, c.path)
+			}
+		}
+	}
+	// [0,unbounded] and [0,1] are fine, even with Max == 0 when Unbounded.
+	ok := handSchema("R", []string{"R"}, rec("R", fld("a", strT, omnist.Cardinality{Min: 0, Max: 0, Unbounded: true}), fld("b", strT, omnist.Cardinality{Min: 0, Max: 1})))
+	mustWrite(t, ok, false)
+}
+
+// prune removes max = 0 fields, so Write succeeds on the pruned schema.
+func TestPruneThenWriteMaxZero(t *testing.T) {
+	s := handSchema("R", []string{"R"}, rec("R", fld("dead", strT, omnist.Cardinality{Min: 0, Max: 0}), fld("a", strT, omnist.DefaultCardinality())))
+	p := algebra.Prune(s)
+	got := mustWrite(t, p, false)
+	if strings.Contains(got, "dead") || strings.Contains(got, "[0,0]") || strings.Contains(got, "[0]") {
+		t.Errorf("pruned output still carries the field: %q", got)
+	}
+}
+
+// Write never panics on a nil Env entry any more: it returns the structured
+// schema.unknown-record error (S-23).
+func TestWriteDoesNotPanicOnNilEnvEntry(t *testing.T) {
+	s := omnist.Schema{Root: "R", Env: map[string]*omnist.Record{"R": nil}, EnvOrder: []string{"R"}}
+	_, err := Write(s, false)
+	var d omnist.Diagnostic
+	if !errors.As(err, &d) || d.Code != omnist.CodeSchemaUnknownRecord || d.Path != "$" {
+		t.Fatalf("got %v", err)
 	}
 }

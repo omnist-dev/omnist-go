@@ -75,23 +75,30 @@ that don't belong to a specific codec or the algebra package.
 - **`NewRecord(name, fields...) (*Record, error)`**,
   **`NewSchema(root, records...) (Schema, error)`** and
   **`Schema.Validate() error`** (`schema_validate.go`) — enforce spec §3.3's
-  well-formedness rules S-1 to S-7 and §5.4's label rules (a label is not
-  empty and has no `[` or `]`) on a schema however it was built. `NewRecord`
-  checks what concerns one record (reserved name S-3, labels, cardinality S-2,
-  nullability S-7, duplicate labels S-5); `NewSchema` lays the records out in
+  well-formedness rules S-1 to S-8, S-22 and S-23 and §5.4's label rules (a
+  label is not empty, has no `[` or `]`, and is valid UTF-8) on a schema
+  however it was built. `NewRecord`
+  checks what concerns one record (name S-8, reserved name S-3, labels,
+  cardinality S-2, nullability S-7, duplicate labels S-5); `NewSchema` lays the records out in
   the given order as `EnvOrder`, then runs `Validate`, which adds S-1 (a root
-  exists and names a record), S-4 (unique record names) and S-6 (every
-  reference resolves). A failure is an `omnist.Diagnostic` (used as the error)
+  exists and names a record), S-4 (unique record names), S-6 (every
+  reference resolves) and S-23 (every `EnvOrder` entry names a record in
+  `Env`). A failure is an `omnist.Diagnostic` (used as the error)
   with the `schema.*` code and the Schema path the spec fixes for it (§8.4.1,
   E-30), the same error `osd.Read` reports for that violation in text; only the
   first violation is returned. `Schema`, `Record` and `Field` stay plain public
   structs, so **a struct literal is unchecked** until `Validate` is called or
   the schema reaches an operation that validates. `osd.Write` does; the
   validate, materialize and algebra operations do not, and assume a well-formed
-  schema (as every parsed or algebra-produced schema is). Three things are not
-  checked, for want of a spec code or path: S-8 (record names matching
-  `[A-Za-z_][A-Za-z0-9_]*`), invalid UTF-8 in a label, and an `EnvOrder`/`Env`
-  mismatch (see [Limitations](limitations.md)).
+  schema (as every parsed or algebra-produced schema is). Three codes are new in v0.9.0-alpha
+  (spec v0.28.0-beta, none pinned by a conformance vector, DIV-5):
+  `schema.invalid-name` (S-8: a record name or a reference target that does
+  not match `[A-Za-z_][A-Za-z0-9_]*`; path `$`, the name only in the message),
+  `schema.invalid-label` (S-22: a label that is not valid UTF-8; the record
+  path, never the label) and `schema.unknown-record` (S-23: an `EnvOrder`
+  entry with no record in `Env`; path `$`). Cardinality `[0,0]` stays valid
+  (S-15), but `osd.Write` refuses it (OSD-16, below). Message text puts any
+  name or label through `%q`, so non-printable bytes are escaped.
 
   <!-- verified-by: doc_examples_reference_test.go::Example_schemaConstruction -->
   ```go
@@ -122,9 +129,32 @@ that don't belong to a specific codec or the algebra package.
       EnvOrder: []string{"Person"},
   }
   fmt.Println(unchecked.Validate())
+
+  _, err = omnist.NewRecord("Person",
+      omnist.Field{Label: "a\xffb", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+  )
+  fmt.Println(err)
+
+  // An ordering that names no record is reported, not panicked on.
+  ordered := omnist.Schema{Root: "Person", Env: map[string]*omnist.Record{"Person": rec}, EnvOrder: []string{"Person", "Ghost"}}
+  fmt.Println(ordered.Validate())
+
+  // [0,0] is a legal model value that OSD cannot spell: Write refuses it.
+  dead := omnist.Schema{
+      Root:     "Person",
+      Env:      map[string]*omnist.Record{"Person": {Name: "Person", Fields: []omnist.Field{{Label: "x", Type: omnist.AnyType(), Cardinality: omnist.Cardinality{Min: 0, Max: 0}}}}},
+      EnvOrder: []string{"Person"},
+  }
+  fmt.Println(dead.Validate())
+  _, err = osd.Write(dead, true)
+  fmt.Println(err)
   // record Person { "name": string } root Person
   // Person: schema.empty-label: field label must not be empty
   // Person: schema.bracket-in-label: field label must not contain '[' or ']'
+  // Person: schema.invalid-label: field label "a\xffb" is not valid UTF-8
+  // $: schema.unknown-record: record ordering names "Ghost", which is not a record in the environment
+  // <nil>
+  // Person: write.unsupported-value: a field has cardinality [0,0], which has no OSD spelling; prune the schema before writing (spec §5.9, OSD-16)
   ```
 
 ### Operations
@@ -356,7 +386,14 @@ and `\"` (OSD-15). Before checking labels, `Write` calls `Schema.Validate`: an
 ill-formed schema (empty label, `[` or `]` in a label, duplicate field or
 record, bad cardinality, dangling root or reference, and so on) fails with the
 `schema.*` diagnostic `osd.Read` would raise for it, instead of text the reader
-rejects (v0.8.0-alpha). Before v0.5.0-alpha `Write` returned a bare `string` and
+rejects (v0.8.0-alpha). Since v0.9.0-alpha that includes a label that is not
+valid UTF-8 (`schema.invalid-label`, which `Write` used to copy through byte for
+byte) and an `EnvOrder` entry naming no record (`schema.unknown-record`, which
+used to panic). `Write` also fails on a field of cardinality `[0,0]`
+(`Max == 0`, not `Unbounded`): the model allows it (S-15) but no OSD text
+spells it, so it returns `write.unsupported-value` at the record path `R`, the
+same mechanism as OSD-14 (OSD-16, S-24). `algebra.Prune` drops such fields, so
+prune first. Before v0.5.0-alpha `Write` returned a bare `string` and
 emitted text its own reader rejected for such a label.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_osdRoundTrip -->

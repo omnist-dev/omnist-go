@@ -114,6 +114,18 @@ const (
 	// narrowest fix. Path is the enclosing record, same convention as
 	// CodeSchemaEmptyLabel/CodeSchemaUnquotedLabel.
 	CodeSchemaBracketInLabel Code = "schema.bracket-in-label"
+	// CodeSchemaInvalidName is S-8: a record name, or a reference's target
+	// name, does not match [A-Za-z_][A-Za-z0-9_]*. Reached by programmatic
+	// construction its path is "$" and the name is in the message only
+	// (spec §8.4.1, E-12 as amended in v0.28.0-beta).
+	CodeSchemaInvalidName Code = "schema.invalid-name"
+	// CodeSchemaInvalidLabel is S-22: a field label that is not valid UTF-8
+	// (a Go string can hold any bytes). Path is the record holding the field;
+	// the label is never put in the path.
+	CodeSchemaInvalidLabel Code = "schema.invalid-label"
+	// CodeSchemaUnknownRecord is S-23: a caller-supplied record ordering
+	// (Schema.EnvOrder) names a record absent from Env. Path is "$".
+	CodeSchemaUnknownRecord Code = "schema.unknown-record"
 )
 
 // validate.* — document against schema (spec §8.3.4).

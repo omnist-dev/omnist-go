@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.8.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.9.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**310 pass / 0 fail / 28 skip** of 338 vectors (`omnist-spec` v0.27.0-beta
+**310 pass / 0 fail / 28 skip** of 338 vectors (`omnist-spec` v0.28.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -165,6 +165,50 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
+**`v0.9.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API (the error
+codes `CodeSchemaInvalidName`, `CodeSchemaInvalidLabel`,
+`CodeSchemaUnknownRecord`) and behaviour callers can observe, closing issue
+#121. It adopts `omnist-spec` v0.28.0-beta (commit `1a7d0de`; the tag was not
+pushed when this was written, so the pin is the commit) from v0.27.0-beta.
+The spec adds no vectors (DIV-5), so conformance is unchanged: Track 2 **310
+pass / 0 fail / 28 skip of 338**, Track 1 19/19. Go's unit tests are the only
+pin for the four rules below. What changed:
+
+- **S-22, `schema.invalid-label`.** A field label that is not valid UTF-8 (a Go
+  string can hold any bytes) fails `NewRecord`, `NewSchema`, `Schema.Validate`
+  and `osd.Write` at the record path `R`. The label is never put in the path,
+  and the message shows it through `%q`, so non-printables are escaped.
+  `osd.Write` used to write the bytes unrepaired (`osd.Read` then rejected them
+  with `parse.invalid-encoding`).
+- **S-8, `schema.invalid-name`, now enforced at `$`.** A record name, an
+  `EnvOrder` entry, or a reference target that does not match
+  `[A-Za-z_][A-Za-z0-9_]*` is reported at `$` with the name in the message only.
+  v0.8.0-alpha did not check S-8 at all, so a hand-built schema with such a name
+  was accepted (the path it would have used, a Document path, was
+  inapplicable). Nothing that was reported before changes path; the rule is
+  newly enforced. OSD-OML keeps its Document path, but Go has no OSD-OML schema
+  reader or writer (issue #111).
+- **S-23, `schema.unknown-record`.** An `EnvOrder` entry with no record in
+  `Env` (absent or nil) is reported at `$`. v0.8.0-alpha skipped it in
+  `Validate` and `osd.Write` could panic on it; it now returns the structured
+  error.
+- **OSD-16 / S-24, `[0,0]`.** The model still represents it (S-15, and
+  `Validate` accepts it), but `osd.Write` fails on a field with `Max == 0` and
+  not `Unbounded` with `write.unsupported-value` at the record path `R`, in
+  both layouts. The spec's wording is for `prune`, not `normalize` or
+  `minimize`: `algebra.Prune` already removes `max = 0` fields from every record
+  it rebuilds but keeps an unsatisfiable root intact, so prune before writing.
+  Go has no `minimize` and `Normalize` only reorders and copies cardinalities,
+  as before.
+- When a schema has several violations, which one is reported is
+  implementation-defined; `Validate` returns the first in the order documented on it.
+
+Issue #121's three cases (an empty label, `[` or `]` in a label, invalid UTF-8)
+all fail with a spec code before `osd.Write` emits text, so
+`Read(Write(s)) == s` holds for every schema `Write` accepts.
+
+### Previous: v0.8.0-alpha
+
 **`v0.8.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API
 (`NewRecord`, `NewSchema`, `Schema.Validate`), issue #121. A hand-built `Schema`
 could violate spec §3.3's S-1 to S-7 and §5.4's label rules, and `osd.Write`
@@ -177,20 +221,12 @@ check at construction, and `osd.Write` validates first. `Schema`, `Record` and
 `osd.Write`; the validate, materialize and algebra operations assume a
 well-formed schema and do not re-validate. A schema that was valid before is
 unaffected. Spec pin unchanged (v0.27.0-beta, `a6a6090`); conformance unchanged
-(Track 2 310 pass / 0 fail / 28 skip of 338, Track 1 19/19). Left open, because
-the spec assigns no code or path for them:
-
-- **S-8** (record and reference names match `[A-Za-z_][A-Za-z0-9_]*`):
-  `schema.invalid-name` takes a Document path (E-12), and a programmatically
-  built schema has no Document. Not checked.
-- **Invalid UTF-8 in a label**: no `schema.*` code exists (D-14 binds byte
-  entry points only). Not checked; `osd.Write` still emits it and `osd.Read`
-  rejects it with `parse.invalid-encoding`.
-- **Cardinality `[0,0]`** is representable (S-15) but OSD text cannot spell
-  it, so `osd.Write` of one is read back as `schema.invalid-cardinality`.
-- **An `EnvOrder` that disagrees with `Env`** (a name with no record) has no
-  code; `Validate` skips it and `osd.Write` can panic on it. `NewSchema` never
-  builds one.
+(Track 2 310 pass / 0 fail / 28 skip of 338, Track 1 19/19). Four things were left open then, because the spec assigned no code or path for
+them. omnist-spec v0.28.0-beta specifies all four and v0.9.0-alpha implements
+them (see above): S-8 (`schema.invalid-name` at `$`), invalid UTF-8 in a label
+(`schema.invalid-label`), cardinality `[0,0]` in a writer (`write.unsupported-value`)
+and an `EnvOrder` naming no record (`schema.unknown-record`). At v0.8.0-alpha
+`osd.Write` emitted the first three as text and could panic on the fourth.
 
 ### Previous: v0.7.1-alpha
 
@@ -534,7 +570,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `a6a6090` (`v0.27.0-beta`), pinned via the
+`omnist-spec` at commit `1a7d0de` (`v0.28.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a

@@ -6,6 +6,7 @@ package osd
 // these are the only tests that hold it.
 
 import (
+	"errors"
 	"math/rand"
 	"strings"
 	"testing"
@@ -115,13 +116,17 @@ func TestWriteEscapesExactlyBackslashAndQuote(t *testing.T) {
 	}
 }
 
-// Invalid UTF-8 in a programmatically built label is written byte for byte:
-// the writer neither decodes nor repairs it (a rune loop would turn it into
-// U+FFFD).
-func TestWritePassesLabelBytesThroughUnrepaired(t *testing.T) {
-	got := mustWrite(t, oneFieldSchema("R", "a\xffb"), true)
-	if !strings.Contains(got, "\"a\xffb\"") {
-		t.Errorf("label bytes were altered: %q", got)
+// Invalid UTF-8 in a programmatically built label is refused (S-22,
+// schema.invalid-label at the record path) rather than written byte for byte
+// or repaired to U+FFFD. Before spec v0.28.0-beta Write passed the bytes
+// through.
+func TestWriteRefusesInvalidUTF8Label(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		text, err := Write(oneFieldSchema("R", "a\xffb"), compact)
+		var d omnist.Diagnostic
+		if !errors.As(err, &d) || d.Code != omnist.CodeSchemaInvalidLabel || d.Path != "R" || text != "" {
+			t.Errorf("compact=%v: got %q, %v", compact, text, err)
+		}
 	}
 }
 
