@@ -98,10 +98,14 @@ sequence contributes the sum over its members of `W(member) - 1` (never
 materializes the list (`1 + sum W(member)`), and an ordinary `s: &s [*p, *q]`
 stays a candidate. Merge shapes are validated BEFORE anything is counted: a
 scalar merge value, a scalar member of a merge sequence, a sequence inside a
-merge sequence, an alias to a sequence of scalars, and an empty merge sequence
-are `parse.codec-syntax` (at the offending node's `line:col`), and win over
+merge sequence, and an alias to a sequence of scalars are `parse.codec-syntax` (at the offending node's `line:col`), and win over
 every `document.limit.*` code, so a document with both a bomb and a malformed
 merge reports the syntax error.
+
+**Go-specific, spec-undecided: empty merge sequence.** `<<: []` is rejected by
+this port as `parse.codec-syntax`. That is not a D-18a rule: the spec text and
+vectors do not say an empty merge sequence is malformed, and other ports accept
+it. Tracked in omnist-spec; the behaviour is unchanged here.
 
 **The expanded-size cap** (D-22). The factor bounds amplification, not
 absolute size: a large document in which every container sits just under

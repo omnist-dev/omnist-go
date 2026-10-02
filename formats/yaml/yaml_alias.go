@@ -16,7 +16,8 @@ import (
 // refused without ever paying for the expansion it describes (D-19).
 //
 // Step 1, validateMergeShapes: every merge value must be a mapping or a
-// non-empty sequence of mappings (after following an alias one level). Anything
+// sequence of mappings (after following an alias one level); an EMPTY sequence is
+// also refused, a Go-specific choice the spec leaves undecided (not D-18a). Anything
 // else is parse.codec-syntax, reported before anything is counted so it wins
 // over every document.limit.* code (D-18a).
 //
