@@ -23,19 +23,21 @@ import (
 //
 // # Failure (well-formedness)
 //
-// Write first calls s.Validate. A schema that breaks spec §3.3's S-1..S-7 or
-// the §5.4 label rules (empty label, '[' or ']' in a label) fails with the
-// same omnist.Diagnostic osd.Read would raise for it, and returns no text;
-// otherwise Write could emit text its own reader rejects. Hand-built Schema
-// literals are unchecked until this point.
+// Write first calls s.Validate. A schema that breaks spec §3.3's S-1..S-8,
+// S-22 or S-23, or the §5.4 label rules (empty label, '[' or ']' in a label),
+// fails with the omnist.Diagnostic Validate documents (osd.Read raises the
+// same one for the violations text can express), and returns no text;
+// otherwise Write could emit text its own reader rejects. This includes a
+// label that is not valid UTF-8 (schema.invalid-label) and an EnvOrder entry
+// naming no record (schema.unknown-record); Write never panics on either.
+// Hand-built Schema literals are unchecked until this point.
 //
-// # Failure (well-formedness)
+// # Failure (OSD-16)
 //
-// Write first calls s.Validate. A schema that breaks spec §3.3's S-1..S-7 or
-// the §5.4 label rules (empty label, '[' or ']' in a label) fails with the
-// same omnist.Diagnostic osd.Read would raise for it, and returns no text;
-// otherwise Write could emit text its own reader rejects. Hand-built Schema
-// literals are unchecked until this point.
+// A field with cardinality [0,0] (Max == 0, not Unbounded) is a legal model
+// value that no OSD text spells and no reader accepts. Write fails on it,
+// unconditionally, with omnist.CodeWriteUnsupportedValue at the Schema path
+// of the record holding the field; callers can prune first.
 //
 // # Failure (OSD-14)
 //
@@ -71,12 +73,21 @@ func Write(s omnist.Schema, compact bool) (string, error) {
 	return b.String(), nil
 }
 
-// checkWritable implements OSD-14: it reports the first record, in
-// declaration order, that holds a field whose label has no OSD spelling.
+// checkWritable implements OSD-14 and OSD-16: it reports the first record, in
+// declaration order, that holds a field whose label has no OSD spelling or
+// whose cardinality is [0,0].
 func checkWritable(s omnist.Schema) error {
 	for _, name := range s.EnvOrder {
 		rec := s.Env[name]
 		for _, f := range rec.Fields {
+			if !f.Cardinality.Unbounded && f.Cardinality.Max == 0 {
+				return omnist.Diagnostic{
+					Path:     rec.Name,
+					Code:     omnist.CodeWriteUnsupportedValue,
+					Message:  "a field has cardinality [0,0], which has no OSD spelling; prune the schema before writing (spec §5.9, OSD-16)",
+					Severity: omnist.SeverityError,
+				}
+			}
 			if hasC0Control(f.Label) {
 				return omnist.Diagnostic{
 					Path:     rec.Name,

@@ -2,6 +2,7 @@ package omnist
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +71,26 @@ func wfCases() []wfCase {
 		{"open bracket", lit("R", []string{"R"}, rec("R", fl("a[", tStr, card))), CodeSchemaBracketInLabel, "R"},
 		{"close bracket", lit("R", []string{"R"}, rec("R", fl("]", tStr, card))), CodeSchemaBracketInLabel, "R"},
 		{"bracket pair", lit("R", []string{"R"}, rec("R", fl("a[1]", tStr, card))), CodeSchemaBracketInLabel, "R"},
+		// S-22: a label that is not valid UTF-8, at the record path, never in it.
+		{"S-22 lone 0xff", lit("R", []string{"R"}, rec("R", fl("a\xffb", tStr, card))), CodeSchemaInvalidLabel, "R"},
+		{"S-22 truncated sequence", lit("R", []string{"R"}, rec("R", fl("\xc3", tStr, card))), CodeSchemaInvalidLabel, "R"},
+		{"S-22 encoded surrogate", lit("R", []string{"R"}, rec("R", fl("\xed\xa0\x80", tStr, card))), CodeSchemaInvalidLabel, "R"},
+		{"S-22 before cardinality", lit("R", []string{"R"}, rec("R", fl("a\xff", tStr, Cardinality{Min: 2, Max: 1}))), CodeSchemaInvalidLabel, "R"},
+		{"S-22 second record", lit("R", []string{"S", "R"}, rec("S"), rec("R", fl("ok", tStr, card), fl("\x80", tStr, card))), CodeSchemaInvalidLabel, "R"},
+		// S-8 programmatic: record name or ref target, at "$".
+		{"S-8 empty record name", lit("", []string{""}, rec("")), CodeSchemaInvalidName, "$"},
+		{"S-8 digit start", lit("1R", []string{"1R"}, rec("1R")), CodeSchemaInvalidName, "$"},
+		{"S-8 space", lit("bad name", []string{"bad name"}, rec("bad name")), CodeSchemaInvalidName, "$"},
+		{"S-8 non-ASCII", lit("Ré", []string{"Ré"}, rec("Ré")), CodeSchemaInvalidName, "$"},
+		{"S-8 invalid UTF-8 name", lit("R\xff", []string{"R\xff"}, rec("R\xff")), CodeSchemaInvalidName, "$"},
+		{"S-8 env key malformed", Schema{Root: "R", Env: map[string]*Record{"R": rec("R"), "a-b": rec("R")}, EnvOrder: []string{"R", "a-b"}}, CodeSchemaInvalidName, "$"},
+		{"S-8 ref target", lit("R", []string{"R"}, rec("R", fl("a", RefType("no good"), card))), CodeSchemaInvalidName, "$"},
+		{"S-8 empty ref target", lit("R", []string{"R"}, rec("R", fl("a", RefType(""), card))), CodeSchemaInvalidName, "$"},
+		{"S-8 ref target before unknown-type", lit("R", []string{"R"}, rec("R", fl("a", RefType("9"), card))), CodeSchemaInvalidName, "$"},
+		// S-23: an ordering entry naming no record, at "$".
+		{"S-23 absent", lit("R", []string{"R", "Ghost"}, rec("R")), CodeSchemaUnknownRecord, "$"},
+		{"S-23 nil entry", Schema{Root: "R", Env: map[string]*Record{"R": rec("R"), "N": nil}, EnvOrder: []string{"R", "N"}}, CodeSchemaUnknownRecord, "$"},
+		{"S-23 nil Env", Schema{Root: "R", EnvOrder: []string{"R"}}, CodeSchemaUnknownRecord, "$"},
 		// Ordering: a record-level problem in an earlier record wins over a later field's.
 		{"first record wins", lit("R", []string{"S", "R"}, rec("S", fl("", tStr, card)), rec("R", fl("a[", tStr, card))), CodeSchemaEmptyLabel, "S"},
 		// Within a field the label is checked before the cardinality.
@@ -110,14 +131,36 @@ func TestSchemaValidateAcceptsWellFormed(t *testing.T) {
 	}
 }
 
-// An EnvOrder entry with no record in Env is skipped (no spec code covers it)
-// rather than panicking.
-func TestSchemaValidateSkipsAbsentEnvEntries(t *testing.T) {
+// S-23: an EnvOrder entry with no record in Env is schema.unknown-record at
+// "$" (it used to be skipped), and nothing panics.
+func TestSchemaValidateUnknownRecordEntry(t *testing.T) {
 	s := Schema{Root: "R", Env: map[string]*Record{"R": {Name: "R", Fields: []Field{fl("a", RefType("Ghost"), card)}}, "N": nil}, EnvOrder: []string{"Ghost", "N", "R"}}
-	wantDiag(t, "ghost", s.Validate(), CodeSchemaUnknownType, "R.a")
-	s.Env["R"].Fields = nil
-	if err := s.Validate(); err != nil {
-		t.Errorf("unexpected error %v", err)
+	wantDiag(t, "ghost", s.Validate(), CodeSchemaUnknownRecord, "$")
+	s.EnvOrder = []string{"N", "R"}
+	wantDiag(t, "nil entry", s.Validate(), CodeSchemaUnknownRecord, "$")
+	s.EnvOrder = []string{"R"}
+	wantDiag(t, "dangling ref still unknown-type", s.Validate(), CodeSchemaUnknownType, "R.a")
+}
+
+// The label never appears in a path; the message names it escaped.
+func TestInvalidLabelDiagnosticIsSafe(t *testing.T) {
+	s := lit("R", []string{"R"}, &Record{Name: "R", Fields: []Field{fl("a\xff\x00b", tStr, card)}})
+	err := s.Validate()
+	wantDiag(t, "label", err, CodeSchemaInvalidLabel, "R")
+	var d Diagnostic
+	errors.As(err, &d)
+	if d.Path != "R" {
+		t.Errorf("label leaked into path %q", d.Path)
+	}
+	if !strings.Contains(d.Message, `a\xff\x00b`) || strings.IndexByte(d.Message, 0xff) >= 0 || strings.IndexByte(d.Message, 0) >= 0 {
+		t.Errorf("message not escaped: %q", d.Message)
+	}
+	// Same for a malformed record name: "$" and an escaped message.
+	err = lit("R\xff", []string{"R\xff"}, &Record{Name: "R\xff"}).Validate()
+	wantDiag(t, "name", err, CodeSchemaInvalidName, "$")
+	errors.As(err, &d)
+	if strings.IndexByte(d.Message, 0xff) >= 0 {
+		t.Errorf("name message not escaped: %q", d.Message)
 	}
 }
 
@@ -134,6 +177,10 @@ func TestNewRecord(t *testing.T) {
 		path   string
 	}{
 		{"reserved", "string", nil, CodeSchemaReservedName, "string"},
+		{"invalid name", "a b", nil, CodeSchemaInvalidName, "$"},
+		{"empty name", "", nil, CodeSchemaInvalidName, "$"},
+		{"invalid ref target", "R", []Field{fl("a", RefType("x-y"), card)}, CodeSchemaInvalidName, "$"},
+		{"invalid utf-8 label", "R", []Field{fl("a\xff", tStr, card)}, CodeSchemaInvalidLabel, "R"},
 		{"empty label", "R", []Field{fl("", tStr, card)}, CodeSchemaEmptyLabel, "R"},
 		{"bracket", "R", []Field{fl("x]", tStr, card)}, CodeSchemaBracketInLabel, "R"},
 		{"duplicate", "R", []Field{fl("a", tStr, card), fl("a", tStr, card)}, CodeSchemaDuplicateField, "R"},
@@ -169,6 +216,8 @@ func TestNewSchema(t *testing.T) {
 	wantDiag(t, "dangling root", err, CodeSchemaUnknownType, "$")
 	_, err = NewSchema("A", a, b, a)
 	wantDiag(t, "duplicate record", err, CodeSchemaDuplicateRecord, "A")
+	_, err = NewSchema("A", a, &Record{Name: "A b"})
+	wantDiag(t, "invalid record name literal", err, CodeSchemaInvalidName, "$")
 	// A record literal that skipped NewRecord is still caught.
 	_, err = NewSchema("R", &Record{Name: "R", Fields: []Field{fl("", tStr, card)}})
 	wantDiag(t, "unchecked record literal", err, CodeSchemaEmptyLabel, "R")

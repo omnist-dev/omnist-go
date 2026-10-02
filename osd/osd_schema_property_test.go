@@ -10,11 +10,12 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
 
-var labelAlphabet = []string{"a", "b", "Z", "_", " ", "\"", "\\", "é", "日", "😀", "[", "]", "-", "0", "."}
+var labelAlphabet = []string{"a", "b", "Z", "_", " ", "\"", "\\", "é", "日", "😀", "[", "]", "-", "0", ".", "\xff", "\xc3"}
 
 func randLabel(r *rand.Rand) string {
 	n := r.Intn(5) // 0 allowed: the empty label
@@ -45,6 +46,8 @@ func TestWriteRoundTripOverConstructedSchemas(t *testing.T) {
 				wantCode = omnist.CodeSchemaEmptyLabel
 			case strings.ContainsAny(label, "[]"):
 				wantCode = omnist.CodeSchemaBracketInLabel
+			case !utf8.ValidString(label):
+				wantCode = omnist.CodeSchemaInvalidLabel
 			case seen[label]:
 				wantCode = omnist.CodeSchemaDuplicateField
 			}

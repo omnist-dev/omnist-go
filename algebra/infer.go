@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/omnist-dev/omnist-go"
 )
@@ -308,19 +307,17 @@ func inferType(
 // to the implementation, requiring only that it be deterministic given the
 // same input samples (no randomness, no map-iteration-order dependence).
 //
-// This implementation: sanitize the label into an exported-style Go
-// identifier (letters/digits/underscore only, non-identifier runes replaced
-// with '_', a leading digit prefixed with '_', first letter uppercased,
-// empty label falls back to "Field"), then, if that name is already used,
-// append the smallest integer suffix (2, 3, ...) that is not. Both steps
-// are pure functions of (label, used) with no map-iteration-order
+// The name MUST satisfy S-8 ([A-Za-z_][A-Za-z0-9_]*, ASCII only), because
+// Schema.Validate and osd.Write reject anything else. This implementation:
+// sanitize the label (every byte or rune outside [A-Za-z0-9_] becomes '_', a
+// leading digit is prefixed with '_', a leading lowercase ASCII letter is
+// upper-cased, an empty label falls back to "Rec"), then, if that name is
+// already used, append the smallest integer suffix (2, 3, ...) that is not.
+// Both steps are pure functions of (label, used) with no map-iteration-order
 // dependence: used is consulted only via direct key lookups, in a fixed
 // increasing-suffix order.
 func uniqueNameFrom(label string, used map[string]bool) string {
 	base := sanitizeIdentifier(label)
-	if base == "" {
-		base = "omnist.Field"
-	}
 	if !used[base] {
 		return base
 	}
@@ -332,16 +329,27 @@ func uniqueNameFrom(label string, used map[string]bool) string {
 	}
 }
 
-// sanitizeIdentifier turns an arbitrary label into a Go-identifier-shaped,
-// capitalized name: non letter/digit/underscore runes become '_', a
-// leading digit is prefixed with '_', and the first rune is upper-cased.
-// An empty or all-non-identifier label produces "".
+// sanitizeIdentifier turns an arbitrary label into a name matching S-8,
+// [A-Za-z_][A-Za-z0-9_]*: each rune outside ASCII letters, digits and '_'
+// (including every non-ASCII rune, and the bytes of invalid UTF-8) becomes
+// '_', a leading digit is prefixed with '_', and a leading lowercase ASCII
+// letter is upper-cased. An empty label produces "Rec".
 func sanitizeIdentifier(label string) string {
+	if label == "" {
+		return "Rec"
+	}
 	var b strings.Builder
 	for i, r := range label {
 		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
-			if i == 0 && unicode.IsDigit(r) {
+		case r >= 'a' && r <= 'z':
+			if i == 0 {
+				r -= 'a' - 'A'
+			}
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z', r == '_':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			if i == 0 {
 				b.WriteByte('_')
 			}
 			b.WriteRune(r)
@@ -349,11 +357,5 @@ func sanitizeIdentifier(label string) string {
 			b.WriteByte('_')
 		}
 	}
-	s := b.String()
-	if s == "" {
-		return ""
-	}
-	r := []rune(s)
-	r[0] = unicode.ToUpper(r[0])
-	return string(r)
+	return b.String()
 }

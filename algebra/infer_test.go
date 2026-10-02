@@ -511,8 +511,7 @@ func TestInferLabelSanitizedToValidRecordName(t *testing.T) {
 }
 
 func TestInferEmptyLabelFallsBackToFieldName(t *testing.T) {
-	// A label with nothing identifier-shaped in it (here, the empty
-	// string) sanitizes to "" and must fall back to the "Field" base name.
+	// The empty label must fall back to the "Rec" base name.
 	samples := []omnist.Document{
 		strDoc(nodeEdge("", omnist.NewNode().AddValue("v", omnist.ScalarValue(omnist.NewStringScalar("x"))))),
 	}
@@ -525,8 +524,8 @@ func TestInferEmptyLabelFallsBackToFieldName(t *testing.T) {
 		t.Fatalf("expected 1 field, got %+v", rootRec.Fields)
 	}
 	refName := rootRec.Fields[0].Type.RefName
-	if refName != "omnist.Field" {
-		t.Fatalf("expected generated name 'omnist.Field', got %q", refName)
+	if refName != "Rec" {
+		t.Fatalf("expected generated name 'Rec', got %q", refName)
 	}
 }
 

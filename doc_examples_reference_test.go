@@ -533,8 +533,31 @@ func Example_schemaConstruction() {
 		EnvOrder: []string{"Person"},
 	}
 	fmt.Println(unchecked.Validate())
+
+	_, err = omnist.NewRecord("Person",
+		omnist.Field{Label: "a\xffb", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+	)
+	fmt.Println(err)
+
+	// An ordering that names no record is reported, not panicked on.
+	ordered := omnist.Schema{Root: "Person", Env: map[string]*omnist.Record{"Person": rec}, EnvOrder: []string{"Person", "Ghost"}}
+	fmt.Println(ordered.Validate())
+
+	// [0,0] is a legal model value that OSD cannot spell: Write refuses it.
+	dead := omnist.Schema{
+		Root:     "Person",
+		Env:      map[string]*omnist.Record{"Person": {Name: "Person", Fields: []omnist.Field{{Label: "x", Type: omnist.AnyType(), Cardinality: omnist.Cardinality{Min: 0, Max: 0}}}}},
+		EnvOrder: []string{"Person"},
+	}
+	fmt.Println(dead.Validate())
+	_, err = osd.Write(dead, true)
+	fmt.Println(err)
 	// Output:
 	// record Person { "name": string } root Person
 	// Person: schema.empty-label: field label must not be empty
 	// Person: schema.bracket-in-label: field label must not contain '[' or ']'
+	// Person: schema.invalid-label: field label "a\xffb" is not valid UTF-8
+	// $: schema.unknown-record: record ordering names "Ghost", which is not a record in the environment
+	// <nil>
+	// Person: write.unsupported-value: a field has cardinality [0,0], which has no OSD spelling; prune the schema before writing (spec §5.9, OSD-16)
 }
