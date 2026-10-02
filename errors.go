@@ -64,7 +64,12 @@ const (
 	// or an anchor refers to itself. Only a format with an anchor mechanism
 	// (YAML) raises it.
 	CodeDocumentLimitAliasExpansion Code = "document.limit.alias-expansion"
-	CodeDocumentUnlabeledElement    Code = "document.unlabeled-element"
+
+	// CodeDocumentLimitExpandedSize is D-22's rejection: a document that
+	// contains an alias or merge key whose total materialized value slots,
+	// W(root), exceed Limits.MaxExpandedSlots. Its path is "$".
+	CodeDocumentLimitExpandedSize Code = "document.limit.expanded-size"
+	CodeDocumentUnlabeledElement  Code = "document.unlabeled-element"
 )
 
 // schema.* — schema well-formedness (spec §8.3.3).

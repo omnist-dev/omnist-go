@@ -452,6 +452,26 @@ func Example_limitsAliasExpansion() {
 	// document.limit.alias-expansion $
 }
 
+// Example_limitsExpandedSlots backs reference.md's expanded-size example: the
+// text expands to 22 slots (the ratio passes, E(t) = 17/5), refused at a cap
+// of 21 with document.limit.expanded-size at "$" and accepted at 22.
+func Example_limitsExpandedSlots() {
+	text := "base: &base {k1: 1, k2: 2, k3: 3}\nt: {a: *base, b: *base, c: *base, d: *base}\n"
+
+	limits := omnist.DefaultLimits() // MaxExpandedSlots is 1,000,000
+	limits.MaxExpandedSlots = 21
+	_, err := yaml.Read(text, limits)
+	pe := err.(*omnist.ParseError)
+	fmt.Println(pe.Code, pe.Path)
+
+	limits.MaxExpandedSlots = 22
+	_, err = yaml.Read(text, limits)
+	fmt.Println(err)
+	// Output:
+	// document.limit.expanded-size $
+	// <nil>
+}
+
 // Example_xmlReadWithSchema backs reference.md's `formats/xml` section:
 // XML carries no native type information, so plain `Read` leaves every
 // leaf as a string. `ReadWithSchema` uses an OSD schema to pre-type

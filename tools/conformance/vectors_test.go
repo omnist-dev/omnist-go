@@ -164,3 +164,28 @@ func TestTOMLStrictWriteVectorRuns(t *testing.T) {
 		t.Errorf("status = %v (%s), want pass", r.Status, r.Reason)
 	}
 }
+
+// A vector carrying declared_max_expanded_slots (D-22) is RUN, with that value
+// passed to the reader as Limits.MaxExpandedSlots and for no other vector. The
+// text expands to 22 slots: declared 21 rejects it with
+// document.limit.expanded-size at "$", declared 22 accepts it, and the same
+// input with no key runs under the default of 1,000,000 and is accepted.
+func TestExpandedSlotsLimitKeyIsRunNotSkipped(t *testing.T) {
+	const text = `"base: &base {k1: 1, k2: 2, k3: 3}\nt: {a: *base, b: *base, c: *base, d: *base}\n"`
+	input := func(limit string) []byte {
+		if limit == "" {
+			return []byte(`{"format": "yaml", "text": ` + text + `}`)
+		}
+		return []byte(`{"format": "yaml", "declared_max_expanded_slots": ` + limit + `, "text": ` + text + `}`)
+	}
+	reject := []byte(`{"ok": false, "diagnostics": [{"path": "$", "code": "document.limit.expanded-size"}]}`)
+	for _, tc := range []struct {
+		limit string
+		want  Status
+	}{{"21", StatusPass}, {"22", StatusFail}, {"", StatusFail}} {
+		r := RunVector(Vector{Name: "formats-yaml/alias-expansion/x", Operation: "parse", Input: input(tc.limit), Expect: reject})
+		if r.Status != tc.want {
+			t.Errorf("limit %q: status = %v (%s), want %v", tc.limit, r.Status, r.Reason, tc.want)
+		}
+	}
+}

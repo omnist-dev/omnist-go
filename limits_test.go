@@ -149,3 +149,35 @@ func TestMaxAliasExpansionLimitsAndValidate(t *testing.T) {
 		t.Error("expected error for MaxAliasExpansion > MaxRecommendedAliasExpansion")
 	}
 }
+
+func TestMaxExpandedSlotsLimitsAndValidate(t *testing.T) {
+	if DefaultLimits().MaxExpandedSlots != DefaultMaxExpandedSlots || DefaultMaxExpandedSlots != 1_000_000 {
+		t.Errorf("default expanded size = %d, want 1000000", DefaultLimits().MaxExpandedSlots)
+	}
+	if MaxRecommendedExpandedSlots != 10_000_000 {
+		t.Errorf("recommended ceiling = %d, want 10000000", MaxRecommendedExpandedSlots)
+	}
+	// Positive values are used, zero and negatives select the default and
+	// never mean unbounded (D-10).
+	for _, tc := range []struct{ in, want int }{{1, 1}, {22, 22}, {10_000_000, 10_000_000}, {0, 1_000_000}, {-1, 1_000_000}, {-1 << 62, 1_000_000}} {
+		if got := (Limits{MaxExpandedSlots: tc.in}).EffectiveMaxExpandedSlots(); got != tc.want {
+			t.Errorf("Effective(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+	base := Limits{MaxDepth: 10, MaxNodes: 100, MaxIntDigits: 10}
+	if err := base.Validate(); err != nil {
+		t.Errorf("Validate with MaxExpandedSlots unset: %v", err)
+	}
+	base.MaxExpandedSlots = MaxRecommendedExpandedSlots
+	if err := base.Validate(); err != nil {
+		t.Errorf("Validate at the ceiling: %v", err)
+	}
+	base.MaxExpandedSlots = -1
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for negative MaxExpandedSlots")
+	}
+	base.MaxExpandedSlots = MaxRecommendedExpandedSlots + 1
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for MaxExpandedSlots > MaxRecommendedExpandedSlots")
+	}
+}

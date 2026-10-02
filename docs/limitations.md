@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.6.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.7.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,17 +17,17 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**284 pass / 0 fail / 28 skip** of 312 vectors (`omnist-spec` v0.25.0-beta
+**303 pass / 0 fail / 28 skip** of 331 vectors (`omnist-spec` v0.26.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
 port, cited honestly per §9.5 rather than crashing or failing the
 driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
 for implementing it. All 28 are E-20's "not yet implemented" category;
-none is a documented divergence (E-21). The 16 YAML alias-expansion
-vectors, which carry `declared_max_alias_expansion`, run and pass: the
-runner passes the vector's declared maximum to the reader as
-`Limits.MaxAliasExpansion`, and only for a vector that carries the key.
+none is a documented divergence (E-21). The 35 YAML alias-expansion
+vectors run and pass: the runner passes a vector's `declared_max_alias_expansion`
+to the reader as `Limits.MaxAliasExpansion` and its `declared_max_expanded_slots`
+as `Limits.MaxExpandedSlots`, and only for a vector that carries the key.
 Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
@@ -61,6 +61,7 @@ sanity check.
 | Node count | `MaxNodes` | 1,000,000 | every reader |
 | Integer digits | `MaxIntDigits` | 4,300 | every reader |
 | Alias expansion factor | `MaxAliasExpansion` | 50 | YAML only (the one codec with an anchor/alias mechanism); every other reader ignores it |
+| Expanded size | `MaxExpandedSlots` | 1,000,000 | YAML only, and only for an input that contains an alias or a merge key |
 
 **The alias expansion factor** (D-18, D-19, D-20). For each candidate node `a`,
 `E(a) = W(a) / S(a)`, where `W` is the number of value slots materialized when
@@ -83,16 +84,51 @@ other format, is unaffected.
 What `MaxNodes` and `MaxDepth` still do: `MaxNodes` counts only materialized
 mappings, not scalars, so it does not bound a scalar-heavy expansion; that is
 bounded only by the alias check, which caps the whole document at
-`W <= MaxAliasExpansion x S(root)`. A huge document whose containers each sit
-just under `E = 50` can therefore still materialize about fifty times what it
-writes and use a lot of memory. A long acyclic merge chain (each link at
+`W <= MaxAliasExpansion x S(root)`, and by the expanded-size cap above, which
+bounds `W(root)` itself at the default 1,000,000 slots (about 780 bytes each in
+Go, so roughly 780 MB at the default). A long acyclic merge chain (each link at
 `E = 1.00`) is bounded by `MaxDepth`.
 
-**Known edge.** An anchored literal merge sequence `<<: &s [*p, *q]` is
-currently treated as an ordinary merge value rather than the syntactic carrier
-that `<<: [*p, *q]` is, so its slot inflates `S` and `E` is under-counted
-compared with the unanchored form. This is a spec-ambiguity edge; it is bounded
-by the root check, and the algorithm is unchanged.
+**Merge sequences are carriers (D-18a).** A sequence in merge-value position is
+a syntactic carrier, whether it is written in place or anchored: `<<: [*p, *q]`
+and `<<: &s [*p, *q]` hold no slot in `W` or `S`, are not candidates, and give
+the same verdict on the mapping that holds them. `<<: *s` where `s` is a
+sequence contributes the sum over its members of `W(member) - 1` (never
+`W(s) - 1`) and one `<<` slot in `S`; a plain alias to an anchored carrier
+materializes the list (`1 + sum W(member)`), and an ordinary `s: &s [*p, *q]`
+stays a candidate. Merge shapes are validated BEFORE anything is counted: a
+scalar merge value, a scalar member of a merge sequence, a sequence inside a
+merge sequence, and an alias to a sequence of scalars are `parse.codec-syntax` (at the offending node's `line:col`), and win over
+every `document.limit.*` code, so a document with both a bomb and a malformed
+merge reports the syntax error.
+
+**Go-specific, spec-undecided: empty merge sequence.** `<<: []` is rejected by
+this port as `parse.codec-syntax`. That is not a D-18a rule: the spec text and
+vectors do not say an empty merge sequence is malformed, and other ports accept
+it. Tracked in omnist-spec; the behaviour is unchanged here.
+
+**The expanded-size cap** (D-22). The factor bounds amplification, not
+absolute size: a large document in which every container sits just under
+`E = 50` is accepted by it and can still allocate gigabytes (30,000 such
+containers, `W` about 3.2 million, took 16 to 22 seconds and 2.5 GB). So a YAML
+input that contains at least one alias or merge key is also rejected when
+`W(root)` (the total slots it materializes, from the same memoized pass) is
+greater than `MaxExpandedSlots` (default 1,000,000; equal is accepted), with
+`document.limit.expanded-size` at `$`. The cap is checked after every candidate
+has passed the factor, so when both limits are crossed `alias-expansion` is
+reported, and before anything is materialized. The two limits are independent:
+an input can pass the ratio and fail the size, or the reverse. Compose-style
+files sit far under the default: 100 services merging a 20-key block measure
+2,223 slots, 100 merging a 60-key block 6,263, and 1,000 merging a 60-key block
+62,063.
+
+**The cliff.** An input with no alias and no merge key is exempt: a plain
+two-million-slot YAML file passes, as a JSON or OML file of that size does (the
+node limit and your own input-size bound govern it). Adding one alias to it
+subjects the whole document to the cap, and it is rejected. This is deliberate
+spec behaviour, not an accident of this reader. `W` is the conservative
+structural count, so a document whose merged keys are overridden can be refused
+by the cap although it materializes fewer slots.
 
 **A mapping that merges a large anchor has a high `E` by design.** `E` of
 `job: {<<: *base, script: x}` is `(keys + 2) / 3`: the referrer writes three
@@ -101,7 +137,10 @@ as well. With 60 keys in `base` it is accepted; with 148 keys `E` is exactly
 50.00 (accepted); with 150 keys it is about 50.67 and rejected at the default.
 This is the spec's stated behaviour, not a false positive to work around in
 the reader. If you merge a genuinely large anchor, raise
-`Limits.MaxAliasExpansion` (`Validate()` accepts up to 10,000). The compose
+`Limits.MaxAliasExpansion` (`Validate()` accepts up to 10,000); if the document
+as a whole then expands past the size cap, raise `Limits.MaxExpandedSlots` too
+(`Validate()` accepts up to 10,000,000, the spec's recommended ceiling, about
+8 GB at Go's cost per slot). The compose
 pattern of many services merging a modest defaults block is nowhere near it: 100
 services merging a 20-key anchor is accepted at the default.
 
@@ -110,14 +149,50 @@ services merging a 20-key anchor is accepted at the default.
 literal written before the field existed keeps a finite limit; a negative
 value is also treated as unset (never as unbounded) and `Validate()` reports
 it as an error, as it does a value above `MaxRecommendedAliasExpansion`
-(10,000). `Limits.EffectiveMaxAliasExpansion()` returns the value a reader
-enforces.
+(10,000). `MaxExpandedSlots` follows the same convention: zero or negative
+selects the default of 1,000,000, `Validate()` rejects a negative value and one
+above `MaxRecommendedExpandedSlots` (10,000,000), and
+`Limits.EffectiveMaxExpandedSlots()` returns the value a reader enforces.
+`Limits.EffectiveMaxAliasExpansion()` returns the factor.
 
 ### Codex audit cycle (#70–#81)
 
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.7.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1: it adds new public
+API (`Limits.MaxExpandedSlots`, `DefaultMaxExpandedSlots`,
+`Limits.EffectiveMaxExpandedSlots`, `MaxRecommendedExpandedSlots`,
+`CodeDocumentLimitExpandedSize`) and closes a memory-exhaustion path (an input
+every container of which sat under the alias factor, but whose total expansion
+was gigabytes). It adopts `omnist-spec` v0.26.0-beta (`7744a5c`, from
+v0.25.0-beta). Conformance, Track 2: **296 pass / 7 fail / 28 skip of 331**
+before any code change, **303 pass / 0 fail / 28 skip of 331** after. The seven:
+the anchored-carrier and alias-to-sequence vectors at the limit (wrongly
+rejected, D-18a), four D-22 expanded-size vectors (accepted where
+`document.limit.expanded-size` was expected), and
+`malformed-merge-after-a-bomb-reports-codec-syntax` (the bomb check fired before
+the malformed merge was seen). Track 1 stayed 19/19. What changed:
+
+- **Carrier rules (D-18a).** An anchored merge sequence, and `<<: *s` with `s` a
+  sequence, are counted per "Safety limits" above; the old "known edge" (an
+  anchored carrier counted as an ordinary merge value) is gone.
+- **Merge shapes first.** A malformed merge is `parse.codec-syntax`, detected in
+  a pass before counting, so it wins over every limit. The reader's own
+  merge-shape checks are now that pass.
+- **Expanded-size cap (D-22).** `Limits.MaxExpandedSlots`, default 1,000,000, for
+  inputs with an alias or merge key; see "The expanded-size cap" and "The
+  cliff" above.
+- **Conformance runner.** `declared_max_expanded_slots` is passed through for
+  vectors that carry it only; `(path, code)` sets are still compared strictly and
+  there is no known-failing list.
+- **Container keys and long chains.** A container as a mapping key is measured
+  on its own subtree and folds into nothing (the reader refuses it as
+  `document.unlabeled-element`). The walk is iterative, so a 100,000-link alias
+  chain is safe with no port-specific depth guard.
+
+### Previous: v0.6.0-alpha
 
 **`v0.6.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1: it adds new public
 API (`Limits.MaxAliasExpansion`, `DefaultMaxAliasExpansion`,
@@ -408,7 +483,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `3febae9` (`v0.25.0-beta`), pinned via the
+`omnist-spec` at commit `7744a5c` (`v0.26.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
