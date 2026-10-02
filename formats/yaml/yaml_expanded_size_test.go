@@ -153,7 +153,7 @@ var malformedMerges = []struct{ name, text string }{
 
 func TestMalformedMergeShapesAreCodecSyntax(t *testing.T) {
 	for _, tc := range malformedMerges {
-		wantSyntax(t, tc.name, tc.text, omnist.DefaultLimits())
+		_ = wantSyntax(t, tc.name, tc.text, omnist.DefaultLimits())
 	}
 }
 
@@ -161,15 +161,15 @@ func TestMalformedMergeWinsOverEveryLimit(t *testing.T) {
 	// A bomb first (the spec vector), then a malformed merge.
 	const bomb = "p: &p {a: 1, b: 2, c: 3}\nt: {<<: [*p, *p, *p, *p]}\n"
 	for _, tc := range malformedMerges {
-		wantSyntax(t, "bomb then "+tc.name, bomb+tc.text, limitsEx(2, 0))
+		_ = wantSyntax(t, "bomb then "+tc.name, bomb+tc.text, limitsEx(2, 0))
 	}
 	// A size bomb (ratio passes, cap crossed) then a malformed merge.
 	const sizeBomb = "base: &base {k1: 1, k2: 2, k3: 3}\nt: {a: *base, b: *base, c: *base, d: *base}\n"
-	wantSyntax(t, "size bomb then malformed", sizeBomb+"bad: {<<: 1}\n", limitsEx(0, 21))
+	_ = wantSyntax(t, "size bomb then malformed", sizeBomb+"bad: {<<: 1}\n", limitsEx(0, 21))
 	// Malformed first, then a bomb: still the syntax error.
-	wantSyntax(t, "malformed then bomb", "bad: {<<: 1}\n"+bomb, limitsEx(2, 0))
+	_ = wantSyntax(t, "malformed then bomb", "bad: {<<: 1}\n"+bomb, limitsEx(2, 0))
 	// A self-referential anchor (D-20) next to a malformed merge: syntax wins.
-	wantSyntax(t, "cycle and malformed", "a: &a {x: *a}\nbad: {<<: 1}\n", omnist.DefaultLimits())
+	_ = wantSyntax(t, "cycle and malformed", "a: &a {x: *a}\nbad: {<<: 1}\n", omnist.DefaultLimits())
 	// The first malformed merge in document order is the one reported.
 	pe := wantSyntax(t, "first of two", "a: {<<: 1}\nb: {<<: [2]}\n", omnist.DefaultLimits())
 	if pe.Line != 1 {
@@ -206,14 +206,14 @@ func TestExpandedSizeBoundaryIsStrictlyGreaterThan(t *testing.T) {
 
 func TestExpandedSizeAndRatioAreIndependent(t *testing.T) {
 	// E(t) = 17/5 = 3.4: the ratio passes at 4, the size fails at 21.
-	wantReject(t, "size fails where ratio passes", size22, limitsEx(4, 21), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "size fails where ratio passes", size22, limitsEx(4, 21), omnist.CodeDocumentLimitExpandedSize)
 	// The ratio fails at 3, the size passes at 22.
-	wantReject(t, "ratio fails where size passes", size22, limitsEx(3, 22), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "ratio fails where size passes", size22, limitsEx(3, 22), omnist.CodeDocumentLimitAliasExpansion)
 	// Both fail: alias-expansion is reported.
-	wantReject(t, "both fail", size22, limitsEx(3, 21), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "both fail", size22, limitsEx(3, 21), omnist.CodeDocumentLimitAliasExpansion)
 	// The ratio check runs before the size check even when the offending
 	// candidate is the document root itself.
-	wantReject(t, "root over both", "b: &b {k1: 1, k2: 2}\nr1: *b\nr2: *b\nr3: *b\nr4: *b\n", limitsEx(1, 5), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "root over both", "b: &b {k1: 1, k2: 2}\nr1: *b\nr2: *b\nr3: *b\nr4: *b\n", limitsEx(1, 5), omnist.CodeDocumentLimitAliasExpansion)
 }
 
 func TestExpandedSizeExemptsAliasFreeDocuments(t *testing.T) {
@@ -222,12 +222,12 @@ func TestExpandedSizeExemptsAliasFreeDocuments(t *testing.T) {
 	// An anchor that nothing refers to is not an alias.
 	wantAccept(t, "unused anchor", "k1: &x 1\nk2: 2\nk3: 3\nk4: 4\nk5: 5\nk6: 6\nk7: 7\n", limitsEx(0, 3))
 	// One harmless alias subjects the whole document to the cap (the cliff).
-	wantReject(t, "one harmless alias", "k1: &x 1\nk2: 2\nk3: 3\nk4: 4\nk5: 5\nk6: 6\nk7: 7\nk8: *x\n", limitsEx(0, 3), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "one harmless alias", "k1: &x 1\nk2: 2\nk3: 3\nk4: 4\nk5: 5\nk6: 6\nk7: 7\nk8: *x\n", limitsEx(0, 3), omnist.CodeDocumentLimitExpandedSize)
 	// A merge key alone, with no alias, also does.
-	wantReject(t, "merge key without alias", "t: {<<: {a: 1}}\n", limitsEx(0, 2), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "merge key without alias", "t: {<<: {a: 1}}\n", limitsEx(0, 2), omnist.CodeDocumentLimitExpandedSize)
 	wantAccept(t, "merge key at cap", "t: {<<: {a: 1}}\n", limitsEx(0, 3))
 	// An alias in a mapping key position counts as an alias too.
-	wantReject(t, "alias as a key", "&x k: 1\n*x : 2\nm: 3\nn: 4\n", limitsEx(0, 2), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "alias as a key", "&x k: 1\n*x : 2\nm: 3\nn: 4\n", limitsEx(0, 2), omnist.CodeDocumentLimitExpandedSize)
 }
 
 func TestExpandedSizeOnTopLevelShapes(t *testing.T) {
@@ -248,11 +248,11 @@ func TestExpandedSizeOptionDefaultsAndValidation(t *testing.T) {
 		l := omnist.DefaultLimits()
 		l.MaxExpandedSlots = v
 		wantAccept(t, fmt.Sprintf("small at %d", v), size22, l)
-		wantReject(t, fmt.Sprintf("big at %d", v), big, l, omnist.CodeDocumentLimitExpandedSize)
+		_ = wantReject(t, fmt.Sprintf("big at %d", v), big, l, omnist.CodeDocumentLimitExpandedSize)
 	}
 	// A Limits literal written before the field existed keeps the cap.
 	legacy := omnist.Limits{MaxDepth: 200, MaxNodes: 1_000_000, MaxIntDigits: 4300}
-	wantReject(t, "legacy literal", big, legacy, omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "legacy literal", big, legacy, omnist.CodeDocumentLimitExpandedSize)
 	// A raised cap admits it to the check (only the check is run: reading it
 	// would materialize two million slots).
 	if err := checkAliasExpansion(parseRoot(t, big), omnist.DefaultMaxAliasExpansion, omnist.MaxRecommendedExpandedSlots); err != nil {
@@ -294,7 +294,7 @@ func TestExpandedSizeMemoryBombRejectedAtDefault(t *testing.T) {
 		t.Fatalf("got %#v, want document.limit.expanded-size at $", err)
 	}
 	// The same text through Read is refused the same way.
-	wantReject(t, "Read", text, omnist.DefaultLimits(), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantReject(t, "Read", text, omnist.DefaultLimits(), omnist.CodeDocumentLimitExpandedSize)
 	// And its ratio really is under the limit: with the cap lifted it reads.
 	l := omnist.DefaultLimits()
 	l.MaxExpandedSlots = 3_000_000
@@ -348,7 +348,7 @@ func TestExpandedSizeComposeStyleFalsePositiveGuards(t *testing.T) {
 		wantAccept(t, "default", text, omnist.DefaultLimits())
 		// W(root) is exactly tc.w: accepted at the cap, refused one below.
 		wantAccept(t, "at W", text, limitsEx(0, tc.w))
-		wantReject(t, "below W", text, limitsEx(0, tc.w-1), omnist.CodeDocumentLimitExpandedSize)
+		_ = wantReject(t, "below W", text, limitsEx(0, tc.w-1), omnist.CodeDocumentLimitExpandedSize)
 	}
 	// A GitLab-style file of 200 jobs, and a Kubernetes-style one of 500 objects.
 	var b strings.Builder
@@ -390,8 +390,8 @@ func TestExpandedSizeLongAliasChainsAreSafe(t *testing.T) {
 // command line and conformance runner call exactly this function (no second
 // path parses YAML).
 func TestExpandedSizeAppliesThroughRead(t *testing.T) {
-	wantReject(t, "Read", size22, limitsEx(0, 21), omnist.CodeDocumentLimitExpandedSize)
-	wantSyntax(t, "Read", "a: {<<: 1}\n", omnist.DefaultLimits())
+	_ = wantReject(t, "Read", size22, limitsEx(0, 21), omnist.CodeDocumentLimitExpandedSize)
+	_ = wantSyntax(t, "Read", "a: {<<: 1}\n", omnist.DefaultLimits())
 }
 
 // A container as a mapping key is measured on its own subtree but never counted
