@@ -252,7 +252,7 @@ func (r *yamlReader) readMergeSources(key, val *yamllib.Node) ([][]omnist.Edge, 
 	defer func() { r.mergeDepth-- }()
 
 	// checkAliasExpansion has already validated the shape: val is a mapping or a
-	// non-empty sequence of mappings, aliases included.
+	// (possibly empty) sequence of mappings, aliases included.
 	val = deref(val)
 	elems := val.Content
 	if val.Kind == yamllib.MappingNode {
@@ -417,17 +417,13 @@ func (r *yamlReader) readNestedMapping(n *yamllib.Node) (*omnist.Node, error) {
 // reason ReadJSON's readArrayElements rejects a nested bare array — see
 // that function's doc comment, which this mirrors rather than re-deriving.
 //
-// An empty sequence ('[]' or a key with no items) is rejected with
-// omnist.CodeParseEmptyArray for the same reason ReadJSON and OML's parser treat
-// an empty array as an error rather than silently producing zero edges —
-// this is the same array-as-repeated-label-sugar mechanism in a third
-// format, so it follows the existing in-repo precedent rather than
-// inventing a fourth behavior for the identical construct. Narrow/cosmetic
-// reading: docs/formats/yaml.md does not spell out the empty-sequence case
-// explicitly.
+// An empty sequence ('[]' or a key with no items) reads to zero targets: the
+// label simply does not appear, as with an empty JSON array. The omnist-spec
+// v0.27.0-beta vectors pin this (an empty array and an absent label are the same
+// Document; only OML's '[]' is an error).
 func (r *yamlReader) readSequenceElements(n *yamllib.Node) ([]omnist.Target, error) {
 	if len(n.Content) == 0 {
-		return nil, r.errAt(n, omnist.CodeParseEmptyArray, "an empty sequence is not a valid value")
+		return nil, nil
 	}
 	targets := make([]omnist.Target, 0, len(n.Content))
 	for _, elemNode := range n.Content {

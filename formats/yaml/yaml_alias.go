@@ -16,8 +16,9 @@ import (
 // refused without ever paying for the expansion it describes (D-19).
 //
 // Step 1, validateMergeShapes: every merge value must be a mapping or a
-// sequence of mappings (after following an alias one level); an EMPTY sequence is
-// also refused, a Go-specific choice the spec leaves undecided (not D-18a). Anything
+// sequence of mappings (after following an alias one level); an EMPTY sequence
+// is a sequence of mappings vacuously, a well-formed carrier that merges
+// nothing (D-18a, omnist-spec#127). Anything
 // else is parse.codec-syntax, reported before anything is counted so it wins
 // over every document.limit.* code (D-18a).
 //
@@ -41,6 +42,10 @@ import (
 //     is a syntactic carrier whether or not it is anchored (D-18a): it adds no
 //     slot of its own to W or S and is not a candidate. Each member
 //     contributes as a merge source does (W-1);
+//   - an EMPTY carrier, `<<: []` or `<<: &s []`, contributes 0 to W (no
+//     members, no slot) and the `<<` entry is still one slot in S; `s: &s []`
+//     then `<<: *s` is the same (the sum over zero members). An empty sequence
+//     outside merge position is an ordinary node, W = S = 1;
 //   - `<<: *s` where s is a sequence contributes the sum over s's members of
 //     W(member)-1 (aliasSlots.mw), and no slot for s itself; a PLAIN alias to
 //     the same sequence materializes the list, 1 + sum W(member);
@@ -174,10 +179,10 @@ func checkAliasExpansion(root *yamllib.Node, maxE, maxSlots int) *omnist.ParseEr
 }
 
 // validateMergeShapes reports the first malformed merge in document order: a
-// merge value that is not a mapping or a non-empty sequence of mappings, where
-// an alias counts as the node it names (D-18a). A sequence inside a merge
-// sequence, a scalar member, and an alias to a sequence of scalars are all
-// malformed. The walk does not follow aliases (an aliased definition is
+// merge value that is not a mapping or a (possibly empty) sequence of
+// mappings, where an alias counts as the node it names (D-18a). A sequence
+// inside a merge sequence, a scalar member, and an alias to a sequence of
+// scalars are all malformed. The walk does not follow aliases (an aliased definition is
 // reached where it is written), so it is linear and cannot loop on a cycle.
 func validateMergeShapes(root *yamllib.Node) *omnist.ParseError {
 	stack := []*yamllib.Node{root}
@@ -209,9 +214,6 @@ func mergeValueErr(v *yamllib.Node) *omnist.ParseError {
 	case yamllib.MappingNode:
 		return nil
 	case yamllib.SequenceNode:
-		if len(t.Content) == 0 {
-			return mergeShapeErr(v)
-		}
 		for _, m := range t.Content {
 			if deref(m).Kind != yamllib.MappingNode {
 				return mergeShapeErr(m)
