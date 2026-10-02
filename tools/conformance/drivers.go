@@ -40,6 +40,10 @@ type parseInput struct {
 	// Limits.MaxAliasExpansion, and only for a vector that carries it: every
 	// other vector runs with the reference default of 50.
 	DeclaredMaxAliasExpansion *int `json:"declared_max_alias_expansion"`
+	// DeclaredMaxExpandedSlots is the fifth declared-limit key (D-22). It is
+	// passed as Limits.MaxExpandedSlots, and only for a vector that carries
+	// it: every other vector runs with the reference default of 1,000,000.
+	DeclaredMaxExpandedSlots *int `json:"declared_max_expanded_slots"`
 }
 
 // readSourceInput returns the exact source a read-side driver (parse,
@@ -83,6 +87,9 @@ func limitsFromInput(in parseInput) omnist.Limits {
 	}
 	if in.DeclaredMaxAliasExpansion != nil {
 		l.MaxAliasExpansion = *in.DeclaredMaxAliasExpansion
+	}
+	if in.DeclaredMaxExpandedSlots != nil {
+		l.MaxExpandedSlots = *in.DeclaredMaxExpandedSlots
 	}
 	return l
 }

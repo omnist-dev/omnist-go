@@ -104,10 +104,11 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// root is always a DocumentNode wrapping exactly one child when Decode
 	// succeeds with io.EOF not yet reached above — yaml.v3's contract for
 	// decoding into a *yamllib.Node.
-	// D-18/D-19/D-20: bound alias expansion from the reference graph alone,
-	// before any alias is expanded. The node-count and depth limits below stay
+	// D-18a merge shapes, then D-18/D-19/D-20 and D-22: bound alias expansion
+	// and expanded size from the reference graph alone, before any alias is
+	// expanded. The node-count and depth limits below stay
 	// as the second line of defence.
-	if aerr := checkAliasExpansion(root.Content[0], limits.EffectiveMaxAliasExpansion()); aerr != nil {
+	if aerr := checkAliasExpansion(root.Content[0], limits.EffectiveMaxAliasExpansion(), limits.EffectiveMaxExpandedSlots()); aerr != nil {
 		return omnist.Document{}, aerr
 	}
 	r := &yamlReader{checker: omnist.NewLimitChecker(limits), maxMergeDepth: limits.MaxDepth}
@@ -250,23 +251,16 @@ func (r *yamlReader) readMergeSources(key, val *yamllib.Node) ([][]omnist.Edge, 
 	r.mergeDepth++
 	defer func() { r.mergeDepth-- }()
 
+	// checkAliasExpansion has already validated the shape: val is a mapping or a
+	// non-empty sequence of mappings, aliases included.
 	val = deref(val)
-	var elems []*yamllib.Node
-	switch val.Kind {
-	case yamllib.MappingNode:
+	elems := val.Content
+	if val.Kind == yamllib.MappingNode {
 		elems = []*yamllib.Node{val}
-	case yamllib.SequenceNode:
-		elems = val.Content
-	}
-	if len(elems) == 0 {
-		return nil, r.errAt(val, omnist.CodeParseCodecSyntax, "YAML: a merge key's value must be a mapping or a sequence of mappings")
 	}
 	out := make([][]omnist.Edge, 0, len(elems))
 	for _, e := range elems {
 		e = deref(e)
-		if e.Kind != yamllib.MappingNode {
-			return nil, r.errAt(e, omnist.CodeParseCodecSyntax, "YAML: a merge key's value must be a mapping or a sequence of mappings")
-		}
 		body, err := r.readMappingBody(e)
 		if err != nil {
 			return nil, err

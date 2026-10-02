@@ -182,7 +182,8 @@ that don't belong to a specific codec or the algebra package.
 
 - **`Limits`** / **`DefaultLimits()`** — the finite, documented safety
   bounds (depth, node count, integer digit count, and for YAML the alias
-  expansion factor `MaxAliasExpansion`, default 50) spec §2.4 requires every
+  expansion factor `MaxAliasExpansion`, default 50, and the expanded size
+  `MaxExpandedSlots`, default 1,000,000) spec §2.4 requires every
   implementation to enforce. Passed to every format reader. A zero or
   negative `MaxAliasExpansion` selects the default, never "no limit"
   (`Limits.EffectiveMaxAliasExpansion()` gives the enforced value); an
@@ -191,13 +192,21 @@ that don't belong to a specific codec or the algebra package.
   before any expansion with `document.limit.alias-expansion`. A mapping that
   merges a large anchor has `E` of about `(keys + 2) / 3`, so raise
   `MaxAliasExpansion` for one (see
-  [Limitations](limitations.md#safety-limits-d-9-to-d-11-d-18-to-d-20)).
+  [Limitations](limitations.md#safety-limits-d-9-to-d-11-d-18-to-d-20)). A
+  YAML input that contains an alias or a merge key is also rejected, with
+  `document.limit.expanded-size` at `$`, when the slots it materializes exceed
+  `MaxExpandedSlots` (the ratio and the size are independent limits; an input
+  with neither an alias nor a merge key is exempt, so adding one alias to a huge
+  plain file subjects it to the cap). A zero or negative `MaxExpandedSlots`
+  selects the default (`Limits.EffectiveMaxExpandedSlots()`). A malformed merge
+  value is `parse.codec-syntax`, reported before any limit.
 - **`Limits.Validate()`** — opt-in sanity check verifying that configured
   limits are strictly positive and within recommended safety ceilings
   (`MaxRecommendedDepth = 10_000`, `MaxRecommendedNodes = 100_000_000`,
   `MaxRecommendedIntDigits = 1_000_000`, `MaxRecommendedAliasExpansion =
-  10_000`); an unset (zero) `MaxAliasExpansion` is accepted as "use the
-  default", a negative one is an error.
+  10_000`, `MaxRecommendedExpandedSlots = 10_000_000`); an unset (zero)
+  `MaxAliasExpansion` or `MaxExpandedSlots` is accepted as "use the default", a
+  negative one is an error.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_limitsValidate -->
 ```go
@@ -230,6 +239,26 @@ limits.MaxAliasExpansion = 4
 _, err = yaml.Read(text, limits)
 pe := err.(*omnist.ParseError)
 fmt.Println(pe.Code, pe.Path)
+```
+
+The expanded-size cap, on a document whose factor passes (`t` is 17 slots of
+5 written, `E = 3.4`, and the whole input expands to 22 slots):
+
+<!-- verified-by: doc_examples_reference_test.go::Example_limitsExpandedSlots -->
+```go
+text := "base: &base {k1: 1, k2: 2, k3: 3}\nt: {a: *base, b: *base, c: *base, d: *base}\n"
+
+limits := omnist.DefaultLimits() // MaxExpandedSlots is 1,000,000
+limits.MaxExpandedSlots = 21
+_, err := yaml.Read(text, limits)
+pe := err.(*omnist.ParseError)
+fmt.Println(pe.Code, pe.Path)
+
+limits.MaxExpandedSlots = 22
+_, err = yaml.Read(text, limits)
+fmt.Println(err)
+// document.limit.expanded-size $
+// <nil>
 ```
 
 ## `oml` — `github.com/omnist-dev/omnist-go/oml`

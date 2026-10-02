@@ -29,7 +29,7 @@ func parseRoot(t *testing.T, text string) *yamllib.Node {
 // each anchor name's (W, S).
 func slotsByAnchor(t *testing.T, text string) map[string][2]uint64 {
 	t.Helper()
-	table, err := analyzeAliases(parseRoot(t, text), math.MaxInt)
+	table, err := analyzeAliases(parseRoot(t, text), math.MaxInt, math.MaxInt)
 	if err != nil {
 		t.Fatalf("analyzeAliases(%q): %v", text, err)
 	}
@@ -105,7 +105,7 @@ func TestAliasSlotArithmetic(t *testing.T) {
 	// A merge whose value is an alias of a sequence of aliases: the alias
 	// contributes W(s)-1 (a conservative bound), not its members' flattening.
 	wantSlots(t, "merge alias to sequence", "p: &p {k: 1}\ns: &s [*p]\nz: &z {<<: *s}\n", map[string][2]uint64{
-		"p": {2, 2}, "s": {3, 2}, "z": {3, 2},
+		"p": {2, 2}, "s": {3, 2}, "z": {2, 2},
 	})
 	// An inline mapping merged in place (not covered by the spec text): its
 	// container is flattened (w-1) and the slots it writes count in S.
@@ -116,7 +116,7 @@ func TestAliasSlotArithmetic(t *testing.T) {
 	// An anchored literal sequence under a merge key is a real (not carrier)
 	// sequence: it keeps its own W and S, and merges as a value.
 	wantSlots(t, "anchored merge sequence", "p: &p {k: 1}\nz: &z {<<: &s [*p]}\n", map[string][2]uint64{
-		"p": {2, 2}, "s": {3, 2}, "z": {3, 3},
+		"p": {2, 2}, "s": {3, 0}, "z": {2, 2},
 	})
 	// The spec's nested fan-out vector: E(e) = 341/5.
 	wantSlots(t, "fan-out", "a: &a leaf\nb: &b {p: *a, q: *a, r: *a, s: *a}\nc: &c {p: *b, q: *b, r: *b, s: *b}\nd: &d {p: *c, q: *c, r: *c, s: *c}\ne: &e {p: *d, q: *d, r: *d, s: *d}\ntop: *e\n", map[string][2]uint64{
@@ -207,7 +207,7 @@ func TestAliasTrueWExceedingUint64IsRejectedNotWrapped(t *testing.T) {
 	// the limit as loose as an int allows, only saturation can notice: a wrapped
 	// count could land under the limit and accept the attack.
 	text := chainText(25, 10)
-	if _, err := analyzeAliases(parseRoot(t, text), math.MaxInt); err == nil {
+	if _, err := analyzeAliases(parseRoot(t, text), math.MaxInt, math.MaxInt); err == nil {
 		t.Fatal("a chain whose W exceeds uint64 was accepted: W wrapped or was compared saturated-equal")
 	} else if err.Code != omnist.CodeDocumentLimitAliasExpansion {
 		t.Fatalf("code = %s", err.Code)
@@ -216,7 +216,7 @@ func TestAliasTrueWExceedingUint64IsRejectedNotWrapped(t *testing.T) {
 	l.MaxAliasExpansion = math.MaxInt
 	_ = aliasErrOf(t, text, l)
 	// A saturated W is rejected even where max*S itself saturates.
-	if _, err := analyzeAliases(parseRoot(t, chainText(25, 10)), math.MaxInt); err == nil {
+	if _, err := analyzeAliases(parseRoot(t, chainText(25, 10)), math.MaxInt, math.MaxInt); err == nil {
 		t.Error("saturated W accepted")
 	}
 	// The same shape one order of magnitude under the wrap is an ordinary
@@ -268,7 +268,7 @@ func TestAlias100kDeepAnchorChainIsLinearAndIterative(t *testing.T) {
 	for i := 1; i <= n; i++ {
 		fmt.Fprintf(&b, "a%d: &a%d {<<: *a%d}\n", i, i, i-1)
 	}
-	table, err := analyzeAliases(parseRoot(t, b.String()), omnist.DefaultMaxAliasExpansion)
+	table, err := analyzeAliases(parseRoot(t, b.String()), omnist.DefaultMaxAliasExpansion, omnist.DefaultMaxExpandedSlots)
 	if err != nil {
 		t.Fatalf("analysis rejected a factor-1 chain: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestAliasBoundNeverUnderestimatesMaterialization(t *testing.T) {
 		text := g.b.String()
 
 		// Static W/S with no limit in the way.
-		table, aerr := analyzeAliases(parseRoot(t, text), math.MaxInt)
+		table, aerr := analyzeAliases(parseRoot(t, text), math.MaxInt, math.MaxInt)
 		if aerr != nil {
 			t.Fatalf("seed %d: %v\n%s", seed, aerr, text)
 		}
@@ -538,7 +538,7 @@ func TestAliasBoundNeverUnderestimatesMaterialization(t *testing.T) {
 			// Keep the materializing half of the property cheap.
 			l.MaxNodes = 1_000_000
 		}
-		if (worst > maxE) != (checkAliasExpansion(parseRoot(t, text), maxE) != nil) {
+		if (worst > maxE) != (checkAliasExpansion(parseRoot(t, text), maxE, omnist.DefaultMaxExpandedSlots) != nil) {
 			t.Fatalf("seed %d: worst E = %v but the limit-%d check disagrees\n%s", seed, worst, maxE, text)
 		}
 		if worst > maxE {
@@ -670,7 +670,7 @@ func TestAliasUnanchoredContainersAreCandidates(t *testing.T) {
 	seq := "- &b [" + strings.TrimSuffix(strings.Repeat("1, ", 100), ", ") + "]\n" + strings.Repeat("- *b\n", 100)
 	_ = aliasErrOf(t, seq, omnist.DefaultLimits())
 	seq60 := "- &b [" + strings.TrimSuffix(strings.Repeat("1, ", 100), ", ") + "]\n" + strings.Repeat("- *b\n", 60)
-	if err := checkAliasExpansion(parseRoot(t, seq60), 50); err != nil {
+	if err := checkAliasExpansion(parseRoot(t, seq60), 50, omnist.DefaultMaxExpandedSlots); err != nil {
 		t.Errorf("root sequence aliased 60 times: %v, want accepted", err)
 	}
 }
@@ -708,7 +708,7 @@ func TestAliasBothBombsFromReviewAreRejectedFast(t *testing.T) {
 			// 100,000-item document under -race, is not the check's cost).
 			root := parseRoot(t, tc.text)
 			start := time.Now()
-			if err := checkAliasExpansion(root, 50); err == nil {
+			if err := checkAliasExpansion(root, 50, omnist.DefaultMaxExpandedSlots); err == nil {
 				t.Error("checkAliasExpansion accepted the bomb")
 			}
 			check := time.Since(start)

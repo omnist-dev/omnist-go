@@ -1,6 +1,7 @@
 package yaml
 
 import (
+	"fmt"
 	"math"
 	"math/bits"
 
@@ -9,15 +10,20 @@ import (
 	omnist "github.com/omnist-dev/omnist-go"
 )
 
-// This file enforces spec D-18, D-19 and D-20 (§2.4.1): the alias expansion
-// limit. It runs on the yaml.Node graph BEFORE the reader builds any
-// omnist.Document, so an over-limit input is refused without ever paying for
-// the expansion it describes (D-19).
+// This file enforces spec D-18, D-18a, D-19, D-20 and D-22 (§2.4.1): the alias
+// expansion limit and the expanded-size cap. It runs on the yaml.Node graph
+// BEFORE the reader builds any omnist.Document, so an over-limit input is
+// refused without ever paying for the expansion it describes (D-19).
 //
-// For every candidate node a (every anchored node, and every mapping and
-// sequence whether anchored or not, the document root and an inline merge
-// source included; scalars are never checked, E = 1.00 trivially) the check
-// computes, from the reference graph alone:
+// Step 1, validateMergeShapes: every merge value must be a mapping or a
+// non-empty sequence of mappings (after following an alias one level). Anything
+// else is parse.codec-syntax, reported before anything is counted so it wins
+// over every document.limit.* code (D-18a).
+//
+// Step 2, analyzeAliases: for every candidate node (every anchored node, and
+// every mapping and sequence whether anchored or not, the document root and an
+// inline merge source included; scalars are never checked, E = 1.00 trivially)
+// it computes, from the reference graph alone:
 //
 //	W(a) value slots materialized when a is expanded
 //	S(a) value slots written in a's own definition
@@ -28,44 +34,55 @@ import (
 //
 //   - a plain alias `*b` counts ONE slot in S and contributes W(b) to W;
 //   - a merge-key entry `<<: *b` counts ONE slot in S however many aliases it
-//     holds, and each alias contributes W(b)-1 to W (b's container is
-//     flattened into the referring mapping, not reproduced);
-//   - a merge value that is a literal sequence `<<: [*p, *q]` is a syntactic
-//     carrier: it adds no slot of its own to W or S;
+//     holds, and an alias to a mapping contributes W(b)-1 to W (b's container
+//     is flattened into the referring mapping, not reproduced);
+//   - a sequence in merge-value position, `<<: [*p, *q]` or `<<: &s [*p, *q]`,
+//     is a syntactic carrier whether or not it is anchored (D-18a): it adds no
+//     slot of its own to W or S and is not a candidate. Each member
+//     contributes as a merge source does (W-1);
+//   - `<<: *s` where s is a sequence contributes the sum over s's members of
+//     W(member)-1 (aliasSlots.mw), and no slot for s itself; a PLAIN alias to
+//     the same sequence materializes the list, 1 + sum W(member);
 //   - an INLINE mapping merged in place (`<<: {k: 1}`): the `<<` entry is the
 //     one slot in the referrer's S, the inline mapping's own written values
 //     add theirs (s-1, its container excluded), and its container is
 //     flattened away in W (contribution w-1). The inline mapping is also a
 //     candidate on its own subtree.
 //
-// Known edge (a spec ambiguity, the algorithm is deliberately unchanged): an
-// ANCHORED literal merge sequence `<<: &s [*p, *q]` is treated as an ordinary
-// merge value (a container that is flattened, w-1), not as the syntactic
-// carrier of `<<: [*p, *q]`. Its slot is then counted in S, so E is
-// under-counted relative to the unanchored carrier form. Every other
-// candidate, and the document root, are still checked.
-//
 // W is the structural count of the spec, deliberately blind to key collisions
 // (D-19): it may exceed what is finally materialized, never fall below it.
 //
+// Mapping keys are not value slots and are never materialized (the reader
+// refuses a container key as document.unlabeled-element), so a container key
+// is measured as a candidate on its own subtree but folds into nothing.
+//
 // The walk is an explicit-stack depth-first traversal (no recursion, so a
-// deeply nested definition cannot exhaust the goroutine stack), each anchored
-// node's (W, S) is memoized when its frame completes, and E is checked at that
-// moment for every container, so the first offender stops the walk and no W held in
-// memory exceeds max*S of the anchor in hand. All arithmetic saturates at
-// math.MaxUint64 regardless, so an overflowing count can never wrap under the
-// limit (D-19).
+// deeply nested definition or a very long alias chain cannot exhaust the
+// goroutine stack), each anchored node's slots are memoized when its frame
+// completes, and E is checked at that moment for every container, so the first
+// offender stops the walk and no W held in memory exceeds max*S of the anchor
+// in hand. All arithmetic saturates at math.MaxUint64 regardless, so an
+// overflowing count can never wrap under a limit (D-19).
+//
+// D-22: for an input that contains at least one alias or merge key, W(root)
+// above the expanded-size maximum is rejected with document.limit.expanded-size
+// at "$", after every candidate has passed D-18 (so D-18 is reported when both
+// fail) and before anything is materialized. An input with neither is exempt.
 //
 // A reference to an anchor whose definition has not finished (the alias sits
 // inside the very definition it names, directly or through other anchors, merge
 // keys included) is a cycle: W is unbounded and the input is rejected under
-// the same code (D-20) without computing any E.
+// the alias-expansion code (D-20) without computing any E.
 
-// aliasSlots is one anchored node's memoized W and S. done is false while the
+// aliasSlots is one anchored node's memoized slots. done is false while the
 // node's own definition is still being walked (a reference to it is a cycle).
+// For a sequence, w is the plain-reference value 1 + sum W(member) and mw is
+// what a reference from merge-value position contributes, sum W(member)-1.
 type aliasSlots struct {
-	w, s uint64
-	done bool
+	w, s  uint64
+	mw    uint64
+	isSeq bool
+	done  bool
 }
 
 // foldKind says how a completed child's (w, s) is added to its parent.
@@ -80,8 +97,9 @@ const (
 	// s-1 to S unless the child is an alias (an alias counts in S through the
 	// single `<<` entry).
 	foldMerge
-	// foldCarrier: a literal merge sequence, whose w and s are already net of
-	// its members' flattening and are added as they stand.
+	// foldCarrier: a merge-position sequence (written in place, or an alias to
+	// one), whose w and s are already net of its members' flattening and are
+	// added as they stand.
 	foldCarrier
 )
 
@@ -90,7 +108,8 @@ type aliasFrame struct {
 	n       *yamllib.Node
 	cur     int // next index in n.Content to visit
 	w, s    uint64
-	carrier bool     // a literal sequence directly under a merge key
+	pw, mw  uint64   // sequences only: 1 + sum W(member), and sum W(member)-1
+	carrier bool     // a sequence directly under a merge key
 	fold    foldKind // how this node folds into its parent
 }
 
@@ -124,25 +143,97 @@ func aliasErr(n *yamllib.Node, msg string) *omnist.ParseError {
 	return &omnist.ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: omnist.CodeDocumentLimitAliasExpansion, Message: msg}
 }
 
-// checkAliasExpansion runs the D-18/D-19/D-20 check over the node graph rooted
-// at root with the given maximum expansion factor maxE (already resolved to a
-// positive value). It returns nil when every anchored definition is within the
-// limit and no anchor refers to itself.
-func checkAliasExpansion(root *yamllib.Node, maxE int) *omnist.ParseError {
-	_, err := analyzeAliases(root, maxE)
+// sizeErr builds the D-22 rejection: code document.limit.expanded-size at "$".
+func sizeErr(n *yamllib.Node, w, max uint64) *omnist.ParseError {
+	msg := "the input expands to more value slots than the configured maximum"
+	if w != math.MaxUint64 {
+		msg = fmt.Sprintf("the input expands to %d value slots, over the configured maximum of %d", w, max)
+	}
+	return &omnist.ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: omnist.CodeDocumentLimitExpandedSize, Message: msg}
+}
+
+// mergeShapeErr builds the D-18a rejection of a malformed merge: a syntax
+// error positioned at the offending node as written.
+func mergeShapeErr(n *yamllib.Node) *omnist.ParseError {
+	return &omnist.ParseError{Line: n.Line, Col: n.Column, Path: fmt.Sprintf("%d:%d", n.Line, n.Column), Code: omnist.CodeParseCodecSyntax, Message: "YAML: a merge key's value must be a mapping or a sequence of mappings"}
+}
+
+// checkAliasExpansion runs merge-shape validation and then the D-18/D-19/D-20
+// and D-22 check over the node graph rooted at root, with the given maximum
+// expansion factor maxE and maximum expanded size maxSlots (both already
+// resolved to positive values). It returns nil when the merges are well formed,
+// every candidate is within the limit, no anchor refers to itself and the
+// expanded size is within its cap.
+func checkAliasExpansion(root *yamllib.Node, maxE, maxSlots int) *omnist.ParseError {
+	if err := validateMergeShapes(root); err != nil {
+		return err
+	}
+	_, err := analyzeAliases(root, maxE, maxSlots)
 	return err
 }
 
-// analyzeAliases is checkAliasExpansion plus the per-anchor (W, S) table it
+// validateMergeShapes reports the first malformed merge in document order: a
+// merge value that is not a mapping or a non-empty sequence of mappings, where
+// an alias counts as the node it names (D-18a). A sequence inside a merge
+// sequence, a scalar member, and an alias to a sequence of scalars are all
+// malformed. The walk does not follow aliases (an aliased definition is
+// reached where it is written), so it is linear and cannot loop on a cycle.
+func validateMergeShapes(root *yamllib.Node) *omnist.ParseError {
+	stack := []*yamllib.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n.Kind == yamllib.MappingNode {
+			for i := 0; i+1 < len(n.Content); i += 2 {
+				if isMergeKey(n.Content[i]) {
+					if err := mergeValueErr(n.Content[i+1]); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		// Reverse order, so the first malformed merge in the document is the
+		// one reported.
+		for i := len(n.Content) - 1; i >= 0; i-- {
+			stack = append(stack, n.Content[i])
+		}
+	}
+	return nil
+}
+
+// mergeValueErr checks one merge value v, as written.
+func mergeValueErr(v *yamllib.Node) *omnist.ParseError {
+	t := deref(v)
+	switch t.Kind {
+	case yamllib.MappingNode:
+		return nil
+	case yamllib.SequenceNode:
+		if len(t.Content) == 0 {
+			return mergeShapeErr(v)
+		}
+		for _, m := range t.Content {
+			if deref(m).Kind != yamllib.MappingNode {
+				return mergeShapeErr(m)
+			}
+		}
+		return nil
+	default:
+		return mergeShapeErr(v)
+	}
+}
+
+// analyzeAliases is the counting pass plus the per-anchor slots table it
 // computed (complete only when the returned error is nil), which the tests use
-// to pin the arithmetic.
-func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots, *omnist.ParseError) {
+// to pin the arithmetic. The merges must already be validated.
+func analyzeAliases(root *yamllib.Node, maxE, maxSlots int) (map[*yamllib.Node]aliasSlots, *omnist.ParseError) {
 	memo := map[*yamllib.Node]*aliasSlots{}
 	limit := uint64(maxE)
 	var stack []aliasFrame
+	var rootW uint64
+	sawRef := false // an alias or a merge key occurs: D-22 applies
 
 	push := func(n *yamllib.Node, fold foldKind, carrier bool) {
-		f := aliasFrame{n: n, w: 1, s: 1, carrier: carrier, fold: fold}
+		f := aliasFrame{n: n, w: 1, s: 1, pw: 1, carrier: carrier, fold: fold}
 		if carrier {
 			f.w, f.s = 0, 0
 		}
@@ -152,24 +243,35 @@ func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots,
 		stack = append(stack, f)
 	}
 	// finish records a completed anchored node and checks the factor of every
-	// completed container, anchored or not.
-	finish := func(n *yamllib.Node, w, s uint64, carrier bool) *omnist.ParseError {
-		if carrier {
-			// A literal merge sequence is a syntactic carrier, not a candidate.
-			return nil
-		}
+	// completed candidate container, anchored or not.
+	finish := func(f aliasFrame) *omnist.ParseError {
+		n := f.n
+		isSeq := n.Kind == yamllib.SequenceNode
 		if n.Anchor != "" {
-			memo[n] = &aliasSlots{w: w, s: s, done: true}
+			sl := &aliasSlots{w: f.w, s: f.s, isSeq: isSeq, done: true}
+			if isSeq {
+				// A carrier's own w is net of flattening; a plain reference to
+				// it still materializes the list.
+				sl.w, sl.mw = f.pw, f.mw
+			}
+			memo[n] = sl
+		}
+		if f.carrier {
+			// A merge-position sequence is a syntactic carrier, not a candidate.
+			return nil
 		}
 		// A saturated W (true count at or past 2^64) is over the limit whatever
 		// the limit is: max*S saturates too, and equal saturated values must
 		// not compare as "within".
-		if w == math.MaxUint64 || w > satMul(limit, s) {
+		if f.w == math.MaxUint64 || f.w > satMul(limit, f.s) {
 			return aliasErr(n, "a mapping's or sequence's alias expansion factor exceeds the configured maximum")
 		}
 		return nil
 	}
 	foldInto := func(p *aliasFrame, kind foldKind, w, s uint64, isAlias bool) {
+		if p.n.Kind == yamllib.SequenceNode {
+			p.pw, p.mw = satAdd(p.pw, w), satAdd(p.mw, sub1(w))
+		}
 		switch kind {
 		case foldPlain:
 			p.w, p.s = satAdd(p.w, w), satAdd(p.s, s)
@@ -202,20 +304,27 @@ func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots,
 				if isMergeKey(child) {
 					// The `<<` entry is one written slot, whatever it holds.
 					f.s = satAdd(f.s, 1)
+					sawRef = true
 				}
 			case isMergeKey(f.n.Content[i-1]):
 				kind = foldMerge
-				if child.Kind == yamllib.SequenceNode && child.Anchor == "" {
+				if child.Kind == yamllib.SequenceNode {
 					kind, carrier = foldCarrier, true
 				}
 			}
 			switch child.Kind {
 			case yamllib.AliasNode:
+				sawRef = true
 				t := memo[child.Alias]
 				if t == nil || !t.done {
 					return nil, aliasErr(child, "an anchor refers to itself, directly or through other anchors (unbounded expansion)")
 				}
-				foldInto(f, kind, t.w, 1, true)
+				if kind == foldMerge && t.isSeq {
+					// `<<: *s`: the members flattened, no slot for s (D-18a).
+					foldInto(f, foldCarrier, t.mw, 0, true)
+				} else {
+					foldInto(f, kind, t.w, 1, true)
+				}
 			case yamllib.ScalarNode:
 				if child.Anchor != "" {
 					// W = S = 1, so E = 1 never exceeds a positive limit.
@@ -229,12 +338,21 @@ func analyzeAliases(root *yamllib.Node, maxE int) (map[*yamllib.Node]aliasSlots,
 		}
 		done := *f
 		stack = stack[:len(stack)-1]
-		if err := finish(done.n, done.w, done.s, done.carrier); err != nil {
+		if err := finish(done); err != nil {
 			return nil, err
 		}
 		if len(stack) > 0 {
 			foldInto(&stack[len(stack)-1], done.fold, done.w, done.s, false)
+		} else {
+			rootW = done.w
 		}
+	}
+
+	// D-22, after every candidate passed D-18: only an input with an alias or a
+	// merge key is subject to the cap. A saturated W(root) cannot reach here
+	// (the ratio check above rejects it), and would exceed every maximum.
+	if sawRef && rootW > uint64(maxSlots) {
+		return nil, sizeErr(root, rootW, uint64(maxSlots))
 	}
 
 	out := make(map[*yamllib.Node]aliasSlots, len(memo))

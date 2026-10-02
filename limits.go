@@ -31,6 +31,30 @@ type Limits struct {
 	// "no limit". EffectiveMaxAliasExpansion gives the value a reader
 	// enforces.
 	MaxAliasExpansion int
+	// MaxExpandedSlots is the maximum number of value slots a YAML input may
+	// materialize, W(root), for an input that contains at least one alias or
+	// merge key (spec D-22, §2.4.1). An input with neither is not subject to
+	// it. Like MaxAliasExpansion it is a finite bound (D-10): zero means
+	// "unset" and selects DefaultMaxExpandedSlots, and a negative value is
+	// invalid (Validate reports it) and treated as "unset" by readers, never
+	// as "no limit". EffectiveMaxExpandedSlots gives the value a reader
+	// enforces.
+	MaxExpandedSlots int
+}
+
+// DefaultMaxExpandedSlots is the spec §2.4 reference default for the expanded
+// size (D-22): 1,000,000 value slots.
+const DefaultMaxExpandedSlots = 1_000_000
+
+// EffectiveMaxExpandedSlots returns the expanded-size cap a YAML reader
+// enforces for l: MaxExpandedSlots when it is positive, otherwise
+// DefaultMaxExpandedSlots. A non-positive configuration never widens the cap
+// and never disables it (D-10).
+func (l Limits) EffectiveMaxExpandedSlots() int {
+	if l.MaxExpandedSlots > 0 {
+		return l.MaxExpandedSlots
+	}
+	return DefaultMaxExpandedSlots
 }
 
 // DefaultMaxAliasExpansion is the spec §2.4 reference default for the alias
@@ -49,13 +73,15 @@ func (l Limits) EffectiveMaxAliasExpansion() int {
 }
 
 // DefaultLimits returns the spec §2.4 reference defaults: depth 200, node
-// count 1,000,000, integer digits 4,300, alias expansion factor 50.
+// count 1,000,000, integer digits 4,300, alias expansion factor 50, expanded
+// size 1,000,000 slots.
 func DefaultLimits() Limits {
 	return Limits{
 		MaxDepth:          200,
 		MaxNodes:          1_000_000,
 		MaxIntDigits:      4300,
 		MaxAliasExpansion: DefaultMaxAliasExpansion,
+		MaxExpandedSlots:  DefaultMaxExpandedSlots,
 	}
 }
 
@@ -151,6 +177,9 @@ const (
 	// longer meaningfully bounds amplification (the spec measures its weakest dangerous document
 	// at about E = 170).
 	MaxRecommendedAliasExpansion = 10_000
+	// MaxRecommendedExpandedSlots is the spec's recommended ceiling for the expanded size (D-22):
+	// at about 780 bytes per slot measured in Go, 10,000,000 slots is roughly 8 GB.
+	MaxRecommendedExpandedSlots = 10_000_000
 )
 
 // Validate checks that l specifies strictly positive values within sane, recommended safety
@@ -183,6 +212,12 @@ func (l Limits) Validate() error {
 	}
 	if l.MaxAliasExpansion > MaxRecommendedAliasExpansion {
 		return fmt.Errorf("MaxAliasExpansion %d exceeds recommended safety ceiling (%d)", l.MaxAliasExpansion, MaxRecommendedAliasExpansion)
+	}
+	if l.MaxExpandedSlots < 0 {
+		return fmt.Errorf("MaxExpandedSlots must not be negative, got %d (zero selects the default %d)", l.MaxExpandedSlots, DefaultMaxExpandedSlots)
+	}
+	if l.MaxExpandedSlots > MaxRecommendedExpandedSlots {
+		return fmt.Errorf("MaxExpandedSlots %d exceeds recommended safety ceiling (%d)", l.MaxExpandedSlots, MaxRecommendedExpandedSlots)
 	}
 	return nil
 }
