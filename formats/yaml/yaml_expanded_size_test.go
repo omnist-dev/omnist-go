@@ -95,15 +95,15 @@ func TestCarrierBoundaries(t *testing.T) {
 	const atCarrier = "p: &p {a1: 1, a2: 2, a3: 3}\nq: &q {b1: 4, b2: 5, b3: 6}\nz: {<<: &s [*p, *q], m1: 7, m2: 8, m3: 9}\n"
 	const pastCarrier = "p: &p {a1: 1, a2: 2, a3: 3, a4: 4}\nq: &q {b1: 5, b2: 6, b3: 7, b4: 8}\nz: {<<: &s [*p, *q], m1: 9, m2: 10, m3: 11}\n"
 	wantAccept(t, "anchored carrier at limit", atCarrier, limitsEx(2, 0))
-	wantReject(t, "anchored carrier one past", pastCarrier, limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "anchored carrier one past", pastCarrier, limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
 	// The same text without the anchor gives the same verdicts.
 	wantAccept(t, "unanchored carrier at limit", strings.Replace(atCarrier, "&s ", "", 1), limitsEx(2, 0))
-	wantReject(t, "unanchored carrier one past", strings.Replace(pastCarrier, "&s ", "", 1), limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "unanchored carrier one past", strings.Replace(pastCarrier, "&s ", "", 1), limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
 
 	const atAlias = "p: &p {a: 1}\nq: &q {b: 2}\ns: &s [*p, *q, *p, *q]\nz: {<<: *s, m: 3}\n"
 	const pastAlias = "p: &p {a: 1}\nq: &q {b: 2}\ns: &s [*p, *q, *p, *q]\nz: {<<: *s}\n"
 	wantAccept(t, "merge alias to sequence at limit", atAlias, limitsEx(2, 0))
-	wantReject(t, "merge alias to sequence one past", pastAlias, limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
+	_ = wantReject(t, "merge alias to sequence one past", pastAlias, limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
 
 	wantAccept(t, "carrier with inline and anchored members", "z: {<<: [{x: 1}, &m {y: 2}, *m], k: 3}\n", limitsEx(1, 0))
 	wantAccept(t, "single anchored inline merge source", "z: {<<: &m {y: 2}, k: 3}\n", limitsEx(1, 0))
