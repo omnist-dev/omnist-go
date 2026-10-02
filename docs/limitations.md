@@ -168,8 +168,7 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 **`v0.9.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API (the error
 codes `CodeSchemaInvalidName`, `CodeSchemaInvalidLabel`,
 `CodeSchemaUnknownRecord`) and behaviour callers can observe, closing issue
-#121. It adopts `omnist-spec` v0.28.0-beta (commit `1a7d0de`; the tag was not
-pushed when this was written, so the pin is the commit) from v0.27.0-beta.
+#121. It adopts `omnist-spec` v0.28.0-beta (commit `1a7d0de`, tag `v0.28.0-beta`) from v0.27.0-beta.
 The spec adds no vectors (DIV-5), so conformance is unchanged: Track 2 **310
 pass / 0 fail / 28 skip of 338**, Track 1 19/19. Go's unit tests are the only
 pin for the four rules below. What changed:
@@ -200,6 +199,16 @@ pin for the four rules below. What changed:
   it rebuilds but keeps an unsatisfiable root intact, so prune before writing.
   Go has no `minimize` and `Normalize` only reorders and copies cardinalities,
   as before.
+- **`Infer` names records ASCII-only** (S-8): non-ASCII and other characters
+  in a key become `_`, a leading digit gets a `_` prefix, a leading lowercase
+  letter is capitalised, an empty key becomes `Rec`, and a name already used
+  gets the smallest numeric suffix (`2`, `3`, ...). `éclair` is `_clair`,
+  `日本` is `__`, `a b` is `A_b`. Before this, a non-ASCII key produced a record
+  name that `osd.Read` rejected and an empty key produced `omnist.Field`; both
+  would now fail `osd.Write`, so `omnist infer` would have exited 2.
+- A record present in `Env` but omitted from `EnvOrder` is accepted by
+  `Validate` (the spec does not require otherwise) and `osd.Write` does not
+  write it.
 - When a schema has several violations, which one is reported is
   implementation-defined; `Validate` returns the first in the order documented on it.
 
