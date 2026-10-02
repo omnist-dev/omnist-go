@@ -501,3 +501,40 @@ func Example_xmlReadWithSchema() {
 	// age: integer
 	// active: boolean
 }
+
+// Example_schemaConstruction backs reference.md's Schema model section:
+// NewRecord and NewSchema refuse an ill-formed schema with the structured
+// schema.* diagnostic, and osd.Write refuses a hand-built literal the same way.
+func Example_schemaConstruction() {
+	rec, err := omnist.NewRecord("Person",
+		omnist.Field{Label: "name", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+	)
+	if err != nil {
+		panic(err)
+	}
+	schema, err := omnist.NewSchema("Person", rec)
+	if err != nil {
+		panic(err)
+	}
+	text, err := osd.Write(schema, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(text)
+
+	_, err = omnist.NewRecord("Person",
+		omnist.Field{Label: "", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+	)
+	fmt.Println(err)
+
+	unchecked := omnist.Schema{
+		Root:     "Person",
+		Env:      map[string]*omnist.Record{"Person": {Name: "Person", Fields: []omnist.Field{{Label: "a[1]", Type: omnist.AnyType(), Cardinality: omnist.DefaultCardinality()}}}},
+		EnvOrder: []string{"Person"},
+	}
+	fmt.Println(unchecked.Validate())
+	// Output:
+	// record Person { "name": string } root Person
+	// Person: schema.empty-label: field label must not be empty
+	// Person: schema.bracket-in-label: field label must not contain '[' or ']'
+}

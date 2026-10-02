@@ -72,6 +72,60 @@ that don't belong to a specific codec or the algebra package.
   (`AnyType`). `ScalarType(kind, nullable)` builds a scalar field type.
 - **`Cardinality`** — `[min, max]` occurrence bounds on a field;
   `DefaultCardinality()` is `[1,1]` (exactly one, per spec's default).
+- **`NewRecord(name, fields...) (*Record, error)`**,
+  **`NewSchema(root, records...) (Schema, error)`** and
+  **`Schema.Validate() error`** (`schema_validate.go`) — enforce spec §3.3's
+  well-formedness rules S-1 to S-7 and §5.4's label rules (a label is not
+  empty and has no `[` or `]`) on a schema however it was built. `NewRecord`
+  checks what concerns one record (reserved name S-3, labels, cardinality S-2,
+  nullability S-7, duplicate labels S-5); `NewSchema` lays the records out in
+  the given order as `EnvOrder`, then runs `Validate`, which adds S-1 (a root
+  exists and names a record), S-4 (unique record names) and S-6 (every
+  reference resolves). A failure is an `omnist.Diagnostic` (used as the error)
+  with the `schema.*` code and the Schema path the spec fixes for it (§8.4.1,
+  E-30), the same error `osd.Read` reports for that violation in text; only the
+  first violation is returned. `Schema`, `Record` and `Field` stay plain public
+  structs, so **a struct literal is unchecked** until `Validate` is called or
+  the schema reaches an operation that validates. `osd.Write` does; the
+  validate, materialize and algebra operations do not, and assume a well-formed
+  schema (as every parsed or algebra-produced schema is). Three things are not
+  checked, for want of a spec code or path: S-8 (record names matching
+  `[A-Za-z_][A-Za-z0-9_]*`), invalid UTF-8 in a label, and an `EnvOrder`/`Env`
+  mismatch (see [Limitations](limitations.md)).
+
+  <!-- verified-by: doc_examples_reference_test.go::Example_schemaConstruction -->
+  ```go
+  rec, err := omnist.NewRecord("Person",
+      omnist.Field{Label: "name", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+  )
+  if err != nil {
+      panic(err)
+  }
+  schema, err := omnist.NewSchema("Person", rec)
+  if err != nil {
+      panic(err)
+  }
+  text, err := osd.Write(schema, true)
+  if err != nil {
+      panic(err)
+  }
+  fmt.Println(text)
+
+  _, err = omnist.NewRecord("Person",
+      omnist.Field{Label: "", Type: omnist.ScalarType(omnist.KindString, false), Cardinality: omnist.DefaultCardinality()},
+  )
+  fmt.Println(err)
+
+  unchecked := omnist.Schema{
+      Root:     "Person",
+      Env:      map[string]*omnist.Record{"Person": {Name: "Person", Fields: []omnist.Field{{Label: "a[1]", Type: omnist.AnyType(), Cardinality: omnist.DefaultCardinality()}}}},
+      EnvOrder: []string{"Person"},
+  }
+  fmt.Println(unchecked.Validate())
+  // record Person { "name": string } root Person
+  // Person: schema.empty-label: field label must not be empty
+  // Person: schema.bracket-in-label: field label must not contain '[' or ']'
+  ```
 
 ### Operations
 
@@ -298,7 +352,11 @@ with code `write.unsupported-value` and, as its path, the *record* holding the
 field (`R`, never `R.<label>`). A schema that only a programmatic build or
 `algebra.Infer` over documents with such keys can produce; a parsed schema
 never has one. Every other label is written with exactly two escapes, `\\`
-and `\"` (OSD-15). Before v0.5.0-alpha `Write` returned a bare `string` and
+and `\"` (OSD-15). Before checking labels, `Write` calls `Schema.Validate`: an
+ill-formed schema (empty label, `[` or `]` in a label, duplicate field or
+record, bad cardinality, dangling root or reference, and so on) fails with the
+`schema.*` diagnostic `osd.Read` would raise for it, instead of text the reader
+rejects (v0.8.0-alpha). Before v0.5.0-alpha `Write` returned a bare `string` and
 emitted text its own reader rejected for such a label.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_osdRoundTrip -->

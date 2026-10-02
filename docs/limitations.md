@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.7.1-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.8.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -164,6 +164,35 @@ above `MaxRecommendedExpandedSlots` (10,000,000), and
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.8.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API
+(`NewRecord`, `NewSchema`, `Schema.Validate`), issue #121. A hand-built `Schema`
+could violate spec §3.3's S-1 to S-7 and §5.4's label rules, and `osd.Write`
+then emitted text `osd.Read` rejects (`schema.empty-label`,
+`schema.bracket-in-label`, `schema.duplicate-field`, and the rest). Now
+`Schema.Validate` reports the first violation as an `omnist.Diagnostic` with the
+spec's `schema.*` code and Schema path (§8.4.1, E-30), `NewRecord`/`NewSchema`
+check at construction, and `osd.Write` validates first. `Schema`, `Record` and
+`Field` remain public structs, so a literal is unchecked until `Validate` or
+`osd.Write`; the validate, materialize and algebra operations assume a
+well-formed schema and do not re-validate. A schema that was valid before is
+unaffected. Spec pin unchanged (v0.27.0-beta, `a6a6090`); conformance unchanged
+(Track 2 310 pass / 0 fail / 28 skip of 338, Track 1 19/19). Left open, because
+the spec assigns no code or path for them:
+
+- **S-8** (record and reference names match `[A-Za-z_][A-Za-z0-9_]*`):
+  `schema.invalid-name` takes a Document path (E-12), and a programmatically
+  built schema has no Document. Not checked.
+- **Invalid UTF-8 in a label**: no `schema.*` code exists (D-14 binds byte
+  entry points only). Not checked; `osd.Write` still emits it and `osd.Read`
+  rejects it with `parse.invalid-encoding`.
+- **Cardinality `[0,0]`** is representable (S-15) but OSD text cannot spell
+  it, so `osd.Write` of one is read back as `schema.invalid-cardinality`.
+- **An `EnvOrder` that disagrees with `Env`** (a name with no record) has no
+  code; `Validate` skips it and `osd.Write` can panic on it. `NewSchema` never
+  builds one.
+
+### Previous: v0.7.1-alpha
 
 **`v0.7.1-alpha`**, a patch per `CONTRIBUTING.md` §1: no new public API, and the
 change is a correctness fix of input wrongly rejected, not a security or

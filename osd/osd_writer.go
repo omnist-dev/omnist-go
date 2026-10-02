@@ -21,6 +21,22 @@ import (
 // §5.9 gives one worked example of compact mode and does not otherwise
 // pin its whitespace.
 //
+// # Failure (well-formedness)
+//
+// Write first calls s.Validate. A schema that breaks spec §3.3's S-1..S-7 or
+// the §5.4 label rules (empty label, '[' or ']' in a label) fails with the
+// same omnist.Diagnostic osd.Read would raise for it, and returns no text;
+// otherwise Write could emit text its own reader rejects. Hand-built Schema
+// literals are unchecked until this point.
+//
+// # Failure (well-formedness)
+//
+// Write first calls s.Validate. A schema that breaks spec §3.3's S-1..S-7 or
+// the §5.4 label rules (empty label, '[' or ']' in a label) fails with the
+// same omnist.Diagnostic osd.Read would raise for it, and returns no text;
+// otherwise Write could emit text its own reader rejects. Hand-built Schema
+// literals are unchecked until this point.
+//
 // # Failure (OSD-14)
 //
 // OSD text cannot spell a field label containing a C0 control character
@@ -40,6 +56,9 @@ import (
 //
 // A backslash is written `\\` and a double quote `\"`; nothing else is escaped.
 func Write(s omnist.Schema, compact bool) (string, error) {
+	if err := s.Validate(); err != nil {
+		return "", err
+	}
 	if err := checkWritable(s); err != nil {
 		return "", err
 	}
