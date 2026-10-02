@@ -104,7 +104,6 @@ func TestMergeKeyValueMustBeMappings(t *testing.T) {
 	for _, text := range []string{
 		"e: {<<: 1}\n",
 		"e: {<<: [1, 2]}\n",
-		"e: {<<: []}\n",
 		"e: {<<: [[a]]}\n",
 		"d: &d 5\ne: {<<: *d}\n",
 	} {

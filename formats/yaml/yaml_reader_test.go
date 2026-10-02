@@ -473,14 +473,15 @@ func TestYAMLTopLevelSequenceRejected(t *testing.T) {
 	}
 }
 
-func TestYAMLEmptySequenceRejected(t *testing.T) {
-	_, err := Read("a: []\n", omnist.DefaultLimits())
-	if err == nil {
-		t.Fatal("expected an error for an empty sequence")
+// An empty sequence is a zero-edge encoding, as in JSON (omnist-spec v0.27.0-beta
+// vectors: "an empty array and an absent label are the same Document").
+func TestYAMLEmptySequenceIsZeroEdges(t *testing.T) {
+	d, err := Read("a: []\nb: 1\n", omnist.DefaultLimits())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
 	}
-	pe, ok := err.(*omnist.ParseError)
-	if !ok || pe.Code != omnist.CodeParseEmptyArray {
-		t.Errorf("error = %#v, want omnist.CodeParseEmptyArray", err)
+	if len(d.Node.Edges) != 1 || d.Node.Edges[0].Label != "b" {
+		t.Errorf("edges = %#v, want only b", d.Node.Edges)
 	}
 }
 

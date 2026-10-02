@@ -146,7 +146,6 @@ var malformedMerges = []struct{ name, text string }{
 	{"alias member that is a sequence", "s: &s [{a: 1}]\nz:\n  <<: [*s]\n"},
 	{"alias to a sequence containing a sequence", "s: &s [[{a: 1}]]\nz:\n  <<: *s\n"},
 	{"mixed members", "p: &p {a: 1}\nz:\n  <<: [*p, 2]\n"},
-	{"empty merge sequence", "z:\n  <<: []\n"},
 	{"null merge value", "z:\n  <<: ~\n"},
 	{"anchored carrier with a scalar", "z:\n  <<: &s [{a: 1}, 2]\n"},
 }
@@ -186,6 +185,59 @@ func TestValidMergeShapesPass(t *testing.T) {
 	} {
 		wantAccept(t, text, text, omnist.DefaultLimits())
 	}
+}
+
+// --- D-18a, omnist-spec#127 (v0.27.0-beta): an empty merge sequence is a
+// well-formed carrier that merges nothing ---
+
+func TestEmptyMergeSequenceIsAnEmptyMapping(t *testing.T) {
+	eq(t, edgesOf(t, "config: {<<: []}\n", "config"))
+	eq(t, edgesOf(t, "t: {<<: [], c: 3}\n", "t"), "c=3")
+	eq(t, edgesOf(t, "t: {c: 3, <<: []}\n", "t"), "c=3")
+	// An anchored empty carrier, and an alias to an empty sequence.
+	eq(t, edgesOf(t, "t: {<<: &s [], c: 3}\nu: *s\n", "t"), "c=3")
+	eq(t, edgesOf(t, "s: &s []\nt: {<<: *s, c: 3}\n", "t"), "c=3")
+	// An empty sequence outside merge position is an ordinary node and
+	// materializes no edge.
+	eq(t, edgesOf(t, "t: {<<: [], k: []}\n", "t"))
+	// An empty carrier next to a real source merges only the source.
+	eq(t, edgesOf(t, "p: &p {a: 1}\nt: {<<: [], b: 2}\nu: {<<: [*p], b: 2}\n", "u"), "a=1", "b=2")
+}
+
+func TestEmptyMergeSequenceSlotArithmetic(t *testing.T) {
+	// The carrier has W 0; the `<<` entry is one slot in S (D-18a).
+	wantSlots(t, "empty carrier", "config: &c {<<: []}\n", map[string][2]uint64{"c": {1, 2}})
+	wantSlots(t, "empty carrier and local key", "t: &t {<<: [], c: 3}\n", map[string][2]uint64{"t": {2, 3}})
+	wantSlots(t, "anchored empty carrier", "t: {<<: &s [], c: 3}\n", map[string][2]uint64{"s": {1, 0}})
+	// An empty sequence at its own site is an ordinary node, W = S = 1; a
+	// merge reference to it adds nothing to W and one `<<` slot to S.
+	wantSlots(t, "alias to an empty sequence", "s: &s []\nt: &t {<<: *s, c: 3}\n", map[string][2]uint64{"s": {1, 1}, "t": {2, 3}})
+	wantSlots(t, "ordinary empty sequence", "t: &t {<<: [], k: &k []}\n", map[string][2]uint64{"k": {1, 1}, "t": {2, 3}})
+}
+
+func TestEmptyMergeSequenceIsStillAMergeKeyForTheSizeCap(t *testing.T) {
+	// t: W 1, S 2; root: W 2. The boundary pair from the spec vectors.
+	wantAccept(t, "at the cap", "t: {<<: []}\n", limitsEx(0, 2))
+	_ = wantReject(t, "one past", "t: {<<: []}\n", limitsEx(0, 1), omnist.CodeDocumentLimitExpandedSize)
+	// With no merge key, the same shape is exempt from the cap.
+	wantAccept(t, "no merge key", "t: {k: []}\n", limitsEx(0, 1))
+}
+
+func TestEmptyCarrierDoesNotHideOtherMalformedShapes(t *testing.T) {
+	for _, text := range []string{
+		"a: {<<: 1}\n",
+		"a: {<<: [1]}\n",
+		"a: {<<: [[{a: 1}]]}\n",
+		"s: &s [1, 2]\nz: {<<: *s}\n",
+		"a: {<<: []}\nb: {<<: [1]}\n",
+	} {
+		_ = wantSyntax(t, text, text, omnist.DefaultLimits())
+	}
+	// A bomb, then a malformed merge, with an empty carrier in between.
+	const bomb = "p: &p {a: 1, b: 2, c: 3}\nt: {<<: [*p, *p, *p, *p]}\n"
+	_ = wantSyntax(t, "bomb then malformed", bomb+"e: {<<: []}\nbad: {<<: [2]}\n", limitsEx(2, 0))
+	// The bomb alone, with an empty carrier, is still the bomb.
+	_ = wantReject(t, "bomb with empty carrier", bomb+"e: {<<: []}\n", limitsEx(2, 0), omnist.CodeDocumentLimitAliasExpansion)
 }
 
 // --- D-22: the expanded-size cap ---

@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.7.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.7.1-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,14 +17,14 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**303 pass / 0 fail / 28 skip** of 331 vectors (`omnist-spec` v0.26.0-beta
+**310 pass / 0 fail / 28 skip** of 338 vectors (`omnist-spec` v0.27.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
 port, cited honestly per §9.5 rather than crashing or failing the
 driver; see [issue #111](https://github.com/omnist-dev/omnist-go/issues/111)
 for implementing it. All 28 are E-20's "not yet implemented" category;
-none is a documented divergence (E-21). The 35 YAML alias-expansion
+none is a documented divergence (E-21). The 42 YAML alias-expansion
 vectors run and pass: the runner passes a vector's `declared_max_alias_expansion`
 to the reader as `Limits.MaxAliasExpansion` and its `declared_max_expanded_slots`
 as `Limits.MaxExpandedSlots`, and only for a vector that carries the key.
@@ -102,10 +102,14 @@ merge sequence, and an alias to a sequence of scalars are `parse.codec-syntax` (
 every `document.limit.*` code, so a document with both a bomb and a malformed
 merge reports the syntax error.
 
-**Go-specific, spec-undecided: empty merge sequence.** `<<: []` is rejected by
-this port as `parse.codec-syntax`. That is not a D-18a rule: the spec text and
-vectors do not say an empty merge sequence is malformed, and other ports accept
-it. Tracked in omnist-spec; the behaviour is unchanged here.
+**Empty merge sequence** (D-18a, omnist-spec#127, v0.27.0-beta). `<<: []`, an
+anchored `<<: &s []`, and `s: &s []` followed by `<<: *s` are well-formed
+carriers that merge nothing: `W` contribution 0, and the `<<` entry is still one
+slot in `S`. `config: {<<: []}` is an empty mapping. The input still contains a
+merge key, so it is subject to the expanded-size cap. An empty sequence outside
+merge position (`k: []`) is an ordinary node with `W = S = 1`, and reads to zero
+edges, the same as an empty JSON array. (Before v0.7.1-alpha this port rejected
+`<<: []` as `parse.codec-syntax` and `k: []` as `parse.empty-array`.)
 
 **The expanded-size cap** (D-22). The factor bounds amplification, not
 absolute size: a large document in which every container sits just under
@@ -160,6 +164,24 @@ above `MaxRecommendedExpandedSlots` (10,000,000), and
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.7.1-alpha`**, a patch per `CONTRIBUTING.md` §1: no new public API, and the
+change is a correctness fix of input wrongly rejected, not a security or
+data-corruption fix. It adopts `omnist-spec` v0.27.0-beta (`a6a6090`, from
+v0.26.0-beta). Conformance, Track 2: **303 pass / 7 fail / 28 skip of 338**
+before any code change (the seven new empty-merge-sequence vectors),
+**310 pass / 0 fail / 28 skip of 338** after. Track 1 stayed 19/19. What changed:
+
+- **Empty merge sequence accepted** (D-18a): see "Empty merge sequence" above.
+  The merge-shape pass no longer refuses an empty sequence; the carrier
+  arithmetic already gave W 0 and one `<<` slot in `S`.
+- **Empty YAML sequence reads to zero edges.** The v0.27.0-beta vectors pin that
+  an ordinary empty sequence materializes no edge (`t: {<<: [], k: []}` is an
+  empty mapping). The YAML reader previously raised `parse.empty-array`; it now
+  matches the JSON reader. OML's and TOML's `[]` are unchanged.
+- The `Go-specific, spec-undecided` note on `<<: []` is removed.
+
+### Previous: v0.7.0-alpha
 
 **`v0.7.0-alpha`**, a minor bump per `CONTRIBUTING.md` §1: it adds new public
 API (`Limits.MaxExpandedSlots`, `DefaultMaxExpandedSlots`,
@@ -483,7 +505,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `7744a5c` (`v0.26.0-beta`), pinned via the
+`omnist-spec` at commit `a6a6090` (`v0.27.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
