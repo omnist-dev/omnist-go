@@ -26,6 +26,8 @@ omnist lint SCHEMA
 
 `INPUT`, `SCHEMA`, and `FILE` accept `-` for stdin (or, for `INPUT`, an omitted argument in some commands). Omitting `-o` writes to stdout. Formats: `json`, `yaml`, `toml`, `xml`, `oml`.
 
+Every command that reads an input also takes `--max-input-bytes N` (default 67108864, 64 MiB; spec D-23). It stops reading at N+1 bytes and refuses a larger input with `document.limit.input-size`, naming the flag so the limit can be raised. A value that is not a positive integer, or is above 1 GiB, is a usage error.
+
 **Flags must come before the positional argument.** Go's `flag.FlagSet` stops parsing at the first non-flag argument, unlike getopt-style permutation — `omnist parse --from json -` works, `omnist parse - --from json` doesn't. Accepted as a reasonable tradeoff for staying dependency-free; run `omnist SUBCOMMAND -h` for a subcommand's own flags.
 
 ## Exit codes
