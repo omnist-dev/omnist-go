@@ -168,6 +168,7 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	p.Reset([]byte(text))
 	r.p = p
 	r.text = text
+	r.pos = textpos.NewIndex(text)
 
 	for p.NextExpression() {
 		expr := p.Expression()
@@ -186,10 +187,12 @@ type tomlReader struct {
 	limits    omnist.Limits
 	checker   *omnist.LimitChecker
 	p         *unstable.Parser
-	text      string // the input after PrepareInput, for code-point columns (E-28)
+	text      string         // the input after PrepareInput, for code-point columns (E-28)
+	pos       *textpos.Index // line index over text, built once; keeps position lookups linear overall
 	root      *omnist.Node
 	current   *omnist.Node // insertion point for a bare (non-dotted) KeyValue
 	nodeCount int
+	edges     map[*omnist.Node]*edgeIndex // label lookup per navigated node, see lastEdge
 }
 
 // newChildNode allocates a new *omnist.Node at depth childDepth (the parent's own
@@ -304,13 +307,9 @@ func (r *tomlReader) resolvePath(start *omnist.Node, startDepth int, keys unstab
 // a omnist.Document that merges the redefinitions rather than an error), noted
 // here rather than treated as load-bearing.
 func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string) (*omnist.Node, int, error) {
-	for i := len(node.Edges) - 1; i >= 0; i-- {
-		e := node.Edges[i]
-		if e.Label == seg {
-			if child, ok := e.Target.Node(); ok {
-				return child, depth + 1, nil
-			}
-			break
+	if i, ok := r.lastEdge(node, seg); ok {
+		if child, ok := node.Edges[i].Target.Node(); ok {
+			return child, depth + 1, nil
 		}
 	}
 	child, err := r.newChildNode(depth+1, seg)
@@ -319,6 +318,34 @@ func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string) 
 	}
 	node.AddNode(seg, child)
 	return child, depth + 1, nil
+}
+
+// edgeIndex maps each label on one node to the index of the node's LAST edge
+// with that label, covering node.Edges[:scanned]. The reader only ever appends
+// edges, so it extends the map over the newly appended tail on each lookup.
+type edgeIndex struct {
+	last    map[string]int
+	scanned int
+}
+
+// lastEdge returns the index of node's last edge labelled label. It replaces a
+// backward scan of node.Edges per lookup, which made a document with many
+// table headers (each one looks up its first segment on the root) quadratic
+// (issue #132); the answer is the same.
+func (r *tomlReader) lastEdge(node *omnist.Node, label string) (int, bool) {
+	if r.edges == nil {
+		r.edges = make(map[*omnist.Node]*edgeIndex)
+	}
+	ix := r.edges[node]
+	if ix == nil {
+		ix = &edgeIndex{last: make(map[string]int)}
+		r.edges[node] = ix
+	}
+	for ; ix.scanned < len(node.Edges); ix.scanned++ {
+		ix.last[node.Edges[ix.scanned].Label] = ix.scanned
+	}
+	i, ok := ix.last[label]
+	return i, ok
 }
 
 // readKeyValue processes one KeyValue expression (top-level, or nested
@@ -445,12 +472,15 @@ func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*omn
 	return child, nil
 }
 
-// posPath renders a Raw range as a "line:col" omnist.Path via the parser's own
-// Shape (unstable.Parser.Shape), matching every other reader's omnist.ParseError
-// omnist.Path convention (spec §8.4).
+// posPath renders a Raw range's start as a "line:col" omnist.Path, matching
+// every other reader's omnist.ParseError omnist.Path convention (spec §8.4).
+// It converts the range's byte offset through the reader's line index rather
+// than through unstable.Parser.Shape: Shape rescans the input from its start
+// (twice, for the range's start and end) on every call, which made reading
+// quadratic in the number of keys (issue #132). Both give the range start's
+// line and 1-based byte column, so the result is identical.
 func (r *tomlReader) posPath(raw unstable.Range) string {
-	shape := r.p.Shape(raw)
-	line, col := textpos.FromLineByteCol(r.text, shape.Start.Line, shape.Start.Column)
+	line, col := r.pos.FromOffset(int(raw.Offset))
 	return itoa(line) + ":" + itoa(col)
 }
 
@@ -469,7 +499,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func (r *tomlReader) wrapParserError(err error) error {
 	pe := err.(*unstable.ParserError) //nolint:errorlint // see doc comment: the library's own error is always this concrete type
 	shape := r.p.Shape(r.p.Range(pe.Highlight))
-	line, col := textpos.FromLineByteCol(r.text, shape.Start.Line, shape.Start.Column)
+	line, col := r.pos.FromLineByteCol(shape.Start.Line, shape.Start.Column)
 	path := itoa(line) + ":" + itoa(col)
 	return &omnist.ParseError{Line: line, Col: col, Path: path, Code: omnist.CodeParseCodecSyntax, Message: "TOML: " + pe.Message}
 }
