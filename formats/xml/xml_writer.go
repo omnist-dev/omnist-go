@@ -91,6 +91,7 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	root := d.Node.Edges[0]
 	var b strings.Builder
 	var diags []omnist.Diagnostic
+	// The single top-level edge's label occurs once, so its path has no index.
 	if err := writeXMLElement(&b, root.Label, root.Target, "$."+root.Label, &diags); err != nil {
 		return "", nil, err
 	}
@@ -139,8 +140,20 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		b.WriteByte('<')
 		b.WriteString(label)
 		b.WriteByte('>')
+		// E-10: every edge of a label occurring more than once in this node
+		// is indexed, the first included.
+		counts := make(map[string]int, len(node.Edges))
 		for _, e := range node.Edges {
-			if err := writeXMLElement(b, e.Label, e.Target, path+"."+e.Label, diags); err != nil {
+			counts[e.Label]++
+		}
+		seen := make(map[string]int, len(counts))
+		for _, e := range node.Edges {
+			childPath := path + "." + e.Label
+			if counts[e.Label] > 1 {
+				childPath += "[" + strconv.Itoa(seen[e.Label]) + "]"
+			}
+			seen[e.Label]++
+			if err := writeXMLElement(b, e.Label, e.Target, childPath, diags); err != nil {
 				return err
 			}
 		}
