@@ -18,6 +18,7 @@ import (
 func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("omnist materialize", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	from := fs.String("from", "", "input format: json, yaml, toml, xml, oml (required)")
 	schemaPath := fs.String("schema", "", "OSD schema file (required)")
 	to := fs.String("to", "", "output format for the materialized document (implies output; defaults to --from if -o is given)")
@@ -64,18 +65,18 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		}
 	}
 
-	text, err := readInput(input, stdin)
+	text, err := readInput(input, stdin, *maxIn)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitUsage
 	}
-	schemaText, err := readInput(*schemaPath, stdin)
+	schemaText, err := readInput(*schemaPath, stdin, *maxIn)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitUsage
 	}
 
-	doc, readDiags, err := reader(text, omnist.DefaultLimits())
+	doc, readDiags, err := reader(text, limitsFor(*maxIn))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem

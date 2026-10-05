@@ -61,8 +61,8 @@ func printSchemaUsage(w io.Writer) {
 // (ExitProblem, the same bucket a malformed document parse error falls
 // into). On failure it has already written a "name: message" line to
 // stderr; the caller just returns the exit code.
-func loadSchema(name, path string, stdin io.Reader, stderr io.Writer) (omnist.Schema, int, bool) {
-	text, err := readInput(path, stdin)
+func loadSchema(name, path string, stdin io.Reader, stderr io.Writer, maxInput int) (omnist.Schema, int, bool) {
+	text, err := readInput(path, stdin, maxInput)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return omnist.Schema{}, ExitUsage, false
@@ -81,6 +81,7 @@ func loadSchema(name, path string, stdin io.Reader, stderr io.Writer) (omnist.Sc
 func schemaTransform(args []string, stdin io.Reader, stdout, stderr io.Writer, name string, transform func(omnist.Schema) omnist.Schema) int {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	out := fs.String("o", "", "output file (default: stdout)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "usage: %s [-o FILE] SCHEMA\n", name)
@@ -95,7 +96,7 @@ func schemaTransform(args []string, stdin io.Reader, stdout, stderr io.Writer, n
 		return ExitUsage
 	}
 
-	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr)
+	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}
@@ -108,6 +109,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	const name = "omnist schema extract"
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	keep := fs.String("keep", "", "comma-separated record names to keep (required)")
 	out := fs.String("o", "", "output file (default: stdout)")
 	fs.Usage = func() {
@@ -139,7 +141,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		return ExitUsage
 	}
 
-	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr)
+	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}
@@ -162,6 +164,7 @@ func cmdSchemaExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 func schemaBoolean(args []string, stdin io.Reader, stdout, stderr io.Writer, name string, compare func(a, b omnist.Schema) bool) int {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "usage: %s A B\n", name)
 	}
@@ -173,11 +176,11 @@ func schemaBoolean(args []string, stdin io.Reader, stdout, stderr io.Writer, nam
 		fs.Usage()
 		return ExitUsage
 	}
-	a, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr)
+	a, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}
-	b, code, ok := loadSchema(name, fs.Arg(1), stdin, stderr)
+	b, code, ok := loadSchema(name, fs.Arg(1), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}
@@ -190,6 +193,7 @@ func cmdSchemaIsEmpty(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	const name = "omnist schema is-empty"
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "usage: %s SCHEMA\n", name)
 	}
@@ -201,7 +205,7 @@ func cmdSchemaIsEmpty(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		fs.Usage()
 		return ExitUsage
 	}
-	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr)
+	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}

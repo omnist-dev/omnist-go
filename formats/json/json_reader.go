@@ -36,7 +36,7 @@ import (
 //     with UseNumber, since a map value slot has no memory of the
 //     literal that filled it).
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	text, berr := omnist.PrepareInput(text, omnist.CodeParseCodecSyntax)
+	text, berr := omnist.PrepareDocumentInput(text, omnist.CodeParseCodecSyntax, limits)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}

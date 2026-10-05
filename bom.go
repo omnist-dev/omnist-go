@@ -46,6 +46,19 @@ func StripLeadingBOM(text string, code Code) (string, *ParseError) {
 	return rest, nil
 }
 
+// PrepareDocumentInput is what every document reader (OML, JSON, YAML, TOML,
+// XML) calls first: D-23's size check (CheckInputSize, on the input as
+// received), then PrepareInput. The size check comes first so an oversized
+// input is refused with document.limit.input-size even when it is also invalid
+// UTF-8 or malformed (spec §2.4.2). OSD reads a schema, not a Document, and
+// calls PrepareInput directly.
+func PrepareDocumentInput(text string, bomCode Code, limits Limits) (string, *ParseError) {
+	if err := CheckInputSize(text, limits); err != nil {
+		return "", err
+	}
+	return PrepareInput(text, bomCode)
+}
+
 // PrepareInput is the one place every read surface (OML, OSD, JSON, YAML,
 // TOML, XML) applies spec §2.5's input rules, in the order §2.5 states them:
 //

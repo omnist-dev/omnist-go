@@ -17,7 +17,7 @@ import (
 // path is possible, since a parse.* failure occurs before an omnist.Document
 // exists.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	text, berr := omnist.PrepareInput(text, omnist.CodeParseUnexpectedToken)
+	text, berr := omnist.PrepareDocumentInput(text, omnist.CodeParseUnexpectedToken, limits)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}

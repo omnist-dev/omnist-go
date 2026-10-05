@@ -124,7 +124,7 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 // live in readStart, run once per StartElement token (root and every
 // child alike) as soon as that element's own Document path is known.
 func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
-	src, berr := omnist.PrepareInput(src, omnist.CodeParseCodecSyntax)
+	src, berr := omnist.PrepareDocumentInput(src, omnist.CodeParseCodecSyntax, limits)
 	if berr != nil {
 		return omnist.Document{}, nil, berr
 	}

@@ -1,47 +1,71 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
-// maxInputBytes is the safety ceiling on raw input bytes read from stdin
-// or file (100 MiB), preventing unbounded memory allocation before any
-// parser limit runs (issue #76).
-const maxInputBytes = 100 * 1024 * 1024 // 100 MiB
+// maxInputBytesFlag registers --max-input-bytes on fs and returns the
+// pointer its value lands in, DefaultMaxInputBytes (64 MiB) until the flag is
+// given (spec D-23/D-24, issue #76). Every command that reads an input has it,
+// so a refusal always has a way to be lifted. A value that is not a positive
+// integer, or is above the library's recommended ceiling
+// (omnist.MaxRecommendedInputBytes), is a usage error: unlike a zero
+// Limits.MaxInputBytes, which selects the default, an explicit flag value that
+// means nothing is a mistake worth reporting.
+func maxInputBytesFlag(fs *flag.FlagSet) *int {
+	max := omnist.DefaultMaxInputBytes
+	fs.Func("max-input-bytes", fmt.Sprintf("refuse an input of more than `N` bytes with document.limit.input-size (default %d, 64 MiB)", omnist.DefaultMaxInputBytes), func(s string) error {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("must be a positive number of bytes, got %q", s)
+		}
+		if verr := limitsFor(n).Validate(); verr != nil {
+			return verr
+		}
+		max = n
+		return nil
+	})
+	return &max
+}
+
+// limitsFor is the Limits every document reader runs under: the library
+// defaults with the input-size maximum set to maxInput.
+func limitsFor(maxInput int) omnist.Limits {
+	l := omnist.DefaultLimits()
+	l.MaxInputBytes = maxInput
+	return l
+}
 
 // readInput reads a document/schema body from path, or from stdin when
-// path is "" or "-", matching common Unix CLI convention, bounded by
-// maxInputBytes.
-func readInput(path string, stdin io.Reader) (string, error) {
-	if path == "" || path == "-" {
-		lr := io.LimitReader(stdin, maxInputBytes+1)
-		b, err := io.ReadAll(lr)
+// path is "" or "-", matching common Unix CLI convention, and stops reading
+// as soon as more than maxInput bytes have been seen (D-23): it never buffers
+// the rest of an oversized input. The refusal names the code the library
+// reports for the same condition and the flag that raises the maximum.
+func readInput(path string, stdin io.Reader, maxInput int) (string, error) {
+	r := stdin
+	what := "stdin"
+	if path != "" && path != "-" {
+		f, err := os.Open(path)
 		if err != nil {
-			return "", fmt.Errorf("reading stdin: %w", err)
+			return "", fmt.Errorf("reading %s: %w", path, err)
 		}
-		if len(b) > maxInputBytes {
-			return "", fmt.Errorf("reading stdin: input exceeds maximum size limit of %d bytes (100 MiB)", maxInputBytes)
-		}
-		return string(b), nil
+		defer func() { _ = f.Close() }()
+		r = f
+		what = path
 	}
-	f, err := os.Open(path)
+	b, err := io.ReadAll(io.LimitReader(r, int64(maxInput)+1))
 	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", path, err)
+		return "", fmt.Errorf("reading %s: %w", what, err)
 	}
-	defer func() { _ = f.Close() }()
-
-	lr := io.LimitReader(f, maxInputBytes+1)
-	b, err := io.ReadAll(lr)
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", path, err)
-	}
-	if len(b) > maxInputBytes {
-		return "", fmt.Errorf("reading %s: input exceeds maximum size limit of %d bytes (100 MiB)", path, maxInputBytes)
+	if len(b) > maxInput {
+		return "", fmt.Errorf("reading %s: input is more than the maximum of %d bytes (document.limit.input-size at $); raise the maximum with --max-input-bytes N", what, maxInput)
 	}
 	return string(b), nil
 }

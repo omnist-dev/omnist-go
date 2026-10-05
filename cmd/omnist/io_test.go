@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	omnist "github.com/omnist-dev/omnist-go"
 )
 
 func TestReadInputStdin(t *testing.T) {
 	for _, path := range []string{"", "-"} {
-		got, err := readInput(path, strings.NewReader("hello"))
+		got, err := readInput(path, strings.NewReader("hello"), omnist.DefaultMaxInputBytes)
 		if err != nil {
 			t.Fatalf("readInput(%q): %v", path, err)
 		}
@@ -28,7 +30,7 @@ func TestReadInputFile(t *testing.T) {
 	if err := os.WriteFile(p, []byte("file content"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := readInput(p, nil)
+	got, err := readInput(p, nil, omnist.DefaultMaxInputBytes)
 	if err != nil {
 		t.Fatalf("readInput: %v", err)
 	}
@@ -38,7 +40,7 @@ func TestReadInputFile(t *testing.T) {
 }
 
 func TestReadInputMissingFile(t *testing.T) {
-	_, err := readInput(filepath.Join(t.TempDir(), "does-not-exist"), nil)
+	_, err := readInput(filepath.Join(t.TempDir(), "does-not-exist"), nil, omnist.DefaultMaxInputBytes)
 	if err == nil {
 		t.Error("readInput: expected error for missing file, got nil")
 	}
@@ -86,7 +88,7 @@ func (failingReader) Read([]byte) (int, error) {
 }
 
 func TestReadInputStdinError(t *testing.T) {
-	_, err := readInput("-", failingReader{})
+	_, err := readInput("-", failingReader{}, omnist.DefaultMaxInputBytes)
 	if err == nil {
 		t.Error("readInput: expected error from a failing stdin reader, got nil")
 	}
@@ -111,34 +113,46 @@ func (r *repeatingReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func TestReadInputExceedsMaxInputBytesStdin(t *testing.T) {
-	oversized := &repeatingReader{remaining: maxInputBytes + 10}
-	_, err := readInput("-", oversized)
-	if err == nil || !strings.Contains(err.Error(), "exceeds maximum size limit") {
-		t.Errorf("expected size limit error, got %v", err)
+// D-23: an input of exactly the maximum is read, one byte more is refused with
+// a message naming the library code and the flag that raises the maximum, and
+// a stream is abandoned as soon as max+1 bytes have been seen.
+func TestReadInputMaximumIsInclusive(t *testing.T) {
+	p := writeTemp(t, "in.txt", "12345")
+	for _, tc := range []struct {
+		name string
+		read func(max int) (string, error)
+	}{
+		{"stdin", func(max int) (string, error) { return readInput("-", strings.NewReader("12345"), max) }},
+		{"file", func(max int) (string, error) { return readInput(p, nil, max) }},
+	} {
+		if got, err := tc.read(5); err != nil || got != "12345" {
+			t.Errorf("%s: at the maximum: got %q, %v; want the input", tc.name, got, err)
+		}
+		_, err := tc.read(4)
+		if err == nil {
+			t.Fatalf("%s: one byte over the maximum was accepted", tc.name)
+		}
+		for _, want := range []string{"document.limit.input-size", "--max-input-bytes", "4 bytes"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: refusal %q does not mention %q", tc.name, err, want)
+			}
+		}
 	}
 }
 
-func TestReadInputExceedsMaxInputBytesFile(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "large.txt")
-	f, err := os.Create(p)
-	if err != nil {
-		t.Fatal(err)
+func TestReadInputStopsStreamingAtMaxPlusOne(t *testing.T) {
+	oversized := &repeatingReader{remaining: 1 << 40} // far more than a test should ever buffer
+	_, err := readInput("-", oversized, 1000)
+	if err == nil || !strings.Contains(err.Error(), "--max-input-bytes") {
+		t.Fatalf("expected a size refusal, got %v", err)
 	}
-	if err := f.Truncate(int64(maxInputBytes + 10)); err != nil {
-		t.Fatal(err)
-	}
-	_ = f.Close()
-
-	_, err = readInput(p, nil)
-	if err == nil || !strings.Contains(err.Error(), "exceeds maximum size limit") {
-		t.Errorf("expected size limit error for oversized file, got %v", err)
+	if read := (1 << 40) - oversized.remaining; read != 1001 {
+		t.Errorf("read %d bytes of the stream, want exactly max+1 = 1001", read)
 	}
 }
 
 func TestReadInputDirectoryError(t *testing.T) {
-	_, err := readInput(t.TempDir(), nil)
+	_, err := readInput(t.TempDir(), nil, omnist.DefaultMaxInputBytes)
 	if err == nil {
 		t.Error("expected error when reading directory as file, got nil")
 	}

@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-
-	omnist "github.com/omnist-dev/omnist-go"
 )
 
 // cmdParse implements `omnist parse`: stage-1 read INPUT in --from
@@ -15,6 +13,7 @@ import (
 func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("omnist parse", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	from := fs.String("from", "", "input format: json, yaml, toml, xml, oml (required)")
 	to := fs.String("to", "", "output format (defaults to --from)")
 	out := fs.String("o", "", "output file (default: stdout)")
@@ -50,13 +49,13 @@ func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitUsage
 	}
-	text, err := readInput(input, stdin)
+	text, err := readInput(input, stdin, *maxIn)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitUsage
 	}
 
-	doc, readDiags, err := reader(text, omnist.DefaultLimits())
+	doc, readDiags, err := reader(text, limitsFor(*maxIn))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist parse: %v\n", err)
 		return ExitProblem
