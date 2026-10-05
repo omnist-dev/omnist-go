@@ -284,12 +284,24 @@ that don't belong to a specific codec or the algebra package.
   plain file subjects it to the cap). A zero or negative `MaxExpandedSlots`
   selects the default (`Limits.EffectiveMaxExpandedSlots()`). A malformed merge
   value is `parse.codec-syntax`, reported before any limit.
+- **`Limits.MaxInputBytes`** (default `DefaultMaxInputBytes`, 64 MiB) — the
+  maximum input size in bytes (spec D-23). Every document reader
+  (`oml`, `json`, `yaml`, `toml`, `xml`) refuses a larger input with
+  `document.limit.input-size` at `$` before decoding or parsing, counts a
+  leading byte-order mark, and accepts an input of exactly the maximum. A zero
+  or negative value selects the default (`Limits.EffectiveMaxInputBytes()`),
+  never "no limit". `CheckInputSize(text, limits)` is the check and
+  `PrepareDocumentInput(text, bomCode, limits)` is the size check followed by
+  `PrepareInput`. OSD reads a schema and is not covered. See
+  [Limitations](limitations.md#safety-limits-d-9-to-d-11-d-18-to-d-20) for the
+  default's measurement.
 - **`Limits.Validate()`** — opt-in sanity check verifying that configured
   limits are strictly positive and within recommended safety ceilings
   (`MaxRecommendedDepth = 10_000`, `MaxRecommendedNodes = 100_000_000`,
   `MaxRecommendedIntDigits = 1_000_000`, `MaxRecommendedAliasExpansion =
-  10_000`, `MaxRecommendedExpandedSlots = 10_000_000`); an unset (zero)
-  `MaxAliasExpansion` or `MaxExpandedSlots` is accepted as "use the default", a
+  10_000`, `MaxRecommendedExpandedSlots = 10_000_000`,
+  `MaxRecommendedInputBytes = 1 << 30`); an unset (zero) `MaxAliasExpansion`,
+  `MaxExpandedSlots` or `MaxInputBytes` is accepted as "use the default", a
   negative one is an error.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_limitsValidate -->
@@ -349,8 +361,11 @@ fmt.Println(err)
 
 OML (the native format) reader and writer: `Read(text string, limits
 omnist.Limits) (omnist.Document, error)`, `Write(d omnist.Document, compact
-bool) (string, []omnist.Diagnostic)` (`WriteCompact` is a convenience
-wrapper for `Write(d, true)`). Round-trips Core and Extended OML per spec.
+bool) (string, []omnist.Diagnostic, error)` (`WriteCompact` is a convenience
+wrapper for `Write(d, true)`). The error is the C-9 failure only: a string value
+or edge label that is not well-formed UTF-8 is refused with
+`write.unsupported-value` (see Writers, below), never written as U+FFFD.
+Round-trips Core and Extended OML per spec.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_omlRoundTrip -->
 ```go
@@ -362,8 +377,8 @@ if err != nil {
     panic(err)
 }
 
-text, diagnostics := oml.WriteCompact(doc)
-if len(diagnostics) != 0 {
+text, diagnostics, err := oml.WriteCompact(doc)
+if err != nil || len(diagnostics) != 0 {
     panic("unexpected diagnostics")
 }
 fmt.Println(text)
@@ -426,6 +441,27 @@ stringified temporal value, a substituted `NaN`) as diagnostics rather than
 errors. See each package's doc comment for format-specific caveats (e.g.
 XML leaf-typing, YAML sexagesimal integers, TOML's native date/time
 kinds).
+
+Every writer, `oml.Write` included, first calls `omnist.CheckEncodable(d)` and
+fails with `write.unsupported-value` (spec C-9) on a string value or an edge
+label that is not well-formed UTF-8 (a Go string can hold any bytes), at the
+Document path of the node holding the string (for a label, the node holding the
+edge; indexed per E-10), never substituting U+FFFD or an escape. The XML writer
+likewise refuses a null leaf (C-10), at its indexed path.
+
+`oml.Write` and `oml.WriteCompact` gained the error result in v0.10.0-alpha:
+
+<!-- doc-illustrative -->
+```go
+// before v0.10.0-alpha
+text, diagnostics := oml.Write(doc, false)
+
+// from v0.10.0-alpha: a third result, the C-9 failure
+text, diagnostics, err := oml.Write(doc, false)
+if err != nil {
+    return err // write.unsupported-value: a string or label is not valid UTF-8
+}
+```
 
 `json`, round-tripping the shared reader/writer shape:
 

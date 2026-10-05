@@ -40,6 +40,55 @@ type Limits struct {
 	// as "no limit". EffectiveMaxExpandedSlots gives the value a reader
 	// enforces.
 	MaxExpandedSlots int
+	// MaxInputBytes is the maximum size of one input, in bytes, a reader
+	// accepts (spec D-23, §2.4.2). It is the length of the text as received,
+	// taken before a leading byte-order mark is stripped and before the text
+	// is decoded, so a BOM counts as three bytes and a character is its UTF-8
+	// length. An input of more bytes is refused with
+	// document.limit.input-size at "$" before any parsing; an input of exactly
+	// MaxInputBytes is accepted. It applies to OML, JSON, YAML, TOML and XML
+	// alike. Like MaxAliasExpansion it is a finite bound (D-10): zero means
+	// "unset" and selects DefaultMaxInputBytes, so a Limits literal written
+	// before this field existed keeps a finite limit; a negative value is
+	// invalid (Validate reports it) and readers treat it as "unset" too, never
+	// as "no limit". EffectiveMaxInputBytes gives the value a reader enforces.
+	MaxInputBytes int
+}
+
+// DefaultMaxInputBytes is this implementation's default maximum input size
+// (D-23, D-24): 64 MiB. The spec names no reference number (D-24); this one is
+// documented in docs/limitations.md together with the measurement behind it.
+const DefaultMaxInputBytes = 64 << 20
+
+// EffectiveMaxInputBytes returns the input-size cap a reader enforces for l:
+// MaxInputBytes when it is positive, otherwise DefaultMaxInputBytes. A
+// non-positive configuration never widens the cap and never disables it
+// (D-10).
+func (l Limits) EffectiveMaxInputBytes() int {
+	if l.MaxInputBytes > 0 {
+		return l.MaxInputBytes
+	}
+	return DefaultMaxInputBytes
+}
+
+// CheckInputSize is D-23's check, the first thing a document reader does with
+// its input: it returns a *ParseError with code CodeDocumentLimitInputSize at
+// path "$" if text is longer than the effective maximum (len(text) is the
+// byte length), and nil otherwise, an input of exactly the maximum included.
+// It looks only at the length, so it runs before decoding, before the BOM
+// strip and before any parse.
+func CheckInputSize(text string, limits Limits) *ParseError {
+	max := limits.EffectiveMaxInputBytes()
+	if len(text) <= max {
+		return nil
+	}
+	return &ParseError{
+		Line:    1,
+		Col:     1,
+		Path:    "$",
+		Code:    CodeDocumentLimitInputSize,
+		Message: fmt.Sprintf("input is %d bytes, more than the maximum of %d bytes (Limits.MaxInputBytes, spec D-23)", len(text), max),
+	}
 }
 
 // DefaultMaxExpandedSlots is the spec §2.4 reference default for the expanded
@@ -74,7 +123,8 @@ func (l Limits) EffectiveMaxAliasExpansion() int {
 
 // DefaultLimits returns the spec §2.4 reference defaults: depth 200, node
 // count 1,000,000, integer digits 4,300, alias expansion factor 50, expanded
-// size 1,000,000 slots.
+// size 1,000,000 slots, plus this implementation's input-size maximum of
+// 64 MiB (D-23, D-24).
 func DefaultLimits() Limits {
 	return Limits{
 		MaxDepth:          200,
@@ -82,6 +132,7 @@ func DefaultLimits() Limits {
 		MaxIntDigits:      4300,
 		MaxAliasExpansion: DefaultMaxAliasExpansion,
 		MaxExpandedSlots:  DefaultMaxExpandedSlots,
+		MaxInputBytes:     DefaultMaxInputBytes,
 	}
 }
 
@@ -180,6 +231,10 @@ const (
 	// MaxRecommendedExpandedSlots is the spec's recommended ceiling for the expanded size (D-22):
 	// at about 780 bytes per slot measured in Go, 10,000,000 slots is roughly 8 GB.
 	MaxRecommendedExpandedSlots = 10_000_000
+	// MaxRecommendedInputBytes is the ceiling Validate allows for the input-size maximum (D-23):
+	// 1 GiB. A reader holds the whole input as a string and then a Document that is a multiple
+	// of it, so a cap above this no longer bounds memory in any practical sense.
+	MaxRecommendedInputBytes = 1 << 30
 )
 
 // Validate checks that l specifies strictly positive values within sane, recommended safety
@@ -218,6 +273,12 @@ func (l Limits) Validate() error {
 	}
 	if l.MaxExpandedSlots > MaxRecommendedExpandedSlots {
 		return fmt.Errorf("MaxExpandedSlots %d exceeds recommended safety ceiling (%d)", l.MaxExpandedSlots, MaxRecommendedExpandedSlots)
+	}
+	if l.MaxInputBytes < 0 {
+		return fmt.Errorf("MaxInputBytes must not be negative, got %d (zero selects the default %d)", l.MaxInputBytes, DefaultMaxInputBytes)
+	}
+	if l.MaxInputBytes > MaxRecommendedInputBytes {
+		return fmt.Errorf("MaxInputBytes %d exceeds recommended safety ceiling (%d)", l.MaxInputBytes, MaxRecommendedInputBytes)
 	}
 	return nil
 }

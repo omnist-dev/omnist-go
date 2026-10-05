@@ -272,8 +272,7 @@ func runFixturePrune(fc FixtureCase) Result {
 func writeDoc(format string, d omnist.Document) (string, []omnist.Diagnostic, error) {
 	switch format {
 	case "oml":
-		text, diags := oml.Write(d, false)
-		return text, diags, nil
+		return oml.Write(d, false)
 	case "json":
 		return json.Write(d)
 	case "yaml":

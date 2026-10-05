@@ -88,6 +88,11 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 			Severity: omnist.SeverityError,
 		}
 	}
+	// C-9 (spec §7.3): a string value or an edge label with no UTF-8 encoding
+	// has no spelling in any format; fail before writing anything.
+	if err := omnist.CheckEncodable(d); err != nil {
+		return "", nil, err
+	}
 	var b strings.Builder
 	var diags []omnist.Diagnostic
 	if err := writeTOMLTopLevel(&b, d.Node, &diags); err != nil {

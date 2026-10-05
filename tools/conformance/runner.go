@@ -76,6 +76,9 @@ type findingExpect struct {
 // to actually land in that not-yet-implemented bucket, as cited skips --
 // every other operation below has a real driver.
 func RunVector(v Vector) Result {
+	if reason := unhonouredDeclaredKey(v.Operation, v.Input); reason != "" {
+		return Result{Vector: v, Status: StatusSkip, Reason: reason}
+	}
 	switch v.Operation {
 	case "parse":
 		return runParse(v)
@@ -119,6 +122,46 @@ func RunVector(v Vector) Result {
 	default:
 		return Result{Vector: v, Status: StatusFail, Reason: fmt.Sprintf("unknown operation %q", v.Operation)}
 	}
+}
+
+// declaredKeysHonoured is the allowlist E-20a and test-suite/README.md call for:
+// the declared_* keys each operation's driver understands and applies, by
+// operation. Only parse takes them (as the Limits a reader runs under); a key
+// absent from an operation's set is one that operation would silently ignore.
+var declaredKeysHonoured = map[string]map[string]bool{
+	"parse": {
+		"declared_max_depth":           true,
+		"declared_max_nodes":           true,
+		"declared_max_int_digits":      true,
+		"declared_max_alias_expansion": true,
+		"declared_max_expanded_slots":  true,
+		"declared_max_input_bytes":     true,
+	},
+}
+
+// unhonouredDeclaredKey implements E-20a. It returns the E-20 skip reason for
+// a vector whose input carries a declared_* key the driver for operation does
+// not honour (an unknown key, or a known one on an operation that ignores it),
+// and "" when every declared_* key is honoured or there is none. A run that
+// ignored such a key would exercise the implementation's own default and could
+// pass a boundary vector without testing the boundary. An input that is not a
+// JSON object carries no keys.
+func unhonouredDeclaredKey(operation string, input json.RawMessage) string {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(input, &keys) != nil {
+		return ""
+	}
+	var unhonoured []string
+	for k := range keys {
+		if strings.HasPrefix(k, "declared_") && !declaredKeysHonoured[operation][k] {
+			unhonoured = append(unhonoured, k)
+		}
+	}
+	if len(unhonoured) == 0 {
+		return ""
+	}
+	sort.Strings(unhonoured)
+	return fmt.Sprintf("E-20a: input key %s is not honoured by the %s driver, so the vector would run against this implementation's own default; reported as an E-20 not-yet-implemented skip", unhonoured[0], operation)
 }
 
 // --- helpers shared by drivers ---

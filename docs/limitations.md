@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.9.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.10.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**310 pass / 0 fail / 28 skip** of 338 vectors (`omnist-spec` v0.28.0-beta
+**339 pass / 0 fail / 28 skip** of 367 vectors (`omnist-spec` v0.33.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -27,7 +27,13 @@ for implementing it. All 28 are E-20's "not yet implemented" category;
 none is a documented divergence (E-21). The 42 YAML alias-expansion
 vectors run and pass: the runner passes a vector's `declared_max_alias_expansion`
 to the reader as `Limits.MaxAliasExpansion` and its `declared_max_expanded_slots`
-as `Limits.MaxExpandedSlots`, and only for a vector that carries the key.
+as `Limits.MaxExpandedSlots`, and only for a vector that carries the key. The
+ten input-size vectors run and pass the same way (`declared_max_input_bytes` is
+`Limits.MaxInputBytes`). The runner is an allowlist (spec E-20a): a vector that
+carries any other `declared_*` key, or a known one on an operation whose driver
+does not honour it, is reported as an E-20 skip and never run against this
+implementation's own default, which is how the at-cap input-size vectors passed
+without testing the boundary before the runner learned the key.
 Track 1
 (fixture-based, `conformance/fixtures/`) reports **19 pass / 0 fail / 0
 skip** of 19 fixtures. Both tracks are at zero real fails — the two prior fails, filed
@@ -62,6 +68,7 @@ sanity check.
 | Integer digits | `MaxIntDigits` | 4,300 | every reader |
 | Alias expansion factor | `MaxAliasExpansion` | 50 | YAML only (the one codec with an anchor/alias mechanism); every other reader ignores it |
 | Expanded size | `MaxExpandedSlots` | 1,000,000 | YAML only, and only for an input that contains an alias or a merge key |
+| Input size | `MaxInputBytes` | 64 MiB (67,108,864 bytes) | every document reader (OML, JSON, YAML, TOML, XML); not OSD, which reads a schema |
 
 **The alias expansion factor** (D-18, D-19, D-20). For each candidate node `a`,
 `E(a) = W(a) / S(a)`, where `W` is the number of value slots materialized when
@@ -159,11 +166,129 @@ above `MaxRecommendedExpandedSlots` (10,000,000), and
 `Limits.EffectiveMaxExpandedSlots()` returns the value a reader enforces.
 `Limits.EffectiveMaxAliasExpansion()` returns the factor.
 
+**The input size** (D-23 to D-26, v0.10.0-alpha). Every document reader first
+compares the byte length of its input, as received, with
+`Limits.EffectiveMaxInputBytes()`. The check runs before decoding and before
+any parse, so it takes precedence over `parse.invalid-encoding` and every
+other diagnostic: an input of more bytes than the maximum is refused with
+`document.limit.input-size` at path `$`, even if it is also invalid UTF-8 or
+malformed, and an input of exactly the maximum is accepted. The unit is bytes,
+not characters (`é` is two), and a leading byte-order mark is counted (three
+bytes) because the length is taken before the mark is stripped (D-15). It
+applies to JSON, YAML, TOML, XML and OML alike, a YAML input with no alias
+included, which D-22 does not reach. `omnist.CheckInputSize` is the check and
+`omnist.PrepareDocumentInput` is what each reader calls (the size check, then
+`PrepareInput`). OSD reads a schema, not a Document, and is not covered
+(D-25 gives schema size a bound with no code and no vector).
+
+`MaxInputBytes` follows the convention of the other defaulted limits: zero or
+negative selects the default, never "no limit" (D-10); `Validate()` rejects a
+negative value and one above `MaxRecommendedInputBytes` (1 GiB, a reader holds
+the input and then a Document several times its size);
+`Limits.EffectiveMaxInputBytes()` returns the value a reader enforces.
+
+*Why 64 MiB (D-24 asks for a documented number and, for any value above
+10 MiB, a measurement).* It matches the Python port's default and replaces the
+CLI's former fixed 100 MiB read cap (issue #76), so a file the library accepts
+the CLI accepts too. The cost behind it was measured on this implementation
+(Go 1.26, one core, flat documents, 2026-10-05). Linear readers: JSON, YAML and
+OML parse about 0.5 MiB of one-key-per-line mapping in 0.4 to 0.6 s and 9 to
+10 MiB (900,000 keys, near the 1,000,000-node limit) in 8.7 s (JSON), 7.8 s
+(YAML) and 15.8 s (OML, slightly superlinear); a single 64 MiB string takes
+0.2 to 2.9 s depending on the codec. **TOML and XML are quadratic in the number of keys
+today:** 50,000 flat keys took about 77 s (TOML) and 49 s (XML), against under
+1 s for the others, because each key or element computes its `line:col`
+eagerly. No byte cap bounds that, so for those two codecs the maximum limits
+memory but not time until the readers are fixed (issue #132, not part of this
+release). Lower `MaxInputBytes` for untrusted TOML or XML input.
+
+**The CLI** takes `--max-input-bytes N` on every command that reads an input
+(default 64 MiB). It stops reading at N+1 bytes and refuses the input with a
+message that names `document.limit.input-size` and the flag. A value that is
+not a positive integer, or is above `MaxRecommendedInputBytes`, is a usage
+error. An oversized input exits `1` (an input the CLI could not read), as the
+former 100 MiB refusal did.
+
 ### Codex audit cycle (#70–#81)
 
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.10.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API
+(`Limits.MaxInputBytes`, `DefaultMaxInputBytes`, `MaxRecommendedInputBytes`,
+`Limits.EffectiveMaxInputBytes`, `CheckInputSize`, `PrepareDocumentInput`,
+`CodeDocumentLimitInputSize`, `CheckEncodable`, the CLI flag
+`--max-input-bytes`), an API change (`oml.Write` and `oml.WriteCompact` gain a
+third result, an error), and a closed silent-corruption bug (the writers
+replaced invalid UTF-8 bytes with U+FFFD). It adopts `omnist-spec` v0.33.0-beta
+(commit `64cbb68`, tag `v0.33.0-beta`) from v0.28.0-beta, closing issues #129
+and #130. Conformance, Track 2: **339 pass / 0 fail / 28 skip of 367** (the 28
+skips are the OSD-OML extension, issue #111), Track 1 19/19. Before this
+release, run against the v0.33.0-beta suite, it was 333 pass / 6 fail / 28 skip:
+the five over-cap input-size vectors (D-23 was not enforced), and `DIV-24`
+(`formats-xml/nulls/null-leaf-in-repeated-label-is-indexed`); the five at-cap
+input-size vectors passed without testing anything because the runner ignored
+`declared_max_input_bytes`. What changed:
+
+- **E-10, the index on every edge of a repeated label** (v0.30.0-beta, #130,
+  `DIV-24`). `validate` and `materialize` already followed it (the seven
+  `repeated_label_paths` vectors pass). The XML reader's
+  `format.attribute-dropped` and `format.namespace-dropped` diagnostics are now
+  resolved once the document is read, because a first occurrence cannot know it
+  repeats until its later siblings are seen (`$.root.item[0]`, not
+  `$.root.item`). The XML writer's `write.unsupported-value` paths carry the
+  index too (null leaf, empty internal node, illegal control character).
+- **OML-29 and the colon gap** (v0.31.0-beta, #129). A gap after the colon
+  already worked (the seven vectors pass). A newline, `;` or comment-then-newline
+  before the colon was wrongly accepted: `a\n: 1`, `a;: 1`, `a #c\n: 1`, CRLF
+  forms. oml.abnf says `edge = label skip COLON gap value`, so a separator before
+  the colon is a SEP where the colon is owed: `parse.bare-word` at the label at
+  the top level (the lookahead sees no label-colon pair, as Python does) and
+  `parse.unexpected-token` at the end of the label, where the separator run
+  starts, inside braces and for a later top-level edge. A **lone CR** is not a
+  newline in oml.abnf (`newline = CRLF / LF`, E-29) and not horizontal space, so
+  it is no longer skipped as a separator anywhere (`a: 1\rb: 2` now fails with
+  `parse.unexpected-token` at the CR); the position of that rejection is the one
+  thing E-29 leaves open, and this port reports the CR itself.
+- **D-23 to D-26, the input size** (v0.30.0-beta). See "The input size" above.
+- **C-9, every writer refuses a string with no UTF-8 encoding** (v0.32.0-beta).
+  `omnist.CheckEncodable` runs first in the JSON, YAML, TOML, XML and OML
+  writers and fails with `write.unsupported-value` at the Document path of the
+  node holding the string (a label: the node holding the edge; both indexed
+  per E-10), unconditionally, never with an escape. Before: JSON, TOML, OML and
+  XML values silently got U+FFFD, YAML failed with an uncoded library error, and
+  XML refused a label with the label in the path. The check is a pathless walk
+  that only answers yes or no; the path is built by a second walk only on
+  failure. Measured on 200,000-edge documents (median of 11 to 21 writes,
+  alternated), the added time of the check is about 5% to 10% for JSON, 1% to
+  3% for YAML, 0% to 5% for TOML and 15% to 19% for XML (flat 200,000 children:
+  about 52 ms without it, 60 ms with it). The XML writer's E-10 indexing builds
+  its path only when a write fails, so a successful write pays nothing for it.
+  **`oml.Write` and `oml.WriteCompact` return
+  `(string, []omnist.Diagnostic, error)`** now: OML had no failure mode before,
+  and this is its one. Migrating:
+
+  <!-- doc-illustrative -->
+  ```go
+  // before v0.10.0-alpha
+  text, diagnostics := oml.Write(doc, false)
+  
+  // from v0.10.0-alpha: a third result, the C-9 failure
+  text, diagnostics, err := oml.Write(doc, false)
+  if err != nil {
+      return err // write.unsupported-value: a string or label is not valid UTF-8
+  }
+  ```
+
+  The XML writer also turns U+FFFE and U+FFFF in a string value into U+FFFD
+  without an error (unchanged by this release). That is the same silent change
+  C-9 forbids for invalid UTF-8, though outside its letter; it is tracked
+  separately.
+- **C-10, the XML writer's null leaf** (v0.33.0-beta). It already failed with
+  `write.unsupported-value` (top level, nested, `strict` irrelevant); with the
+  E-10 index the repeated-label path is `$.root.item[1]`. New tests pin the
+  five `formats-xml/nulls/*` cases and the read-side neighbour.
 
 **`v0.9.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API (the error
 codes `CodeSchemaInvalidName`, `CodeSchemaInvalidLabel`,
@@ -579,7 +704,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `1a7d0de` (`v0.28.0-beta`), pinned via the
+`omnist-spec` at commit `64cbb68` (`v0.33.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a

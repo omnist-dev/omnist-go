@@ -21,6 +21,7 @@ func cmdLint(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	const name = "omnist lint"
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(stderr, "usage: %s SCHEMA\n", name)
 	}
@@ -33,7 +34,7 @@ func cmdLint(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 
-	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr)
+	schema, code, ok := loadSchema(name, fs.Arg(0), stdin, stderr, *maxIn)
 	if !ok {
 		return code
 	}

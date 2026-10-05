@@ -59,6 +59,11 @@ func WriteStrict(d omnist.Document) (string, []omnist.Diagnostic, error) {
 }
 
 func writeJSONDocument(d omnist.Document) (string, []omnist.Diagnostic, error) {
+	// C-9 (spec §7.3): a string value or an edge label with no UTF-8 encoding
+	// has no spelling in any format; fail before writing anything.
+	if err := omnist.CheckEncodable(d); err != nil {
+		return "", nil, err
+	}
 	var b strings.Builder
 	var diags []omnist.Diagnostic
 	if d.IsNode {

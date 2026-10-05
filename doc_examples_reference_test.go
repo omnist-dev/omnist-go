@@ -34,8 +34,8 @@ tags: "b"
 		panic(err)
 	}
 
-	text, diagnostics := oml.WriteCompact(doc)
-	if len(diagnostics) != 0 {
+	text, diagnostics, err := oml.WriteCompact(doc)
+	if err != nil || len(diagnostics) != 0 {
 		panic("unexpected diagnostics")
 	}
 	fmt.Println(text)

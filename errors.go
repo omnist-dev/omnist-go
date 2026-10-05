@@ -69,7 +69,13 @@ const (
 	// contains an alias or merge key whose total materialized value slots,
 	// W(root), exceed Limits.MaxExpandedSlots. Its path is "$".
 	CodeDocumentLimitExpandedSize Code = "document.limit.expanded-size"
-	CodeDocumentUnlabeledElement  Code = "document.unlabeled-element"
+
+	// CodeDocumentLimitInputSize is D-23's rejection: an input of more bytes
+	// than Limits.MaxInputBytes, refused at path "$" before the input is
+	// decoded or parsed, so it takes precedence over parse.invalid-encoding
+	// and every other diagnostic.
+	CodeDocumentLimitInputSize   Code = "document.limit.input-size"
+	CodeDocumentUnlabeledElement Code = "document.unlabeled-element"
 )
 
 // schema.* — schema well-formedness (spec §8.3.3).

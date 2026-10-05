@@ -101,7 +101,7 @@ func TestOMLRoundTripProperty(t *testing.T) {
 	for _, tc := range cases {
 		for _, compact := range []bool{false, true} {
 			t.Run(tc.name, func(t *testing.T) {
-				text, _ := Write(tc.doc, compact)
+				text, _, _ := Write(tc.doc, compact)
 				got, err := Read(text, omnist.DefaultLimits())
 				if err != nil {
 					t.Fatalf("compact=%v Read(Write(doc)) failed: %v\ntext:\n%s", compact, err, text)
@@ -116,8 +116,8 @@ func TestOMLRoundTripProperty(t *testing.T) {
 
 func TestWriteOMLCompactWrapper(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewStringScalar("b"))))
-	got, _ := WriteCompact(doc)
-	want, _ := Write(doc, true)
+	got, _, _ := WriteCompact(doc)
+	want, _, _ := Write(doc, true)
 	if got != want {
 		t.Errorf("WriteCompact = %q, want %q", got, want)
 	}
@@ -145,7 +145,7 @@ func TestOMLLabelQuoting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		doc := omnist.NodeDocument(omnist.NewNode().AddValue(tc.label, omnist.ScalarValue(omnist.NewStringScalar("v"))))
-		text, _ := Write(doc, true)
+		text, _, _ := Write(doc, true)
 		wantPrefix := tc.label + ":"
 		if tc.bare {
 			if !strings.HasPrefix(text, wantPrefix) {
@@ -175,7 +175,7 @@ func TestOMLStringEscapingSanctionedFormsOnly(t *testing.T) {
 	// characters, so every branch of escapeOMLString is exercised.
 	s := "\"\\\n\r\t\x00\x01\x1f/\bg\fh世"
 	doc := omnist.ValueDocument(omnist.ScalarValue(omnist.NewStringScalar(s)))
-	text, _ := Write(doc, true)
+	text, _, _ := Write(doc, true)
 
 	for _, forbidden := range []string{`\/`, `\b`, `\f`} {
 		if strings.Contains(text, forbidden) {
@@ -212,12 +212,12 @@ func TestOMLPrettyLayoutMatchesSpecExample(t *testing.T) {
 		AddValue("tag", omnist.ScalarValue(omnist.NewStringScalar("y"))))
 
 	want := "name: \"Ann\"\naddress: {\n  city: \"Zurich\"\n  postcode: \"8001\"\n}\ntag: \"x\"\ntag: \"y\"\n"
-	if got, _ := Write(doc, false); got != want {
+	if got, _, _ := Write(doc, false); got != want {
 		t.Errorf("pretty form mismatch:\ngot:  %q\nwant: %q", got, want)
 	}
 
 	wantCompact := `name: "Ann"; address: { city: "Zurich"; postcode: "8001" }; tag: "x"; tag: "y"`
-	if got, _ := Write(doc, true); got != wantCompact {
+	if got, _, _ := Write(doc, true); got != wantCompact {
 		t.Errorf("compact form mismatch:\ngot:  %q\nwant: %q", got, wantCompact)
 	}
 }
@@ -230,7 +230,7 @@ func TestOMLPrettyLayoutMatchesSpecExample(t *testing.T) {
 func TestOMLTimeAlwaysEmitsSeconds(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(omnist.TimeValue{Hour: 12, Minute: 0}))))
 	want := "t: 12:00:00\n"
-	if got, _ := Write(doc, false); got != want {
+	if got, _, _ := Write(doc, false); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -239,7 +239,7 @@ func TestOMLTimeAlwaysEmitsSeconds(t *testing.T) {
 
 func TestOMLPrettyOutputEndsWithNewline(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode().AddValue("a", omnist.ScalarValue(omnist.NewIntegerScalar(big.NewInt(1)))))
-	got, _ := Write(doc, false)
+	got, _, _ := Write(doc, false)
 	if len(got) == 0 || got[len(got)-1] != '\n' {
 		t.Errorf("got %q, want a trailing newline", got)
 	}
@@ -247,7 +247,7 @@ func TestOMLPrettyOutputEndsWithNewline(t *testing.T) {
 
 func TestOMLEmptyDocumentRoundTrips(t *testing.T) {
 	doc := omnist.NodeDocument(omnist.NewNode())
-	if got, _ := Write(doc, false); got != "" {
+	if got, _, _ := Write(doc, false); got != "" {
 		t.Errorf("empty document should render as empty string, got %q", got)
 	}
 	reparsed, err := Read("", omnist.DefaultLimits())

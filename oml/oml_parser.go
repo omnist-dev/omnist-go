@@ -17,7 +17,7 @@ import (
 // path is possible, since a parse.* failure occurs before an omnist.Document
 // exists.
 func Read(text string, limits omnist.Limits) (omnist.Document, error) {
-	text, berr := omnist.PrepareInput(text, omnist.CodeParseUnexpectedToken)
+	text, berr := omnist.PrepareDocumentInput(text, omnist.CodeParseUnexpectedToken, limits)
 	if berr != nil {
 		return omnist.Document{}, berr
 	}
@@ -37,6 +37,10 @@ type parser struct {
 	lex     *lexer
 	checker *omnist.LimitChecker
 	cur     token
+	// gapLine and gapCol are the lexer position just before p.cur's leading
+	// trivia: where the previous token ended. A separator run owed a colon
+	// is reported here (see parseEdge).
+	gapLine, gapCol int
 	// path is the omnist.Document path (spec §8.4) of the value about to be
 	// parsed — the root path "$" at the top level, descending by label as
 	// parseEdge recurses into nested `{ }` nodes. See parseEdge's
@@ -45,6 +49,7 @@ type parser struct {
 }
 
 func (p *parser) advance() *omnist.ParseError {
+	p.gapLine, p.gapCol = p.lex.line, p.lex.col
 	tok, err := p.lex.next()
 	if err != nil {
 		return err
@@ -163,7 +168,11 @@ func (p *parser) looksLikeEdgeStart() bool {
 	if err != nil {
 		return false
 	}
-	return next.kind == tokColon
+	// A separator before the colon (a newline or ';', not mere hspace or a
+	// comment) is a SEP token standing where the colon is owed (oml.abnf
+	// `edge`, §4.2.1), so this is not a label-colon pair: the label parses
+	// as a scalar, which a bare word cannot be (parse.bare-word).
+	return next.kind == tokColon && !next.sepBefore
 }
 
 // parseNodeEdges parses zero or more edges (spec node-edges = [ edge
@@ -224,6 +233,13 @@ func (p *parser) parseEdge() ([]omnist.Edge, error) {
 	}
 	if p.cur.kind != tokColon {
 		return nil, p.errAt(p.cur, omnist.CodeParseUnexpectedToken, "expected ':' after label")
+	}
+	if p.cur.sepBefore {
+		// §4.2.1 and oml.abnf `edge = label skip COLON gap value`: only
+		// hspace and comments may stand before the colon. A newline or ';'
+		// there is a SEP where the colon is owed, reported where that
+		// separator run starts, at the end of the label.
+		return nil, &omnist.ParseError{Line: p.gapLine, Col: p.gapCol, Path: fmt.Sprintf("%d:%d", p.gapLine, p.gapCol), Code: omnist.CodeParseUnexpectedToken, Message: "expected ':' after label, got a separator"}
 	}
 	// childPath is this edge's omnist.Document path (spec §8.4), best-effort:
 	// repeated-label occurrence indices aren't tracked at parse time (that

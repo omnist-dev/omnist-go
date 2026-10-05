@@ -19,6 +19,7 @@ func cmdInfer(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	const name = "omnist infer"
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	maxIn := maxInputBytesFlag(fs)
 	from := fs.String("from", "", "input format: json, yaml, toml, xml, oml (required)")
 	allowAny := fs.Bool("allow-any", false, "open mixed-shape/mixed-scalar-kind fields to `any` instead of failing")
 	out := fs.String("o", "", "output file (default: stdout)")
@@ -47,12 +48,12 @@ func cmdInfer(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	samples := make([]omnist.Document, 0, fs.NArg())
 	for _, path := range fs.Args() {
-		text, rerr := readInput(path, stdin)
+		text, rerr := readInput(path, stdin, *maxIn)
 		if rerr != nil {
 			_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, rerr)
 			return ExitUsage
 		}
-		doc, readDiags, perr := reader(text, omnist.DefaultLimits())
+		doc, readDiags, perr := reader(text, limitsFor(*maxIn))
 		if perr != nil {
 			_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", name, path, perr)
 			return ExitProblem

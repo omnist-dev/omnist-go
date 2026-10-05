@@ -148,7 +148,7 @@ func TestInteriorBOMIsPreservedOnEverySurface(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, _ := oml.Write(d, true)
+			got, _, _ := oml.Write(d, true)
 			if !strings.Contains(got, value) {
 				t.Errorf("value lost its interior mark: %q", got)
 			}
@@ -172,8 +172,8 @@ func TestWritersNeverEmitABOM(t *testing.T) {
 		"nested leads BOM": omnist.NodeDocument(omnist.NewNode().AddNode("r", omnist.NewNode().AddValue(bom+"a", str(bom+"x")))),
 	}
 	writers := map[string]func(omnist.Document) (string, error){
-		"oml":         func(d omnist.Document) (string, error) { s, _ := oml.Write(d, false); return s, nil },
-		"oml compact": func(d omnist.Document) (string, error) { s, _ := oml.WriteCompact(d); return s, nil },
+		"oml":         func(d omnist.Document) (string, error) { s, _, err := oml.Write(d, false); return s, err },
+		"oml compact": func(d omnist.Document) (string, error) { s, _, err := oml.WriteCompact(d); return s, err },
 		"json":        func(d omnist.Document) (string, error) { s, _, err := json.Write(d); return s, err },
 		"json strict": func(d omnist.Document) (string, error) { s, _, err := json.WriteStrict(d); return s, err },
 		"yaml":        func(d omnist.Document) (string, error) { s, _, err := yaml.Write(d); return s, err },
@@ -282,7 +282,7 @@ func TestBOMIsNeverTreatedAsWhitespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := oml.Write(d, true); !strings.Contains(got, bom+"a") {
+	if got, _, _ := oml.Write(d, true); !strings.Contains(got, bom+"a") {
 		t.Errorf("yaml: the mark was dropped from the key: %q", got)
 	}
 }
