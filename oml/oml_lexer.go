@@ -95,10 +95,10 @@ func newLexer(text string, limits *omnist.LimitChecker) *lexer {
 
 func (l *lexer) atEOF() bool { return l.bytePos >= len(l.raw) }
 
+// peekRune returns the rune at the current position. Every caller has
+// already checked atEOF; at EOF it would return utf8.RuneError, never read
+// out of range.
 func (l *lexer) peekRune() rune {
-	if l.atEOF() {
-		return 0
-	}
 	r, _ := utf8.DecodeRuneInString(l.raw[l.bytePos:])
 	return r
 }
@@ -132,8 +132,8 @@ func (l *lexer) advance() rune {
 	return r
 }
 
-// skipTrivia consumes horizontal space and comments (which emit no
-// token), and tracks whether a newline or ';' was seen among them (which
+// skipTrivia consumes horizontal space, comments and CRLF/LF newlines (which
+// emit no token), and tracks whether a newline or ';' was seen among them (which
 // makes the following token separator-preceded, per §4.2.1).
 func (l *lexer) skipTrivia() (sawSep bool) {
 	for !l.atEOF() {
@@ -142,11 +142,15 @@ func (l *lexer) skipTrivia() (sawSep bool) {
 		case ' ', '\t':
 			l.advance()
 		case '\r':
-			// CRLF or lone CR both count as a newline separator.
-			l.advance()
-			if l.peekRune() == '\n' {
-				l.advance()
+			// oml.abnf: newline = CRLF / LF. A CR is a newline only as the
+			// first half of a CRLF; a lone CR is neither hspace nor newline
+			// (E-29), so it is not trivia: return and let next() reject it
+			// as an unexpected character where it stands.
+			if l.peekRuneAt(1) != '\n' {
+				return sawSep
 			}
+			l.advance()
+			l.advance()
 			sawSep = true
 		case '\n':
 			l.advance()

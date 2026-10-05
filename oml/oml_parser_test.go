@@ -1013,17 +1013,21 @@ func TestIdentLabelWithHyphenUnderscore(t *testing.T) {
 
 // --- coverage: separator edge cases (lone CR, CR at EOF) ---
 
-func TestLoneCRAsSeparator(t *testing.T) {
-	doc := mustParse(t, "a: 1\rb: 2")
-	if len(doc.Node.Edges) != 2 {
-		t.Fatalf("got %+v", doc.Node.Edges)
+// A lone CR is not a newline (oml.abnf `newline = CRLF / LF`, E-29), so it is
+// not a separator either; it is rejected where it stands (omnist-go #129).
+func TestLoneCRIsNotASeparator(t *testing.T) {
+	pe := mustFail(t, "a: 1\rb: 2")
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
+	if pe.Path != "1:5" {
+		t.Errorf("path = %q, want 1:5", pe.Path)
 	}
 }
 
 func TestLoneCRAtEOF(t *testing.T) {
-	doc := mustParse(t, "a: 1\r")
-	if len(doc.Node.Edges) != 1 {
-		t.Fatalf("got %+v", doc.Node.Edges)
+	pe := mustFail(t, "a: 1\r")
+	wantCode(t, pe, omnist.CodeParseUnexpectedToken)
+	if pe.Path != "1:5" {
+		t.Errorf("path = %q, want 1:5", pe.Path)
 	}
 }
 
@@ -1329,7 +1333,7 @@ func TestArrayOML28Diagnostics(t *testing.T) {
 		{"separator then string", "a: [1\n\"s\"]", omnist.CodeParseSeparatorInArray, "2:1"},
 		{"after later element", "a: [1, 2\n3]", omnist.CodeParseSeparatorInArray, "2:1"},
 		{"CRLF before token", "a: [1\r\n2]", omnist.CodeParseSeparatorInArray, "2:1"},
-		{"lone CR is a separator but not a line break (E-29)", "a: [1\r2]", omnist.CodeParseSeparatorInArray, "1:7"},
+		{"lone CR is not a separator and not a line break (E-29)", "a: [1\r2]", omnist.CodeParseUnexpectedToken, "1:6"},
 		{"blank lines and indent, blamed token not first newline", "a: [1\n\n   2]", omnist.CodeParseSeparatorInArray, "3:4"},
 		{"comment between", "a: [1 # c\n2]", omnist.CodeParseSeparatorInArray, "2:1"},
 		{"non-ASCII before token counts code points", "a: [\"é\";2]", omnist.CodeParseSeparatorInArray, "1:9"},
