@@ -61,6 +61,11 @@ import (
 // staying consistent with WriteTOML's identical call) if the root is a
 // scalar omnist.Value rather than a omnist.Node.
 func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
+	// C-9 (spec §7.3): a string value or an edge label with no UTF-8 encoding
+	// has no spelling in any format; fail before writing anything.
+	if err := omnist.CheckEncodable(d); err != nil {
+		return "", nil, err
+	}
 	if !d.IsNode {
 		return "", nil, omnist.Diagnostic{
 			Path:     "$",

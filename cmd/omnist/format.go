@@ -58,14 +58,9 @@ var formatWriters = map[string]formatWriterFunc{
 	"yaml": yaml.Write,
 	"toml": toml.Write,
 	"xml":  xml.Write,
-	// oml.Write never returns an error (compact-vs-pretty is the only
-	// knob, and both always succeed, and every omnist.Kind has a native
-	// OML spelling so there's never an adjustment to report either), but
-	// it's wrapped here so every entry in this table shares one
-	// signature.
+	// oml.Write takes a compact flag; the CLI always writes the pretty form.
 	"oml": func(d omnist.Document) (string, []omnist.Diagnostic, error) {
-		text, diags := oml.Write(d, false)
-		return text, diags, nil
+		return oml.Write(d, false)
 	},
 }
 

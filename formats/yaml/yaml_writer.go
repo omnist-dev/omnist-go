@@ -75,6 +75,11 @@ import (
 // NaN/Infinity substitution is, so there is only one mode and the write
 // itself never fails because of it.
 func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
+	// C-9 (spec §7.3): a string value or an edge label with no UTF-8 encoding
+	// has no spelling in any format; fail before writing anything.
+	if err := omnist.CheckEncodable(d); err != nil {
+		return "", nil, err
+	}
 	var root *yamllib.Node
 	var diags []omnist.Diagnostic
 	if d.IsNode {
@@ -82,26 +87,12 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	} else {
 		root = buildYAMLTargetScalar(d.Value, "$", &diags)
 	}
-	out, err := yamllib.Marshal(root)
-	if err != nil {
-		// This is reachable, not defensive: encode.go's writer refuses
-		// to marshal a omnist.KindString omnist.Scalar whose Str holds bytes that are
-		// not valid UTF-8, with exactly this error text
-		// ("cannot marshal invalid UTF-8 data as !!str") — confirmed
-		// empirically with a scalar built directly from invalid bytes.
-		// omnist.Document.Value.Scalar.Str is a Go string, which (unlike Go
-		// source-code string literals) is not required to hold valid
-		// UTF-8 at the type level, so a omnist.Document built programmatically
-		// (rather than only ever produced by a reader that validated its
-		// own input text) can legitimately reach this. There is no
-		// established taxonomy code (spec §8.3.9) more specific than
-		// this to translate it into and no other codec's writer in this
-		// package currently performs this translation either, so the
-		// library's own error is surfaced as-is rather than wrapped in
-		// a omnist.Diagnostic that would overstate precision this package
-		// doesn't actually have here.
-		return "", nil, err
-	}
+	// Marshal's one reachable failure was a KindString whose Str is not valid
+	// UTF-8 ("cannot marshal invalid UTF-8 data as !!str", an uncoded library
+	// error). omnist.CheckEncodable above refuses exactly that, with the coded C-9
+	// failure and the Document path, so Marshal cannot fail on a tree this
+	// function built.
+	out, _ := yamllib.Marshal(root)
 	return string(out), diags, nil
 }
 

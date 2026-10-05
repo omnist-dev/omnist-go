@@ -74,8 +74,8 @@ const (
 	// than Limits.MaxInputBytes, refused at path "$" before the input is
 	// decoded or parsed, so it takes precedence over parse.invalid-encoding
 	// and every other diagnostic.
-	CodeDocumentLimitInputSize Code = "document.limit.input-size"
-	CodeDocumentUnlabeledElement  Code = "document.unlabeled-element"
+	CodeDocumentLimitInputSize   Code = "document.limit.input-size"
+	CodeDocumentUnlabeledElement Code = "document.unlabeled-element"
 )
 
 // schema.* — schema well-formedness (spec §8.3.3).

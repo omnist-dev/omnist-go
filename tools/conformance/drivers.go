@@ -367,7 +367,7 @@ func runWrite(v Vector) Result {
 			text, gotDiags, werr = json.Write(doc)
 		}
 	case "oml":
-		text, gotDiags = oml.Write(doc, false)
+		text, gotDiags, werr = oml.Write(doc, false)
 	case "yaml":
 		text, gotDiags, werr = yaml.Write(doc)
 	case "toml":
@@ -402,9 +402,8 @@ func runWrite(v Vector) Result {
 	}
 	// write is the one operation where ok:true and diagnostics can
 	// coexist (§8.5.3) -- since issue #49, every Write*/WriteStrict
-	// function returns (string, []omnist.Diagnostic, error) (oml.Write:
-	// (string, []omnist.Diagnostic), see its own doc comment for why it
-	// has no error return), so a successful write's adjustment
+	// function returns (string, []omnist.Diagnostic, error) (oml.Write's
+	// error is the C-9 failure only), so a successful write's adjustment
 	// diagnostics are compared here exactly like every other operation's.
 	if wantDiags, err := decodeExpectDiagnostics(expect); err != nil {
 		return fail(v, "decode expect.diagnostics: %v", err)

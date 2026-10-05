@@ -349,8 +349,10 @@ fmt.Println(err)
 
 OML (the native format) reader and writer: `Read(text string, limits
 omnist.Limits) (omnist.Document, error)`, `Write(d omnist.Document, compact
-bool) (string, []omnist.Diagnostic)` (`WriteCompact` is a convenience
-wrapper for `Write(d, true)`). Round-trips Core and Extended OML per spec.
+bool) (string, []omnist.Diagnostic, error)` (`WriteCompact` is a convenience
+wrapper for `Write(d, true)`). The error is the C-9 failure only: a string value
+or edge label that is not well-formed UTF-8 is refused with
+`write.unsupported-value` (see Writers, below), never written as U+FFFD. Round-trips Core and Extended OML per spec.
 
 <!-- verified-by: doc_examples_reference_test.go::Example_omlRoundTrip -->
 ```go
@@ -362,8 +364,8 @@ if err != nil {
     panic(err)
 }
 
-text, diagnostics := oml.WriteCompact(doc)
-if len(diagnostics) != 0 {
+text, diagnostics, err := oml.WriteCompact(doc)
+if err != nil || len(diagnostics) != 0 {
     panic("unexpected diagnostics")
 }
 fmt.Println(text)
