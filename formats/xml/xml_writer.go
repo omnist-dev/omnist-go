@@ -97,8 +97,8 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	var b strings.Builder
 	var diags []omnist.Diagnostic
 	// The single top-level edge's label occurs once, so its path has no index.
-	if err := writeXMLElement(&b, root.Label, root.Target, "$."+root.Label, &diags); err != nil {
-		return "", nil, err
+	if err := writeXMLElement(&b, root.Label, root.Target, &diags); err != nil {
+		return "", nil, finishXMLFailure(addXMLSegment(err, d.Node, 0))
 	}
 	return b.String(), diags, nil
 }
@@ -110,10 +110,9 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 // empty-string omnist.KindString leaf, and encxml.EscapeText writes nothing for an
 // empty byte slice, so the element naturally comes out as `<label></label>`
 // either way; nothing here special-cases self-closing form specifically).
-func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path string, diags *[]omnist.Diagnostic) error {
+func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[]omnist.Diagnostic) error {
 	if !isValidXMLName(label) {
 		return omnist.Diagnostic{
-			Path:     path,
 			Code:     omnist.CodeWriteUnsupportedValue,
 			Message:  fmt.Sprintf("label %q is not a valid XML element name", label),
 			Severity: omnist.SeverityError,
@@ -136,7 +135,6 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 			// the v.IsNull branch below and writeXMLElement's own doc
 			// comment on empty-string leaves.
 			return omnist.Diagnostic{
-				Path:     path,
 				Code:     omnist.CodeWriteUnsupportedValue,
 				Message:  "an internal node with no edges has no XML spelling distinct from an empty string leaf and cannot be written",
 				Severity: omnist.SeverityError,
@@ -145,21 +143,9 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		b.WriteByte('<')
 		b.WriteString(label)
 		b.WriteByte('>')
-		// E-10: every edge of a label occurring more than once in this node
-		// is indexed, the first included.
-		counts := make(map[string]int, len(node.Edges))
-		for _, e := range node.Edges {
-			counts[e.Label]++
-		}
-		seen := make(map[string]int, len(counts))
-		for _, e := range node.Edges {
-			childPath := path + "." + e.Label
-			if counts[e.Label] > 1 {
-				childPath += "[" + strconv.Itoa(seen[e.Label]) + "]"
-			}
-			seen[e.Label]++
-			if err := writeXMLElement(b, e.Label, e.Target, childPath, diags); err != nil {
-				return err
+		for i, e := range node.Edges {
+			if err := writeXMLElement(b, e.Label, e.Target, diags); err != nil {
+				return addXMLSegment(err, node, i)
 			}
 		}
 		b.WriteString("</")
@@ -183,7 +169,6 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		// the label-sanitization fix in issue #96 and the TOML null fix in
 		// issue #97, here for XML's own null-has-no-distinct-spelling case.
 		return omnist.Diagnostic{
-			Path:     path,
 			Code:     omnist.CodeWriteUnsupportedValue,
 			Message:  "a null leaf has no XML spelling distinct from an empty string and cannot be written",
 			Severity: omnist.SeverityError,
@@ -198,7 +183,6 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, path str
 		// from a valid Document: fail unconditionally rather than drop or
 		// replace the character (spec §8.3.8/§8.3.9, write.unsupported-value).
 		return omnist.Diagnostic{
-			Path:     path,
 			Code:     omnist.CodeWriteUnsupportedValue,
 			Message:  fmt.Sprintf("U+%04X is a C0 control character XML 1.0 cannot represent and cannot be written", []rune(text[i:])[0]),
 			Severity: omnist.SeverityError,
@@ -357,4 +341,43 @@ func isValidXMLName(label string) bool {
 		}
 	}
 	return true
+}
+
+// xmlFailure is a write failure on its way up the recursion. Paths are built
+// only on failure (E-10 indexes every edge of a repeated label, which costs a
+// count per node, so a successful write must not pay for it): each level
+// that sees the error adds the segment of the edge it was writing, and the
+// top level joins them into the Document path.
+type xmlFailure struct {
+	diag omnist.Diagnostic
+	segs []string // innermost first
+}
+
+func (f *xmlFailure) Error() string { return f.diag.Error() }
+
+// addXMLSegment records, on err, the path segment of edge i of node, indexed
+// when its label occurs more than once in node (E-10).
+func addXMLSegment(err error, node *omnist.Node, i int) error {
+	f, ok := err.(*xmlFailure)
+	if !ok {
+		f = &xmlFailure{diag: err.(omnist.Diagnostic)}
+	}
+	seg := "." + node.Edges[i].Label
+	if occ, repeated := omnist.PathIndexInNode(node, i); repeated {
+		seg += "[" + strconv.Itoa(occ) + "]"
+	}
+	f.segs = append(f.segs, seg)
+	return f
+}
+
+// finishXMLFailure turns a completed xmlFailure into the Diagnostic a writer
+// returns, with its Document path.
+func finishXMLFailure(err error) error {
+	f := err.(*xmlFailure)
+	path := "$"
+	for i := len(f.segs) - 1; i >= 0; i-- {
+		path += f.segs[i]
+	}
+	f.diag.Path = path
+	return f.diag
 }

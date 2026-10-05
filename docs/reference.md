@@ -449,6 +449,20 @@ Document path of the node holding the string (for a label, the node holding the
 edge; indexed per E-10), never substituting U+FFFD or an escape. The XML writer
 likewise refuses a null leaf (C-10), at its indexed path.
 
+`oml.Write` and `oml.WriteCompact` gained the error result in v0.10.0-alpha:
+
+<!-- doc-illustrative -->
+```go
+// before v0.10.0-alpha
+text, diagnostics := oml.Write(doc, false)
+
+// from v0.10.0-alpha: a third result, the C-9 failure
+text, diagnostics, err := oml.Write(doc, false)
+if err != nil {
+    return err // write.unsupported-value: a string or label is not valid UTF-8
+}
+```
+
 `json`, round-tripping the shared reader/writer shape:
 
 <!-- verified-by: doc_examples_reference_test.go::Example_jsonRoundTrip -->

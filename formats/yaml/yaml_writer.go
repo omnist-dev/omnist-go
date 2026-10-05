@@ -87,12 +87,14 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	} else {
 		root = buildYAMLTargetScalar(d.Value, "$", &diags)
 	}
-	// Marshal's one reachable failure was a KindString whose Str is not valid
-	// UTF-8 ("cannot marshal invalid UTF-8 data as !!str", an uncoded library
-	// error). omnist.CheckEncodable above refuses exactly that, with the coded C-9
-	// failure and the Document path, so Marshal cannot fail on a tree this
-	// function built.
-	out, _ := yamllib.Marshal(root)
+	// Marshal's one failure we know of, a KindString whose Str is not valid
+	// UTF-8, is refused above by omnist.CheckEncodable with the coded C-9
+	// failure. Any other Marshal failure is returned as the library's own
+	// uncoded error rather than swallowed.
+	out, err := marshalYAML(root)
+	if err != nil {
+		return "", nil, err
+	}
 	return string(out), diags, nil
 }
 
@@ -268,3 +270,7 @@ func buildYAMLNumber(f float64) *yamllib.Node {
 // formats/json revealed json_writer.go's private copies were a real
 // cross-codec dependency, not the doc-comment-only kind issue #45
 // originally assumed); this file does not redefine them.
+
+// marshalYAML is the library's Marshal; a variable only so a test can force the
+// failure path.
+var marshalYAML = yamllib.Marshal

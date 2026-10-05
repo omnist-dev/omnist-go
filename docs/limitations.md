@@ -199,7 +199,7 @@ OML parse about 0.5 MiB of one-key-per-line mapping in 0.4 to 0.6 s and 9 to
 today:** 50,000 flat keys took about 77 s (TOML) and 49 s (XML), against under
 1 s for the others, because each key or element computes its `line:col`
 eagerly. No byte cap bounds that, so for those two codecs the maximum limits
-memory but not time until the readers are fixed (a follow-up, not part of this
+memory but not time until the readers are fixed (issue #132, not part of this
 release). Lower `MaxInputBytes` for untrusted TOML or XML input.
 
 **The CLI** takes `--max-input-bytes N` on every command that reads an input
@@ -260,12 +260,31 @@ input-size vectors passed without testing anything because the runner ignored
   XML values silently got U+FFFD, YAML failed with an uncoded library error, and
   XML refused a label with the label in the path. The check is a pathless walk
   that only answers yes or no; the path is built by a second walk only on
-  failure. Measured on a 200,000-edge document (each figure the median of 21
-  writes, four alternating before/after runs): the added time was 1% (YAML) to
-  14% (JSON, XML) comparing the fastest runs and 5% (YAML) to 17% (JSON)
-  comparing medians; the check alone takes about 18 ms on that document. **`oml.Write` and
-  `oml.WriteCompact` return `(string, []omnist.Diagnostic, error)`** now: OML
-  had no failure mode before, and this is its one.
+  failure. Measured on 200,000-edge documents (median of 11 to 21 writes,
+  alternated), the added time of the check is about 5% to 10% for JSON, 1% to
+  3% for YAML, 0% to 5% for TOML and 15% to 19% for XML (flat 200,000 children:
+  about 52 ms without it, 60 ms with it). The XML writer's E-10 indexing builds
+  its path only when a write fails, so a successful write pays nothing for it.
+  **`oml.Write` and `oml.WriteCompact` return
+  `(string, []omnist.Diagnostic, error)`** now: OML had no failure mode before,
+  and this is its one. Migrating:
+
+  <!-- doc-illustrative -->
+  ```go
+  // before v0.10.0-alpha
+  text, diagnostics := oml.Write(doc, false)
+  
+  // from v0.10.0-alpha: a third result, the C-9 failure
+  text, diagnostics, err := oml.Write(doc, false)
+  if err != nil {
+      return err // write.unsupported-value: a string or label is not valid UTF-8
+  }
+  ```
+
+  The XML writer also turns U+FFFE and U+FFFF in a string value into U+FFFD
+  without an error (unchanged by this release). That is the same silent change
+  C-9 forbids for invalid UTF-8, though outside its letter; it is tracked
+  separately.
 - **C-10, the XML writer's null leaf** (v0.33.0-beta). It already failed with
   `write.unsupported-value` (top level, nested, `strict` irrelevant); with the
   E-10 index the repeated-label path is `$.root.item[1]`. New tests pin the
