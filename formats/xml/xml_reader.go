@@ -143,6 +143,7 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	r := &xmlReader{
 		dec:      dec,
 		src:      src,
+		pos:      textpos.NewIndex(src),
 		checker:  omnist.NewLimitChecker(limits),
 		schema:   schema,
 		sentinel: sentinel,
@@ -181,7 +182,8 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 
 type xmlReader struct {
 	dec     *encxml.Decoder
-	src     string // the input after PrepareInput, for code-point columns (E-28)
+	src     string         // the input after PrepareInput, for code-point columns (E-28)
+	pos     *textpos.Index // line index over src, built once; keeps position lookups linear overall
 	checker *omnist.LimitChecker
 	schema  *omnist.Schema
 	// pending holds the D-3 dropped-attribute and dropped-namespace reports
@@ -366,12 +368,21 @@ func (r *xmlReader) pathHere() string {
 	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
 }
 
+// index returns the reader's line index, building it on first use (tests
+// construct an xmlReader directly, without going through ReadWithSchema).
+func (r *xmlReader) index() *textpos.Index {
+	if r.pos == nil {
+		r.pos = textpos.NewIndex(r.src)
+	}
+	return r.pos
+}
+
 // posHere is the decoder's current position: its line (LF-counted, like E-29)
 // and its 1-based BYTE column converted to code points (E-28), clamped to lie
 // inside the input (E-31).
 func (r *xmlReader) posHere() (line, col int) {
 	dl, dc := r.dec.InputPos()
-	return textpos.FromLineByteCol(r.src, dl, dc)
+	return r.index().FromLineByteCol(dl, dc)
 }
 
 // readElementBody reads one element's children up to and including the matching
