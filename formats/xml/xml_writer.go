@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	omnist "github.com/omnist-dev/omnist-go"
 )
@@ -175,16 +176,21 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[
 		}
 	}
 	text := writeXMLScalarText(v.Scalar)
-	if i := strings.IndexFunc(text, isIllegalXMLControl); i >= 0 {
-		// XML 1.0 cannot represent a raw C0 control character other than
-		// tab, LF and CR, and offers no substitute spelling (a numeric
-		// reference to one is itself not well-formed in 1.0). U+0001 is a
-		// legal Document string, so this is a target-format limit reachable
-		// from a valid Document: fail unconditionally rather than drop or
-		// replace the character (spec §8.3.8/§8.3.9, write.unsupported-value).
+	if i := strings.IndexFunc(text, isOutsideXMLChar); i >= 0 {
+		// XML 1.0 allows only the characters of its Char production, and
+		// offers no spelling for any other code point: a raw C0 control
+		// character other than tab, LF and CR is not well-formed, a numeric
+		// reference to one is not well-formed either, and U+FFFE and U+FFFF
+		// are not allowed at all. Each is a legal Document string, so this is
+		// a target-format limit reachable from a valid Document: fail
+		// unconditionally rather than drop or replace the character (spec
+		// E-6, "a string contains a character the target format cannot
+		// represent at all", write.unsupported-value). encoding/xml would
+		// otherwise turn U+FFFE and U+FFFF into U+FFFD without a word.
+		r, _ := utf8.DecodeRuneInString(text[i:])
 		return omnist.Diagnostic{
 			Code:     omnist.CodeWriteUnsupportedValue,
-			Message:  fmt.Sprintf("U+%04X is a C0 control character XML 1.0 cannot represent and cannot be written", []rune(text[i:])[0]),
+			Message:  fmt.Sprintf("U+%04X is not a character XML 1.0 allows and cannot be written", r),
 			Severity: omnist.SeverityError,
 		}
 	}
@@ -195,10 +201,22 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[
 	return nil
 }
 
-// isIllegalXMLControl reports whether r is a C0 control character that XML 1.0
-// forbids in a document: everything below U+0020 except tab, LF and CR.
-func isIllegalXMLControl(r rune) bool {
-	return r < 0x20 && r != '\t' && r != '\n' && r != '\r'
+// isOutsideXMLChar reports whether r is outside the XML 1.0 Char production,
+//
+//	Char ::= #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+//
+// that is, a code point XML 1.0 forbids in a document. A string that reaches
+// this check has already passed C-9, so it holds no surrogate and its runes
+// are valid; what is left outside Char is the C0 controls other than tab, LF
+// and CR, and U+FFFE and U+FFFF.
+func isOutsideXMLChar(r rune) bool {
+	switch {
+	case r == '\t', r == '\n', r == '\r':
+		return false
+	case r >= 0x20 && r <= 0xD7FF, r >= 0xE000 && r <= 0xFFFD, r >= 0x10000 && r <= 0x10FFFF:
+		return false
+	}
+	return true
 }
 
 // writeXMLText renders leaf text, escaping a literal carriage return as

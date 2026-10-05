@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.10.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.11.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -195,12 +195,20 @@ the CLI accepts too. The cost behind it was measured on this implementation
 OML parse about 0.5 MiB of one-key-per-line mapping in 0.4 to 0.6 s and 9 to
 10 MiB (900,000 keys, near the 1,000,000-node limit) in 8.7 s (JSON), 7.8 s
 (YAML) and 15.8 s (OML, slightly superlinear); a single 64 MiB string takes
-0.2 to 2.9 s depending on the codec. **TOML and XML are quadratic in the number of keys
-today:** 50,000 flat keys took about 77 s (TOML) and 49 s (XML), against under
-1 s for the others, because each key or element computes its `line:col`
-eagerly. No byte cap bounds that, so for those two codecs the maximum limits
-memory but not time until the readers are fixed (issue #132, not part of this
-release). Lower `MaxInputBytes` for untrusted TOML or XML input.
+0.2 to 2.9 s depending on the codec. **TOML and XML were quadratic in the
+number of keys in v0.10.0-alpha and are linear from v0.11.0-alpha** (issue
+#132): each key or element computed its `line:col` by rescanning the input
+from its start, and the TOML reader also scanned the root's edges once per
+`[table]` header. Measured on this implementation before and after (Go 1.26,
+one core, an i5-5200U, 2026-10-05), 50,000 flat keys or elements, one per
+line: TOML 63 s before, 0.12 s after; XML 21 s before, 0.19 s after; 40,000
+`[table]` headers (TOML): 2 minutes before, 0.15 s after. The figures in
+issue #132 (about 77 s and 49 s) are from a different run of the same
+measurement; the growth is what matters: doubling the keys multiplied the old
+time by 2.5 to 5.6, and now multiplies it by 1.3 to 4.5 (single runs of tens of
+milliseconds are noisy) for every shape tried (flat and single-line, tables,
+arrays, attributes), like the other readers. The byte cap now bounds time for
+these two codecs as it does for the others, up to the constants above.
 
 **The CLI** takes `--max-input-bytes N` on every command that reads an input
 (default 64 MiB). It stops reading at N+1 bytes and refuses the input with a
@@ -214,6 +222,40 @@ former 100 MiB refusal did.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.11.0-alpha`**, a minor per `CONTRIBUTING.md` §1: the XML writer refuses a
+value it used to alter (a new write failure), and two CPU-exhaustion paths are
+closed. The `omnist-spec` pin is unchanged (v0.33.0-beta, commit `64cbb68`).
+Conformance, Track 2: **339 pass / 0 fail / 28 skip of 367**, Track 1 19/19,
+both unchanged by this release. What changed:
+
+- **The TOML and XML readers are linear** (#132). See "The input size" above
+  for the measurements. Positions are computed through a line index
+  (`internal/textpos.Index`) instead of by rescanning the input, and the TOML
+  reader no longer calls the parser's `Shape` (which rescans) or scans the
+  root's edges per table header. Every error position (`line:col`) is
+  byte-identical to before: the existing tests and both conformance tracks are
+  unchanged, and the index is tested against the scanning functions it
+  replaces. JSON, YAML, OML and OSD were measured on the same shapes and were
+  already linear.
+- **The XML writer refuses U+FFFE and U+FFFF** (#133). They are not in XML
+  1.0's `Char` production, and `encoding/xml` used to turn them into U+FFFD
+  without an error. The writer now fails with `write.unsupported-value` at the
+  value's Document path (indexed per E-10), as it does for a C0 control
+  character, so every code point outside `Char` is refused in a value: of the
+  1,112,064 non-surrogate code points, exactly U+FFFE and U+FFFF were being
+  accepted wrongly (the other 29 non-`Char` code points, the C0 controls other
+  than tab, LF and CR, were already refused). A label with any such code point
+  was already refused as an invalid element name. U+FFFD itself is a legal
+  character and is still written unchanged. E-6 says a string containing "a
+  character the target format cannot represent at all" is a failure and gives a
+  C0 control character as its example; it does not list U+FFFE and U+FFFF, and
+  `docs/formats/xml.md` does not state which characters an XML writer must
+  refuse, so applying E-6 to them is this port's reading, raised on
+  `omnist-spec` as a follow-up (name the `Char` production in the XML chapter
+  and add a vector). The added check costs about 6% on a write of 200,000
+  string leaves (median of 11 alternated runs: 132.6 ms before, 140.8 ms after).
+  This closes the gap the previous release noted under C-9.
 
 **`v0.10.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new public API
 (`Limits.MaxInputBytes`, `DefaultMaxInputBytes`, `MaxRecommendedInputBytes`,
@@ -281,10 +323,8 @@ input-size vectors passed without testing anything because the runner ignored
   }
   ```
 
-  The XML writer also turns U+FFFE and U+FFFF in a string value into U+FFFD
-  without an error (unchanged by this release). That is the same silent change
-  C-9 forbids for invalid UTF-8, though outside its letter; it is tracked
-  separately.
+  The XML writer also turned U+FFFE and U+FFFF in a string value into U+FFFD
+  without an error in this release (closed in v0.11.0-alpha, issue #133).
 - **C-10, the XML writer's null leaf** (v0.33.0-beta). It already failed with
   `write.unsupported-value` (top level, nested, `strict` irrelevant); with the
   E-10 index the repeated-label path is `$.root.item[1]`. New tests pin the

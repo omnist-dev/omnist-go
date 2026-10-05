@@ -447,7 +447,9 @@ fails with `write.unsupported-value` (spec C-9) on a string value or an edge
 label that is not well-formed UTF-8 (a Go string can hold any bytes), at the
 Document path of the node holding the string (for a label, the node holding the
 edge; indexed per E-10), never substituting U+FFFD or an escape. The XML writer
-likewise refuses a null leaf (C-10), at its indexed path.
+likewise refuses a null leaf (C-10), at its indexed path, and a string value
+holding a code point outside XML 1.0's `Char` production (a C0 control character
+other than tab, LF and CR, U+FFFE, U+FFFF; E-6), at the leaf's indexed path.
 
 `oml.Write` and `oml.WriteCompact` gained the error result in v0.10.0-alpha:
 
