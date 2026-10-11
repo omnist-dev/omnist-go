@@ -148,6 +148,13 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 		schema:   schema,
 		sentinel: sentinel,
 	}
+	// The Document root is the first node (spec §2.4: depth is counted from
+	// the root, so the root is level 1) and counts against both limits, like
+	// the OML reader's root. Only an element that has child elements is a
+	// node; a leaf element is a value and is counted by neither limit.
+	if diag := r.checker.EnterNode("$"); diag != nil {
+		return omnist.Document{}, nil, &omnist.ParseError{Line: 1, Col: 1, Path: "$", Code: diag.Code, Message: diag.Message}
+	}
 	label, node, isLeaf, leafText, err := r.readRoot()
 	if err != nil {
 		return omnist.Document{}, nil, err
@@ -363,11 +370,6 @@ func (r *xmlReader) errHere(code omnist.Code, msg string) error {
 	return &omnist.ParseError{Line: line, Col: col, Path: strconv.Itoa(line) + ":" + strconv.Itoa(col), Code: code, Message: msg}
 }
 
-func (r *xmlReader) pathHere() string {
-	line, col := r.posHere()
-	return strconv.Itoa(line) + ":" + strconv.Itoa(col)
-}
-
 // index returns the reader's line index, building it on first use (tests
 // construct an xmlReader directly, without going through ReadWithSchema).
 func (r *xmlReader) index() *textpos.Index {
@@ -390,6 +392,15 @@ func (r *xmlReader) posHere() (line, col int) {
 func (r *xmlReader) readElementBody(currentRec *omnist.Record, info *elemInfo) (node *omnist.Node, isLeaf bool, leafText string, err error) {
 	var text strings.Builder
 	var children *omnist.Node
+	// entered is true once this element is known to be a node (it has a child
+	// element), which is when it is counted against the depth and node
+	// limits (E-4a): document.limit.depth/document.limit.nodes at "$".
+	entered := false
+	defer func() {
+		if entered {
+			r.checker.LeaveNode()
+		}
+	}()
 
 	for {
 		tok, err := r.next()
@@ -410,6 +421,11 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record, info *elemInfo) (
 			text.Write(t)
 		case encxml.StartElement:
 			if children == nil {
+				if diag := r.checker.EnterNode("$"); diag != nil {
+					line, col := r.posHere()
+					return nil, false, "", &omnist.ParseError{Line: line, Col: col, Path: "$", Code: diag.Code, Message: diag.Message}
+				}
+				entered = true
 				children = omnist.NewNode()
 			}
 			label := t.Name.Local
@@ -441,14 +457,9 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record, info *elemInfo) (
 	}
 }
 
-// readChild reads one non-root element, enforcing MaxDepth/MaxNodes via
-// the shared omnist.LimitChecker.
+// readChild reads one non-root element. The depth and node limits are
+// enforced in readElementBody, where an element first turns out to be a node.
 func (r *xmlReader) readChild(childRec *omnist.Record, start encxml.StartElement, info *elemInfo) (node *omnist.Node, isLeaf bool, leafText string, err error) {
-	path := r.pathHere()
-	if diag := r.checker.EnterNode(path); diag != nil {
-		return nil, false, "", &omnist.ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
-	}
-	defer r.checker.LeaveNode()
 	r.readStart(start, info)
 	return r.readElementBody(childRec, info)
 }

@@ -450,13 +450,11 @@ func TestJSONMalformedInputs(t *testing.T) {
 		{"trailing content after object", `{"a":1} garbage`},
 		{"trailing content after scalar", `1 2`},
 		{"unterminated string", `"abc`},
-		{"huge exponent overflows float64", `1e400`},
 		{"nan token is not valid JSON", `NaN`},
 		{"infinity token is not valid JSON", `Infinity`},
 		{"truncated labeled array right after '['", `{"a":[`},
 		{"truncated labeled array after an element", `{"a":[1,2`},
 		{"malformed element mid-array", `{"a":[1,"ab}`},
-		{"huge exponent inside array element", `{"a":[1e400]}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

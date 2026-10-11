@@ -2,9 +2,9 @@ package xml
 
 import (
 	encxml "encoding/xml"
+	"github.com/omnist-dev/omnist-go/osd"
 	"io"
 	"strings"
-	"github.com/omnist-dev/omnist-go/osd"
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -365,8 +365,8 @@ func TestReadXMLEnforcesMaxDepth(t *testing.T) {
 }
 
 func TestReadXMLEnforcesMaxNodes(t *testing.T) {
-	src := "<a><b/><c/><d/></a>"
-	limits := omnist.Limits{MaxDepth: 200, MaxNodes: 2, MaxIntDigits: 4300}
+	src := "<a><b><x/></b><c><x/></c></a>"
+	limits := omnist.Limits{MaxDepth: 200, MaxNodes: 3, MaxIntDigits: 4300}
 	_, _, err := Read(src, limits)
 	if err == nil {
 		t.Fatal("expected a node-count-limit error")
@@ -408,7 +408,6 @@ func TestReadXMLMixedContentIsRefused(t *testing.T) {
 		t.Fatalf("got %#v, want format.mixed-content at $", err)
 	}
 }
-
 
 // --- schema-aware pretyping tests (issue #81, omnist-spec#44) ---
 
@@ -632,7 +631,6 @@ func TestReadXMLWithSchemaRootElementIsLeaf(t *testing.T) {
 		t.Fatalf("got %+v, want integer 42", doc.Node.Edges[0].Target)
 	}
 }
-
 
 func TestReadXMLWithSchemaRootFallback(t *testing.T) {
 	schema := &omnist.Schema{

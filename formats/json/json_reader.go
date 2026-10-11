@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strconv"
 	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
@@ -129,7 +130,9 @@ func (r *jsonReader) readDocument(tok encjson.Token) (omnist.Document, error) {
 	if delim, ok := tok.(encjson.Delim); ok {
 		switch delim {
 		case '{':
-			node, err := r.readObjectBody()
+			// The Document root is the first node and level 1 (spec §2.4),
+			// like the OML reader's root: it counts against both limits.
+			node, err := r.readNestedObject()
 			if err != nil {
 				return omnist.Document{}, err
 			}
@@ -158,13 +161,20 @@ func (r *jsonReader) readDocument(tok encjson.Token) (omnist.Document, error) {
 // the omnist.Document model has no list construct (issue #1's design).
 //
 // The caller is responsible for omnist.LimitChecker.EnterNode/LeaveNode around
-// this call when the object being read is itself a nested target (a
-// record inside another record, or an array element) — mirroring
-// oml_parser.go's parseBracedNode convention. The top-level object is
-// deliberately NOT wrapped: like OML's brace-less top level, the omnist.Document
-// root does not count as one more level of nesting away from itself.
+// this call: readNestedObject does, for every object including the root, which
+// is level 1 and the first node (spec §2.4, E-4a).
 func (r *jsonReader) readObjectBody() (*omnist.Node, error) {
 	node := omnist.NewNode()
+	// Duplicate keys (C-11): the surviving edge keeps the FIRST position and
+	// the LAST value. spans records, per member, the slice of node.Edges it
+	// produced; lastSpan maps a key to the span of its last occurrence and
+	// order lists the keys by first occurrence. Only if a key repeated is
+	// node.Edges rebuilt from them.
+	type span struct{ lo, hi int }
+	var spans []span
+	lastSpan := map[string]int{}
+	var order []string
+	repeated := false
 	for r.dec.More() {
 		keyTok, err := r.next()
 		if err != nil {
@@ -185,13 +195,29 @@ func (r *jsonReader) readObjectBody() (*omnist.Node, error) {
 		if err != nil {
 			return nil, err
 		}
+		lo := len(node.Edges)
 		if err := r.readMember(node, key, valTok); err != nil {
 			return nil, err
 		}
+		if _, seen := lastSpan[key]; seen {
+			repeated = true
+		} else {
+			order = append(order, key)
+		}
+		lastSpan[key] = len(spans)
+		spans = append(spans, span{lo, len(node.Edges)})
 	}
 	// Consume the closing '}'.
 	if _, err := r.next(); err != nil {
 		return nil, err
+	}
+	if repeated {
+		edges := make([]omnist.Edge, 0, len(node.Edges))
+		for _, k := range order {
+			sp := spans[lastSpan[k]]
+			edges = append(edges, node.Edges[sp.lo:sp.hi]...)
+		}
+		node.Edges = edges
 	}
 	return node, nil
 }
@@ -377,10 +403,13 @@ func (r *jsonReader) scalarToValue(tok encjson.Token, path omnist.Path) (omnist.
 func (r *jsonReader) numberToValue(n encjson.Number, path omnist.Path) (omnist.Value, error) {
 	s := string(n)
 	if strings.ContainsAny(s, ".eE") {
-		f, err := n.Float64()
-		if err != nil {
-			return omnist.Value{}, r.errHere(omnist.CodeParseCodecSyntax, "JSON: invalid number literal: "+s)
-		}
+		// D-29: a literal beyond binary64's range is accepted, not an error:
+		// strconv.ParseFloat returns +/-Inf with ErrRange for an overflow
+		// (1e999 reads as +Infinity) and 0 for an underflow. s is a
+		// JSON-grammar-valid number literal, so ErrRange is the only error
+		// ParseFloat can report here, and it is the one D-29 accepts; the
+		// error is therefore not inspected (the no-dead-branch convention).
+		f, _ := strconv.ParseFloat(s, 64)
 		return omnist.ScalarValue(omnist.NewNumberScalar(f)), nil
 	}
 

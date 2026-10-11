@@ -104,6 +104,13 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	// root is always a DocumentNode wrapping exactly one child when Decode
 	// succeeds with io.EOF not yet reached above — yaml.v3's contract for
 	// decoding into a *yamllib.Node.
+	// C-13: a !!omap, !!pairs or !!set node is well-formed YAML outside the
+	// supported profile, refused with format.tag-forbidden at "$" (E-7). It
+	// runs before the alias check so a tagged collection that holds aliases is
+	// still reported as the tag.
+	if tn := forbiddenTagNode(root.Content[0]); tn != nil {
+		return omnist.Document{}, &omnist.ParseError{Line: tn.Line, Col: tn.Column, Path: "$", Code: omnist.CodeFormatTagForbidden, Message: "YAML: the tag " + tn.Tag + " is outside the supported profile"}
+	}
 	// D-18a merge shapes, then D-18/D-19/D-20 and D-22: bound alias expansion
 	// and expanded size from the reference graph alone, before any alias is
 	// expanded. The node-count and depth limits below stay
@@ -113,6 +120,24 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 	}
 	r := &yamlReader{checker: omnist.NewLimitChecker(limits), maxMergeDepth: limits.MaxDepth}
 	return r.readDocument(root.Content[0])
+}
+
+// forbiddenTagNode returns the first node, in document order, tagged !!omap,
+// !!pairs or !!set (in either its shorthand or its full tag:yaml.org,2002:
+// spelling), or nil. An alias is not followed: the anchored node it names sits
+// elsewhere in the tree and is visited there.
+func forbiddenTagNode(n *yamllib.Node) *yamllib.Node {
+	switch n.Tag {
+	case "!!omap", "!!pairs", "!!set",
+		"tag:yaml.org,2002:omap", "tag:yaml.org,2002:pairs", "tag:yaml.org,2002:set":
+		return n
+	}
+	for _, c := range n.Content {
+		if f := forbiddenTagNode(c); f != nil {
+			return f
+		}
+	}
+	return nil
 }
 
 // yamlErrLine extracts the line number yaml.v3 embeds in its error text.
@@ -175,7 +200,9 @@ func (r *yamlReader) readDocument(n *yamllib.Node) (omnist.Document, error) {
 	n = deref(n)
 	switch n.Kind {
 	case yamllib.MappingNode:
-		node, err := r.readMappingBody(n)
+		// The Document root is the first node and level 1 (spec §2.4), like
+		// the OML reader's root: it counts against both limits.
+		node, err := r.readNestedMapping(n)
 		if err != nil {
 			return omnist.Document{}, err
 		}
@@ -186,7 +213,7 @@ func (r *yamlReader) readDocument(n *yamllib.Node) (omnist.Document, error) {
 		// top-level-array case.
 		return omnist.Document{}, &omnist.ParseError{Line: n.Line, Col: n.Column, Path: "$", Code: omnist.CodeDocumentUnlabeledElement, Message: "a top-level sequence has no label to attach to"}
 	default:
-		v, err := r.readScalar(n)
+		v, err := r.readScalar(n, leafAt{self: true})
 		if err != nil {
 			return omnist.Document{}, err
 		}
@@ -202,12 +229,16 @@ func (r *yamlReader) readDocument(n *yamllib.Node) (omnist.Document, error) {
 // shape.
 //
 // The caller is responsible for omnist.LimitChecker.EnterNode/LeaveNode around
-// this call when the mapping being read is itself a nested target — see
-// readNestedMapping. The top level is deliberately not wrapped, matching
-// ReadJSON's readObjectBody convention.
+// this call: readNestedMapping does, for every mapping including the root,
+// which is level 1 and the first node (spec §2.4, E-4a).
 func (r *yamlReader) readMappingBody(n *yamllib.Node) (*omnist.Node, error) {
 	node := omnist.NewNode()
 	var sources [][]omnist.Edge
+	// C-12: a mapping that repeats a key is rejected with parse.codec-syntax.
+	// Keys are compared as the labels they resolve to, so a plain and a quoted
+	// spelling of one name are the same key. Merge keys are not keys of the
+	// mapping and are exempt.
+	seen := make(map[string]struct{}, len(n.Content)/2)
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		if isMergeKey(n.Content[i]) {
 			srcs, err := r.readMergeSources(n.Content[i], n.Content[i+1])
@@ -222,6 +253,10 @@ func (r *yamlReader) readMappingBody(n *yamllib.Node) (*omnist.Node, error) {
 		if err != nil {
 			return nil, err
 		}
+		if _, dup := seen[label]; dup {
+			return nil, r.errAt(keyNode, omnist.CodeParseCodecSyntax, fmt.Sprintf("YAML: duplicate mapping key %q", label))
+		}
+		seen[label] = struct{}{}
 		if err := r.readMember(node, label, n.Content[i+1]); err != nil {
 			return nil, err
 		}
@@ -343,7 +378,7 @@ func (r *yamlReader) readLabel(keyNode *yamllib.Node) (string, error) {
 	if keyNode.Kind != yamllib.ScalarNode {
 		return "", badKeyErr("a mapping key must be a scalar string, not a nested collection")
 	}
-	v, err := r.readScalar(keyNode)
+	v, err := r.readScalar(keyNode, leafAt{self: true})
 	if err != nil {
 		return "", err
 	}
@@ -372,10 +407,7 @@ func (r *yamlReader) readMember(node *omnist.Node, label string, valNode *yamlli
 		node.AddNode(label, child)
 		return nil
 	case yamllib.SequenceNode:
-		savedPath := r.path
-		r.path = r.path.Child(label, 0, false)
-		targets, err := r.readSequenceElements(valNode)
-		r.path = savedPath
+		targets, err := r.readSequenceElements(valNode, label)
 		if err != nil {
 			return err
 		}
@@ -384,7 +416,7 @@ func (r *yamlReader) readMember(node *omnist.Node, label string, valNode *yamlli
 		}
 		return nil
 	default:
-		v, err := r.readScalar(valNode)
+		v, err := r.readScalar(valNode, leafAt{label: label})
 		if err != nil {
 			return err
 		}
@@ -421,16 +453,19 @@ func (r *yamlReader) readNestedMapping(n *yamllib.Node) (*omnist.Node, error) {
 // label simply does not appear, as with an empty JSON array. The omnist-spec
 // v0.27.0-beta vectors pin this (an empty array and an absent label are the same
 // Document; only OML's '[]' is an error).
-func (r *yamlReader) readSequenceElements(n *yamllib.Node) ([]omnist.Target, error) {
+func (r *yamlReader) readSequenceElements(n *yamllib.Node, label string) ([]omnist.Target, error) {
 	if len(n.Content) == 0 {
 		return nil, nil
 	}
 	targets := make([]omnist.Target, 0, len(n.Content))
-	for _, elemNode := range n.Content {
+	for i, elemNode := range n.Content {
 		elemNode = deref(elemNode)
 		switch elemNode.Kind {
 		case yamllib.MappingNode:
+			savedPath := r.path
+			r.path = r.path.Child(label, i, true)
 			child, err := r.readNestedMapping(elemNode)
+			r.path = savedPath
 			if err != nil {
 				return nil, err
 			}
@@ -438,7 +473,7 @@ func (r *yamlReader) readSequenceElements(n *yamllib.Node) ([]omnist.Target, err
 		case yamllib.SequenceNode:
 			return nil, r.errAt(elemNode, omnist.CodeDocumentUnlabeledElement, "a sequence element must not itself be a sequence")
 		default:
-			v, err := r.readScalar(elemNode)
+			v, err := r.readScalar(elemNode, leafAt{label: label, idx: i, indexed: true})
 			if err != nil {
 				return nil, err
 			}
@@ -459,15 +494,41 @@ func (r *yamlReader) errAt(n *yamllib.Node, code omnist.Code, msg string) *omnis
 // doesn't resolve to a more specific kind falls back to omnist.KindString, so
 // there is nothing here for it to report an error about — the only
 // failure mode a scalar leaf can have is exceeding the digit limit below.
-func (r *yamlReader) readScalar(n *yamllib.Node) (omnist.Value, error) {
+//
+// The digit limit counts the decimal digits of the integer's VALUE, not of its
+// spelling (D-28), and a violation is reported at the Document path of the
+// literal (E-4a), never at a text position: at is where the literal sits,
+// resolved to a path only when a violation is reported.
+func (r *yamlReader) readScalar(n *yamllib.Node, at leafAt) (omnist.Value, error) {
 	v := resolveYAMLScalar(n)
 	if !v.IsNull && v.Scalar.Kind == omnist.KindInteger {
 		digits := len(strings.TrimPrefix(v.Scalar.Int.String(), "-"))
-		if diag := r.checker.CheckIntDigits(fmt.Sprintf("%d:%d", n.Line, n.Column), digits); diag != nil {
+		if diag := r.checker.CheckIntDigits(r.leafPath(at), digits); diag != nil {
 			return omnist.Value{}, &omnist.ParseError{Line: n.Line, Col: n.Column, Path: diag.Path, Code: diag.Code, Message: diag.Message}
 		}
 	}
 	return v, nil
+}
+
+// leafAt says where a scalar sits in the Document being read, relative to the
+// reader's current path r.path: self is r.path itself (the root value, or a
+// mapping key, reported at the enclosing node), otherwise the edge labeled
+// label under it, with the occurrence index when indexed. It is a value, not a
+// built Path, so reading a scalar allocates nothing until a violation needs
+// the path.
+type leafAt struct {
+	label   string
+	idx     int
+	indexed bool
+	self    bool
+}
+
+// leafPath renders at as a Document path string (spec §8.4).
+func (r *yamlReader) leafPath(at leafAt) string {
+	if at.self {
+		return r.path.String()
+	}
+	return r.path.Child(at.label, at.idx, at.indexed).String()
 }
 
 // --- YAML 1.1 core-schema scalar resolution ---
@@ -594,8 +655,11 @@ func resolveYAMLScalar(n *yamllib.Node) omnist.Value {
 		return omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))
 	}
 	if reYAMLFloat.MatchString(s) && strings.ContainsAny(s, ".eE") {
+		// D-29: a literal beyond binary64's range (1.0e+999) is a number, read
+		// as +/-Infinity (ParseFloat reports ErrRange and returns the
+		// infinity); an underflow reads as 0.
 		f, err := strconv.ParseFloat(strings.ReplaceAll(s, "_", ""), 64)
-		if err == nil {
+		if err == nil || errors.Is(err, strconv.ErrRange) {
 			return omnist.ScalarValue(omnist.NewNumberScalar(f))
 		}
 	}
