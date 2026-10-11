@@ -340,6 +340,9 @@ type writeInput struct {
 	Format   string             `json:"format"`
 	Document encjson.RawMessage `json:"document"`
 	Strict   bool               `json:"strict"`
+	// Compact asks the OML writer for its compact layout (E-35); only an OML
+	// vector sets it.
+	Compact bool `json:"compact"`
 }
 
 func runWrite(v Vector) Result {
@@ -367,7 +370,7 @@ func runWrite(v Vector) Result {
 			text, gotDiags, werr = json.Write(doc)
 		}
 	case "oml":
-		text, gotDiags, werr = oml.Write(doc, false)
+		text, gotDiags, werr = oml.Write(doc, in.Compact)
 	case "yaml":
 		text, gotDiags, werr = yaml.Write(doc)
 	case "toml":
@@ -422,7 +425,8 @@ func runWrite(v Vector) Result {
 	if err := encjson.Unmarshal(wantText, &wantTextStr); err != nil {
 		return fail(v, "decode expect.text: %v", err)
 	}
-	gotText, wantCmp := text, wantTextStr
+	// E-18: the outer-whitespace trim every write comparison does.
+	gotText, wantCmp := strings.TrimSpace(text), strings.TrimSpace(wantTextStr)
 	if in.Format == "xml" {
 		gotText, wantCmp = normalizeXMLWhitespace(gotText), normalizeXMLWhitespace(wantCmp)
 	}
