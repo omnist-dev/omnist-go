@@ -264,6 +264,11 @@ that don't belong to a specific codec or the algebra package.
 
 ### Limits (`limits.go`)
 
+The JSON, YAML, TOML and XML readers enforce `MaxDepth`, `MaxNodes` and
+`MaxIntDigits` exactly as the OML reader does (spec E-4a): the Document root is
+level 1 and a node, a limit error is at `$`, and an over-long integer is reported
+at the literal's Document path (`$.a`) and counted by value (D-28).
+
 - **`Limits`** / **`DefaultLimits()`** — the finite, documented safety
   bounds (depth, node count, integer digit count, and for YAML the alias
   expansion factor `MaxAliasExpansion`, default 50, and the expanded size
@@ -441,6 +446,16 @@ stringified temporal value, a substituted `NaN`) as diagnostics rather than
 errors. See each package's doc comment for format-specific caveats (e.g.
 XML leaf-typing, YAML sexagesimal integers, TOML's native date/time
 kinds).
+
+Format rules the readers apply (spec C-11 to C-13, D-27, D-29): a JSON object
+that repeats a key keeps the first position and the last value; a YAML mapping or
+TOML table that repeats a key is `parse.codec-syntax`; a YAML `!!omap`,
+`!!pairs` or `!!set` is `format.tag-forbidden` at `$`; a float literal beyond
+binary64 reads as an infinity (an underflow as 0). The XML writer reports
+`format.value-stringified` (integer, number, boolean leaves) and
+`format.temporal-stringified` (date, time, datetime leaves) at the leaf's
+indexed Document path, and the YAML writer reports
+`format.string-line-break-char` for a U+0085 it writes as `\N`.
 
 Every writer, `oml.Write` included, first calls `omnist.CheckEncodable(d)` and
 fails with `write.unsupported-value` (spec C-9) on a string value or an edge

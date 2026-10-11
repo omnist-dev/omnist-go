@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.11.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.12.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**339 pass / 0 fail / 28 skip** of 367 vectors (`omnist-spec` v0.33.0-beta
+**494 pass / 0 fail / 28 skip** of 522 vectors (`omnist-spec` v0.34.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -222,6 +222,56 @@ former 100 MiB refusal did.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.12.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new behaviour, new
+rejections and three new `format.*` codes. It adopts `omnist-spec` v0.34.0-beta
+(commit `3346b50`) from v0.33.0-beta (`64cbb68`) and closes issues #135 and #136.
+Conformance, Track 2: **494 pass / 0 fail / 28 skip of 522** (the 28 skips are the
+OSD-OML extension, E-20); Track 1 19/19. Against the new suite before any change
+it was 423 pass / 71 fail / 28 skip, and Track 1 19/19. What changed:
+
+- **Breaking, JSON duplicate keys (C-11).** A repeated key in a JSON object used
+  to keep every copy as repeated edges. The surviving edge now sits where the key
+  was first written and carries the last value (an array value contributes its
+  elements there; an empty array removes the key).
+- **Breaking, YAML and TOML duplicate keys (C-12).** A YAML mapping or TOML table
+  that repeats a key (a quoted and a bare spelling are the same key) is rejected
+  with `parse.codec-syntax`; both used to accept it. A repeated `[table]` header
+  is not detected (the TOML parser used here does not report it).
+- **Breaking, YAML `!!omap`, `!!pairs` and `!!set` (C-13).** Rejected with the new
+  code `format.tag-forbidden` at `$` (new exported constant
+  `CodeFormatTagForbidden`). `!!str <<` is an ordinary key and `!!merge <<` a
+  merge key (D-27).
+- **Breaking, YAML writer.** A label is written bare when it is an identifier that
+  still reads back as a string (`name: "Ann"`), and double-quoted otherwise
+  (`"on"`, `"null"`); every label used to be double-quoted. The text changes, the
+  Document read back does not. The writer writes U+0085 as `\N` and reports
+  `format.string-line-break-char` (E-34; new constant
+  `CodeFormatStringLineBreakChar`).
+- **Limits outside OML (DIV-29).** The JSON, YAML, TOML and XML readers count the
+  Document root as level 1 and the first node, as the OML reader does, so a
+  configured `MaxDepth` or `MaxNodes` is enforced at the same boundary in every
+  format. In XML only an element with child elements is a node (a leaf element is
+  a value). Limit errors are reported at `$`. A digit-limit error is reported at
+  the literal's Document path (`$.a`, `$.l[1]`), not a text position, and counts
+  the decimal digits of the value, so a 3,600-digit hex literal is refused and
+  `0x3E7` is three digits (D-28). The TOML reader used to lose the depth of the
+  current table for a bare key after a deep `[table]` header; it no longer does.
+- **Numbers (D-29).** A JSON, YAML or TOML float literal beyond binary64
+  (`1e999`, `-1e999`, `1.0e+999`) reads as an infinity, an underflow as 0. They
+  used to be a JSON error or a YAML string.
+- **XML writer (DIV-31).** Reports `format.value-stringified` for an integer,
+  number or boolean leaf and `format.temporal-stringified` (never both) for a date,
+  time or datetime leaf, at the leaf's Document path, indexed per E-10 (new
+  constant `CodeFormatValueStringified`). A time or datetime leaf keeps zero
+  seconds (`12:00:00`, not `12:00`). The JSON, YAML and TOML writers still shorten
+  a time with zero seconds to `HH:MM`.
+- **Runners.** Track 1 compares a lint finding's `code` exactly (#135, §8.3 is
+  mandatory); Track 2 passes `compact` to the OML writer (E-35), and trims the
+  outer whitespace of a `write` text before comparing it (E-18).
+- Not done: the digit limit on the schema-directed pretyping of an XML integer
+  leaf (D-28's prose-only rule, no vector). `xml.ReadWithSchema` still pretypes an
+  over-long integer leaf without a digit check.
 
 **`v0.11.0-alpha`**, a minor per `CONTRIBUTING.md` §1: the XML writer refuses a
 value it used to alter (a new write failure), and two CPU-exhaustion paths are
@@ -744,7 +794,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `64cbb68` (`v0.33.0-beta`), pinned via the
+`omnist-spec` at commit `3346b50` (`v0.34.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a

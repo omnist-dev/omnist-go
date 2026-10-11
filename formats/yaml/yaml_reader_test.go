@@ -438,14 +438,15 @@ func TestYAMLDateTimeVariants(t *testing.T) {
 // parseYAMLInt's ok=false branch already follows for ints — resolution
 // falls through the rest of the chain and lands on the plain-string
 // fallback rather than silently clamping to +Inf.
-func TestYAMLFloatOverflowFallsBackToString(t *testing.T) {
+func TestYAMLFloatOverflowReadsAsInfinity(t *testing.T) {
+	// D-29: a float literal beyond binary64 reads as an infinity, not a string.
 	d, err := Read("v: 1e400\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	v, _ := d.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "1e400" {
-		t.Errorf("got %+v, want string \"1e400\"", v.Scalar)
+	if v.Scalar.Kind != omnist.KindNumber || !math.IsInf(v.Scalar.Num, 1) {
+		t.Errorf("got %+v, want number +Inf", v.Scalar)
 	}
 }
 

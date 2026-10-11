@@ -163,6 +163,10 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 		limits:  limits,
 		checker: omnist.NewLimitChecker(limits),
 		root:    omnist.NewNode(),
+		// The Document root is the first node and level 1 (spec §2.4), like
+		// the OML reader's root: it counts against both limits.
+		nodeCount:    1,
+		currentDepth: 1,
 	}
 	p := &unstable.Parser{}
 	p.Reset([]byte(text))
@@ -184,27 +188,34 @@ func Read(text string, limits omnist.Limits) (omnist.Document, error) {
 
 // tomlReader holds the state for one Read call.
 type tomlReader struct {
-	limits    omnist.Limits
-	checker   *omnist.LimitChecker
-	p         *unstable.Parser
-	text      string         // the input after PrepareInput, for code-point columns (E-28)
-	pos       *textpos.Index // line index over text, built once; keeps position lookups linear overall
-	root      *omnist.Node
-	current   *omnist.Node // insertion point for a bare (non-dotted) KeyValue
-	nodeCount int
-	edges     map[*omnist.Node]*edgeIndex // label lookup per navigated node, see lastEdge
+	limits  omnist.Limits
+	checker *omnist.LimitChecker
+	p       *unstable.Parser
+	text    string         // the input after PrepareInput, for code-point columns (E-28)
+	pos     *textpos.Index // line index over text, built once; keeps position lookups linear overall
+	root    *omnist.Node
+	current *omnist.Node // insertion point for a bare (non-dotted) KeyValue
+	// currentDepth is current's depth (the root is 1).
+	currentDepth int
+	nodeCount    int
+	// inline holds the inline tables under construction, outermost first. They
+	// are not attached to the Document yet, so a Document path through one is
+	// resolved from this stack (nodePath).
+	inline []inlineFrame
+	edges  map[*omnist.Node]*edgeIndex // label lookup per navigated node, see lastEdge
 }
 
 // newChildNode allocates a new *omnist.Node at depth childDepth (the parent's own
-// depth + 1), enforcing MaxDepth/MaxNodes per Read's doc comment. path
-// is used only for the resulting omnist.Diagnostic's omnist.Path field.
-func (r *tomlReader) newChildNode(childDepth int, path string) (*omnist.Node, error) {
+// depth + 1), enforcing MaxDepth/MaxNodes per Read's doc comment.
+func (r *tomlReader) newChildNode(childDepth int) (*omnist.Node, error) {
+	// document.limit.depth and document.limit.nodes are document.* codes whose
+	// path is "$" (E-4a), as the OML reader reports them.
 	if childDepth > r.limits.MaxDepth {
-		return nil, &omnist.ParseError{Path: path, Code: omnist.CodeDocumentLimitDepth, Message: "nesting exceeds the configured depth limit"}
+		return nil, &omnist.ParseError{Path: "$", Code: omnist.CodeDocumentLimitDepth, Message: "nesting exceeds the configured depth limit"}
 	}
 	r.nodeCount++
 	if r.nodeCount > r.limits.MaxNodes {
-		return nil, &omnist.ParseError{Path: path, Code: omnist.CodeDocumentLimitNodes, Message: "node count exceeds the configured node limit"}
+		return nil, &omnist.ParseError{Path: "$", Code: omnist.CodeDocumentLimitNodes, Message: "node count exceeds the configured node limit"}
 	}
 	return omnist.NewNode(), nil
 }
@@ -218,29 +229,29 @@ func (r *tomlReader) newChildNode(childDepth int, path string) (*omnist.Node, er
 func (r *tomlReader) readTopLevel(expr *unstable.Node) error {
 	switch expr.Kind {
 	case unstable.Table:
-		node, _, err := r.resolvePath(r.root, 0, expr.Key())
+		node, depth, err := r.resolvePath(r.root, 1, expr.Key())
 		if err != nil {
 			return err
 		}
-		r.current = node
+		r.current, r.currentDepth = node, depth
 		return nil
 	case unstable.ArrayTable:
 		parent, depth, label, err := r.resolveParentPath(expr.Key())
 		if err != nil {
 			return err
 		}
-		child, err := r.newChildNode(depth+1, r.posPath(expr.Raw))
+		child, err := r.newChildNode(depth + 1)
 		if err != nil {
 			return err
 		}
 		parent.AddNode(label, child)
-		r.current = child
+		r.current, r.currentDepth = child, depth+1
 		return nil
 	default: // unstable.KeyValue
 		if r.current == nil {
-			r.current = r.root
+			r.current, r.currentDepth = r.root, 1
 		}
-		return r.readKeyValue(r.current, 0, expr)
+		return r.readKeyValue(r.current, r.currentDepth, expr)
 	}
 }
 
@@ -255,7 +266,7 @@ func (r *tomlReader) readTopLevel(expr *unstable.Node) error {
 // this stops one segment short of resolveParentPathFrom, its
 // arbitrary-starting-point counterpart used for a KeyValue's dotted key.
 func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*omnist.Node, int, string, error) {
-	return r.resolveParentPathFrom(r.root, 0, keys)
+	return r.resolveParentPathFrom(r.root, 1, keys)
 }
 
 // resolvePath walks every segment of a Table header's dotted key,
@@ -312,7 +323,7 @@ func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string) 
 			return child, depth + 1, nil
 		}
 	}
-	child, err := r.newChildNode(depth+1, seg)
+	child, err := r.newChildNode(depth + 1)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -393,18 +404,26 @@ func (r *tomlReader) resolveParentPathFrom(target *omnist.Node, targetDepth int,
 // reading shared by every other format in the JSON family, applied here
 // too, per the same repeated-label rule.
 func (r *tomlReader) attachValue(parent *omnist.Node, parentDepth int, label string, v *unstable.Node) error {
+	// C-12: a table that repeats a key is rejected with parse.codec-syntax,
+	// whatever the spelling (bare or quoted) and whether the earlier key held
+	// a value, an array or a table. The repeated labels an array or an
+	// array-of-tables produces are not repeated keys: they come from one key.
+	if _, dup := r.lastEdge(parent, label); dup {
+		return r.errAtRaw(v.Raw, omnist.CodeParseCodecSyntax, "TOML: duplicate key "+strconv.Quote(label))
+	}
+	site := leafSite{parent: parent, label: label}
 	switch v.Kind {
 	case unstable.Array:
 		return r.attachArray(parent, parentDepth, label, v)
 	case unstable.InlineTable:
-		child, err := r.buildInlineTable(parentDepth, v)
+		child, err := r.buildInlineTable(parentDepth, v, site)
 		if err != nil {
 			return err
 		}
 		parent.AddNode(label, child)
 		return nil
 	default:
-		val, err := r.readScalar(v)
+		val, err := r.readScalar(v, site)
 		if err != nil {
 			return err
 		}
@@ -423,20 +442,21 @@ func (r *tomlReader) attachValue(parent *omnist.Node, parentDepth int, label str
 func (r *tomlReader) attachArray(parent *omnist.Node, parentDepth int, label string, arr *unstable.Node) error {
 	it := arr.Children()
 	empty := true
-	for it.Next() {
+	for i := 0; it.Next(); i++ {
 		empty = false
 		elem := it.Node()
+		site := leafSite{parent: parent, label: label, arr: arr, i: i}
 		switch elem.Kind {
 		case unstable.Array:
 			return &omnist.ParseError{Path: label, Code: omnist.CodeDocumentUnlabeledElement, Message: "an array element must not itself be an array"}
 		case unstable.InlineTable:
-			child, err := r.buildInlineTable(parentDepth, elem)
+			child, err := r.buildInlineTable(parentDepth, elem, site)
 			if err != nil {
 				return err
 			}
 			parent.AddNode(label, child)
 		default:
-			val, err := r.readScalar(elem)
+			val, err := r.readScalar(elem, site)
 			if err != nil {
 				return err
 			}
@@ -458,11 +478,13 @@ func (r *tomlReader) attachArray(parent *omnist.Node, parentDepth int, label str
 // (checked directly) rather than that comment, per this issue's own
 // instruction to verify empirically rather than trust documentation) into
 // a freshly allocated node one level deeper than parentDepth.
-func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*omnist.Node, error) {
-	child, err := r.newChildNode(parentDepth+1, "")
+func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node, site leafSite) (*omnist.Node, error) {
+	child, err := r.newChildNode(parentDepth + 1)
 	if err != nil {
 		return nil, err
 	}
+	r.inline = append(r.inline, inlineFrame{node: child, site: site})
+	defer func() { r.inline = r.inline[:len(r.inline)-1] }()
 	it := tbl.Children()
 	for it.Next() {
 		if err := r.readKeyValue(child, parentDepth+1, it.Node()); err != nil {
@@ -470,6 +492,117 @@ func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node) (*omn
 		}
 	}
 	return child, nil
+}
+
+// errAtRaw builds a parse error positioned at the start of a source range.
+func (r *tomlReader) errAtRaw(raw unstable.Range, code omnist.Code, msg string) *omnist.ParseError {
+	line, col := r.pos.FromOffset(int(raw.Offset))
+	return &omnist.ParseError{Line: line, Col: col, Path: itoa(line) + ":" + itoa(col), Code: code, Message: msg}
+}
+
+// leafSite says where a value is being attached: as the edge labeled label
+// under parent, and, if it is element i of an array, which array. It is a
+// plain value so reading a scalar builds no Document path unless a violation
+// has to be reported.
+type leafSite struct {
+	parent *omnist.Node
+	label  string
+	arr    *unstable.Node // the enclosing array, or nil
+	i      int            // the element's index in arr
+}
+
+// inlineFrame is an inline table under construction and the site it will be
+// attached at.
+type inlineFrame struct {
+	node *omnist.Node
+	site leafSite
+}
+
+// sitePath renders the Document path (spec §8.4) of the value being attached
+// at s: the path of s.parent, then the label, indexed (E-10) when the label
+// occurs more than once in the node, counting the array elements still to come.
+func (r *tomlReader) sitePath(s leafSite) string {
+	return r.nodePath(s.parent).Child(s.label, r.occurrence(s), r.repeated(s)).String()
+}
+
+// nodePath returns the Document path of target, a node of the Document built so
+// far or of an inline table under construction. It searches the Document, so
+// it is only used when a violation is about to be reported, never per value.
+func (r *tomlReader) nodePath(target *omnist.Node) omnist.Path {
+	// target may hang below an inline table that is not attached yet. Resolve
+	// the frames outermost first: each one's own path, then a search below it.
+	paths := make([]omnist.Path, len(r.inline))
+	for i, f := range r.inline {
+		parentPath := r.resolveIn(r.inline[:i], paths[:i], f.site.parent)
+		paths[i] = parentPath.Child(f.site.label, r.occurrence(f.site), r.repeated(f.site))
+	}
+	return r.resolveIn(r.inline, paths, target)
+}
+
+// resolveIn finds target's path from the Document root or from one of the given
+// inline frames (whose own paths are paths).
+func (r *tomlReader) resolveIn(frames []inlineFrame, paths []omnist.Path, target *omnist.Node) omnist.Path {
+	// Every caller passes a node of the Document or of the inline-table stack,
+	// so target is found by one of the searches; the last one's answer is
+	// returned as it stands.
+	for i, f := range frames {
+		if p, ok := searchNode(f.node, paths[i], target); ok {
+			return p
+		}
+	}
+	p, _ := searchNode(r.root, omnist.RootPath(), target)
+	return p
+}
+
+// occurrence and repeated give the E-10 index parts of a site's edge.
+func (r *tomlReader) occurrence(s leafSite) int {
+	n := 0
+	for _, e := range s.parent.Edges {
+		if e.Label == s.label {
+			n++
+		}
+	}
+	return n
+}
+
+func (r *tomlReader) repeated(s leafSite) bool {
+	remaining := 1
+	if s.arr != nil {
+		n := 0
+		for it := s.arr.Children(); it.Next(); {
+			n++
+		}
+		remaining = n - s.i
+	}
+	// An array element is always indexed, like a JSON or YAML array's: the
+	// array construct marks the label as repeated.
+	return s.arr != nil || r.occurrence(s)+remaining > 1
+}
+
+// searchNode looks for target below n, whose own path is p, and returns its
+// path; every label that occurs more than once in a node carries its
+// occurrence index (E-10).
+func searchNode(n *omnist.Node, p omnist.Path, target *omnist.Node) (omnist.Path, bool) {
+	if n == target {
+		return p, true
+	}
+	counts := map[string]int{}
+	for _, e := range n.Edges {
+		counts[e.Label]++
+	}
+	seen := map[string]int{}
+	for _, e := range n.Edges {
+		idx := seen[e.Label]
+		seen[e.Label]++
+		child, ok := e.Target.Node()
+		if !ok {
+			continue
+		}
+		if sp, found := searchNode(child, p.Child(e.Label, idx, counts[e.Label] > 1), target); found {
+			return sp, true
+		}
+	}
+	return omnist.Path{}, false
 }
 
 // posPath renders a Raw range's start as a "line:col" omnist.Path, matching
@@ -508,7 +641,7 @@ func (r *tomlReader) wrapParserError(err error) error {
 // Float/LocalDate/LocalTime/LocalDateTime/DateTime) to a omnist.Document omnist.Value,
 // applying the digit-count limit to any resulting integer via
 // omnist.LimitChecker.CheckIntDigits, exactly as ReadYAML's own readScalar does.
-func (r *tomlReader) readScalar(v *unstable.Node) (omnist.Value, error) {
+func (r *tomlReader) readScalar(v *unstable.Node, site leafSite) (omnist.Value, error) {
 	switch v.Kind {
 	case unstable.String:
 		return omnist.ScalarValue(omnist.NewStringScalar(string(v.Data))), nil
@@ -517,8 +650,12 @@ func (r *tomlReader) readScalar(v *unstable.Node) (omnist.Value, error) {
 	case unstable.Integer:
 		bi := parseTOMLInt(string(v.Data))
 		digits := len(strings.TrimPrefix(bi.String(), "-"))
-		if diag := r.checker.CheckIntDigits(r.posPath(v.Raw), digits); diag != nil {
-			return omnist.Value{}, &omnist.ParseError{Path: diag.Path, Code: diag.Code, Message: diag.Message}
+		// D-28: the digits of the value, not of the hex, octal, binary or
+		// underscored spelling; E-4a: reported at the literal's Document
+		// path, not a text position.
+		if diag := r.checker.CheckIntDigits("", digits); diag != nil {
+			line, col := r.pos.FromOffset(int(v.Raw.Offset))
+			return omnist.Value{}, &omnist.ParseError{Line: line, Col: col, Path: r.sitePath(site), Code: diag.Code, Message: diag.Message}
 		}
 		return omnist.ScalarValue(omnist.NewIntegerScalar(bi)), nil
 	case unstable.Float:

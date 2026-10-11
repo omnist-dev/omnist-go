@@ -59,7 +59,7 @@ func TestSubprocessParseGoldenPath(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit = %d, stderr = %q", code, stderr)
 	}
-	if !strings.Contains(stdout, "\"greeting\": \"hi\"") {
+	if !strings.Contains(stdout, "greeting: \"hi\"") {
 		t.Errorf("stdout = %q", stdout)
 	}
 }

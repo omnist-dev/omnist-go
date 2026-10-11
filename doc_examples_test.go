@@ -118,5 +118,5 @@ func Example_convertFormats() {
 		panic("unexpected diagnostics")
 	}
 	fmt.Print(text)
-	// Output: "name": "Ann"
+	// Output: name: "Ann"
 }

@@ -188,11 +188,11 @@ func TestWriteXMLBooleanFalseAndTemporalKinds(t *testing.T) {
 	if !strings.Contains(out, "<bfalse>false</bfalse>") {
 		t.Errorf("expected <bfalse>false</bfalse>, got %q", out)
 	}
-	if !strings.Contains(out, "<time>13:30</time>") {
-		t.Errorf("expected <time>13:30</time>, got %q", out)
+	if !strings.Contains(out, "<time>13:30:00</time>") {
+		t.Errorf("expected <time>13:30:00</time>, got %q", out)
 	}
-	if !strings.Contains(out, "<dt>2024-01-15T09:00</dt>") {
-		t.Errorf("expected <dt>2024-01-15T09:00</dt>, got %q", out)
+	if !strings.Contains(out, "<dt>2024-01-15T09:00:00</dt>") {
+		t.Errorf("expected <dt>2024-01-15T09:00:00</dt>, got %q", out)
 	}
 }
 

@@ -192,6 +192,20 @@ const (
 	CodeFormatDTDForbidden    Code = "format.dtd-forbidden"
 	CodeFormatEntityForbidden Code = "format.entity-forbidden"
 	CodeFormatMixedContent    Code = "format.mixed-content"
+	// CodeFormatTagForbidden is C-13 (spec E-7): a YAML node tagged !!omap,
+	// !!pairs or !!set is well-formed YAML outside the supported profile. Like
+	// the three refusals above it is reported at path "$".
+	CodeFormatTagForbidden Code = "format.tag-forbidden"
+	// CodeFormatValueStringified is E-5: a writer for a format with no native
+	// typed literal (XML) wrote an integer, number or boolean leaf as its text,
+	// so it reads back as a string. Reported once per leaf at the leaf's
+	// Document path (indexed per E-10). A temporal leaf takes
+	// CodeFormatTemporalStringified instead, never both.
+	CodeFormatValueStringified Code = "format.value-stringified"
+	// CodeFormatStringLineBreakChar is E-34: a YAML writer wrote a string
+	// containing U+0085 (NEL) as a double-quoted scalar with the \N escape.
+	// Reported once per such string value at its Document path.
+	CodeFormatStringLineBreakChar Code = "format.string-line-break-char"
 )
 
 // write.* (spec §8.3.9).

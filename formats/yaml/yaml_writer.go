@@ -3,6 +3,7 @@ package yaml
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -146,19 +147,12 @@ func buildYAMLNode(n *omnist.Node, path string, diags *[]omnist.Diagnostic) *yam
 	}
 	m := &yamllib.Node{Kind: yamllib.MappingNode}
 	for _, g := range groups {
-		// Every label is written double-quoted unconditionally, never
-		// bare. A label is always a string (spec §2.2.2), but a bare
-		// spelling that happens to collide with YAML's own core-schema
-		// resolution (an "on"/"yes"/"no" label, or one that looks like
-		// a number or date) would silently stop being a string on
-		// read-back — this reader's own readLabel would then refuse to
-		// even build a omnist.Document from it (the Norway-problem rejection
-		// this issue's reader half implements). Unconditional quoting
-		// sidesteps needing to replicate resolveYAMLScalar's collision
-		// logic here just to decide, case by case, which labels are
-		// "safe" to leave bare — every label is safe when quoted, with
-		// no exceptions to enumerate or get wrong.
-		m.Content = append(m.Content, &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: g.label})
+		// A label is written bare when that is safe (yamlLabelNode) and
+		// double-quoted otherwise.
+		// A label holding NEL is reported at the node holding the edge: E-34
+		// leaves the path of that report open, and a path cannot quote it.
+		reportNEL(g.label, path, diags)
+		m.Content = append(m.Content, yamlLabelNode(g.label))
 		childPath := path + "." + g.label
 		if len(g.children) == 1 {
 			m.Content = append(m.Content, buildYAMLTarget(g.children[0], childPath, diags))
@@ -171,6 +165,42 @@ func buildYAMLNode(n *omnist.Node, path string, diags *[]omnist.Diagnostic) *yam
 		m.Content = append(m.Content, seq)
 	}
 	return m
+}
+
+// reYAMLBareLabel is the label shape written without quotes: an identifier,
+// which has no character YAML treats specially in a plain scalar.
+var reYAMLBareLabel = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
+// yamlLabelNode renders a label (always a string, spec §2.2.2). It is bare
+// (`a: 1`) when it is an identifier that YAML's core-schema resolution, the
+// one ReadYAML applies, still reads as a string; a label that would resolve
+// to something else ("on", "yes", "null", "true") is double-quoted, because the
+// bare spelling would stop being a string on read-back (the Norway problem).
+func yamlLabelNode(label string) *yamllib.Node {
+	if reYAMLBareLabel.MatchString(label) {
+		v := resolveYAMLScalar(&yamllib.Node{Kind: yamllib.ScalarNode, Value: label})
+		if !v.IsNull && v.Scalar.Kind == omnist.KindString {
+			return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Value: label}
+		}
+	}
+	return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: label}
+}
+
+// reportNEL is E-34: a string holding U+0085 (NEL) is written as a
+// double-quoted scalar with the \N escape (YAML 1.1 folds a raw NEL as a line
+// break, so the raw character would not round-trip), and the writer reports
+// format.string-line-break-char, once per string, at path. The escape itself
+// is the encoder's: the double-quoted style writes every line-break character
+// as an escape, and a test pins that it is \N.
+func reportNEL(s, path string, diags *[]omnist.Diagnostic) {
+	if strings.ContainsRune(s, '\u0085') {
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatStringLineBreakChar,
+			Message:  "a string containing U+0085 (NEL) is written double-quoted with the \\N escape so it round-trips",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 }
 
 func buildYAMLTarget(t omnist.Target, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
@@ -215,6 +245,7 @@ func buildYAMLTargetScalar(v omnist.Value, path string, diags *[]omnist.Diagnost
 func buildYAMLScalar(s omnist.Scalar, path string, diags *[]omnist.Diagnostic) *yamllib.Node {
 	switch s.Kind {
 	case omnist.KindString:
+		reportNEL(s.Str, path, diags)
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: s.Str}
 	case omnist.KindInteger:
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!int", Value: s.Int.String()}
