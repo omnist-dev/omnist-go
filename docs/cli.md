@@ -54,8 +54,8 @@ Convert JSON to YAML:
 <!-- verified-by: cmd/omnist/doc_examples_cli_test.go::TestCLIExampleParseJSONToYAML -->
 ```console
 $ echo '{"name": "Ann", "tags": ["a", "b"]}' | omnist parse --from json --to yaml -
-"name": "Ann"
-"tags":
+name: "Ann"
+tags:
     - "a"
     - "b"
 ```

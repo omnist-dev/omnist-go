@@ -38,7 +38,7 @@ func TestCLIExampleParseJSONToYAML(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit = %d, stderr = %q", code, stderr)
 	}
-	want := "\"name\": \"Ann\"\n\"tags\":\n    - \"a\"\n    - \"b\"\n"
+	want := "name: \"Ann\"\ntags:\n    - \"a\"\n    - \"b\"\n"
 	if stdout != want {
 		t.Errorf("stdout = %q, want %q", stdout, want)
 	}

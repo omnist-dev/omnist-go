@@ -98,7 +98,7 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	var b strings.Builder
 	var diags []omnist.Diagnostic
 	// The single top-level edge's label occurs once, so its path has no index.
-	if err := writeXMLElement(&b, root.Label, root.Target, &diags); err != nil {
+	if err := writeXMLElement(&b, root.Label, root.Target, &diags, &xmlFrame{node: d.Node}, 0); err != nil {
 		return "", nil, finishXMLFailure(addXMLSegment(err, d.Node, 0))
 	}
 	return b.String(), diags, nil
@@ -111,7 +111,10 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 // empty-string omnist.KindString leaf, and encxml.EscapeText writes nothing for an
 // empty byte slice, so the element naturally comes out as `<label></label>`
 // either way; nothing here special-cases self-closing form specifically).
-func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[]omnist.Diagnostic) error {
+//
+// fr is the frame of the node holding this edge and i the edge's index in it:
+// they give a stringification report (E-5) its Document path.
+func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[]omnist.Diagnostic, fr *xmlFrame, i int) error {
 	if !isValidXMLName(label) {
 		return omnist.Diagnostic{
 			Code:     omnist.CodeWriteUnsupportedValue,
@@ -144,9 +147,10 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[
 		b.WriteByte('<')
 		b.WriteString(label)
 		b.WriteByte('>')
-		for i, e := range node.Edges {
-			if err := writeXMLElement(b, e.Label, e.Target, diags); err != nil {
-				return addXMLSegment(err, node, i)
+		child := &xmlFrame{parent: fr, edge: i, node: node}
+		for j, e := range node.Edges {
+			if err := writeXMLElement(b, e.Label, e.Target, diags, child, j); err != nil {
+				return addXMLSegment(err, node, j)
 			}
 		}
 		b.WriteString("</")
@@ -194,11 +198,75 @@ func writeXMLElement(b *strings.Builder, label string, t omnist.Target, diags *[
 			Severity: omnist.SeverityError,
 		}
 	}
+	// E-5: XML has no typed literals, so an integer, number or boolean leaf is
+	// written as its text and reads back as a string: format.value-stringified.
+	// A date, time or datetime leaf is reported as format.temporal-stringified
+	// instead, never both. A string leaf is written as it is and reports nothing.
+	switch v.Scalar.Kind {
+	case omnist.KindInteger, omnist.KindNumber, omnist.KindBoolean:
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     fr.edgePath(i),
+			Code:     omnist.CodeFormatValueStringified,
+			Message:  "XML has no typed literals, so a " + v.Scalar.Kind.String() + " leaf is written as text and reads back as a string",
+			Severity: omnist.SeverityWarning,
+		})
+	case omnist.KindDate, omnist.KindTime, omnist.KindDateTime:
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     fr.edgePath(i),
+			Code:     omnist.CodeFormatTemporalStringified,
+			Message:  "XML has no temporal literals, so a " + v.Scalar.Kind.String() + " leaf is written as its ISO-8601 text and reads back as a string",
+			Severity: omnist.SeverityWarning,
+		})
+	}
 	writeXMLText(b, text)
 	b.WriteString("</")
 	b.WriteString(label)
 	b.WriteByte('>')
 	return nil
+}
+
+// xmlFrame is a node being written, linked to the frame of the node holding it.
+// It exists to give a stringification report (E-5) its Document path without
+// the successful write paying for a path per node: the label counts and
+// occurrence indexes (E-10) of a node are built the first time a report needs
+// them, and each node's path is rendered once and cached.
+type xmlFrame struct {
+	parent *xmlFrame
+	edge   int // index of the edge to this node in parent.node
+	node   *omnist.Node
+	path   string
+	counts map[string]int // occurrences of each label in node, built on demand
+	occ    []int          // occ[j] is the occurrence index of node.Edges[j] among its label
+}
+
+// edgePath is the Document path of edge j of f.node: the node's path, then the
+// label, indexed when the label occurs more than once in the node (E-10).
+func (f *xmlFrame) edgePath(j int) string {
+	if f.counts == nil {
+		f.counts = make(map[string]int, len(f.node.Edges))
+		f.occ = make([]int, len(f.node.Edges))
+		for k, e := range f.node.Edges {
+			f.occ[k] = f.counts[e.Label]
+			f.counts[e.Label]++
+		}
+	}
+	label := f.node.Edges[j].Label
+	seg := "." + label
+	if f.counts[label] > 1 {
+		seg += "[" + strconv.Itoa(f.occ[j]) + "]"
+	}
+	return f.nodePath() + seg
+}
+
+// nodePath is the Document path of the node itself, "$" for the root.
+func (f *xmlFrame) nodePath() string {
+	if f.parent == nil {
+		return "$"
+	}
+	if f.path == "" {
+		f.path = f.parent.edgePath(f.edge)
+	}
+	return f.path
 }
 
 // isOutsideXMLChar reports whether r is outside the XML 1.0 Char production,
@@ -295,10 +363,22 @@ func writeXMLScalarText(s omnist.Scalar) string {
 	case omnist.KindDate:
 		return omnist.FormatISODate(s.Date)
 	case omnist.KindTime:
-		return omnist.FormatISOTime(s.Time)
+		return formatXMLTime(s.Time)
 	default: // omnist.KindDateTime
-		return omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)
+		return omnist.FormatISODate(s.DateTime.Date) + "T" + formatXMLTime(s.DateTime.Time)
 	}
+}
+
+// formatXMLTime is omnist.FormatISOTime with the seconds always written:
+// 12:00:00 stays 12:00:00 in XML, where the shared formatter would shorten it
+// to 12:00 (DIV-31). The leaf is stringified either way; this keeps the text
+// the Document's own value spells out.
+func formatXMLTime(t omnist.TimeValue) string {
+	s := omnist.FormatISOTime(t)
+	if t.Second == 0 && t.Nanosecond == 0 {
+		return s[:5] + ":00" + s[5:]
+	}
+	return s
 }
 
 // writeXMLNumberText renders a omnist.KindNumber leaf as text. Unlike

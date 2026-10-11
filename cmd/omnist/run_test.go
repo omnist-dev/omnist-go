@@ -71,7 +71,7 @@ func TestCmdParseConvert(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit = %d, stderr = %q", code, stderr)
 	}
-	if !strings.Contains(stdout, "\"a\": 1") {
+	if !strings.Contains(stdout, "a: 1") {
 		t.Errorf("stdout = %q", stdout)
 	}
 }
