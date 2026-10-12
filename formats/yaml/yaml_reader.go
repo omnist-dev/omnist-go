@@ -600,7 +600,7 @@ var (
 	// fall through to reYAMLSexagesimal's non-match and then to the
 	// plain-string fallback below, rather than becoming a omnist.KindNumber),
 	// noted in the issue report rather than treated as load-bearing.
-	reYAMLFloat = regexp.MustCompile(`^[-+]?([0-9][0-9_]*\.[0-9_]*|\.[0-9_]+)([eE][-+][0-9]+)?$`)
+	reYAMLFloat = regexp.MustCompile(`^([-+]?[0-9][0-9_]*\.[0-9_]*|\.[0-9][0-9_]*)([eE][-+][0-9]+)?$`)
 
 	// reYAMLDate matches a bare calendar date (docs/formats/yaml.md's
 	// own worked example: "placed: 2024-01-01").

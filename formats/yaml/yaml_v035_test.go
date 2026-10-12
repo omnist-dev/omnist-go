@@ -96,3 +96,20 @@ func TestNumberSpellings(t *testing.T) {
 		}
 	}
 }
+
+// C-17: a float's fraction-only form is unsigned and starts with a digit, as in
+// PyYAML (+.5, -.5, ._5 are strings).
+func TestFractionOnlyFloatSpellings(t *testing.T) {
+	for text, isNumber := range map[string]bool{
+		".5": true, ".5e+3": true, "+.5": false, "-.5": false, "+.5e+3": false, "._5": false, "+._5": false,
+	} {
+		d, err := Read("v: "+text+"\n", omnist.DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, _ := d.Node.Edges[0].Target.Value()
+		if (v.Scalar.Kind == omnist.KindNumber) != isNumber {
+			t.Errorf("%q: got kind %v, number = %v wanted", text, v.Scalar.Kind, isNumber)
+		}
+	}
+}

@@ -255,7 +255,7 @@ skip. What changed:
   valid character and no longer reported as `format.entity-forbidden`.
 - **Breaking, YAML numbers (C-17, DIV-39).** `1e3` and `1.0e3` (no sign on the
   exponent), `0o17` and `0:5` are strings; `010` is the integer 8; `1:30.5` is the
-  number 90.5, the others as PyYAML's SafeLoader resolves them.
+  number 90.5, the others as PyYAML's SafeLoader resolves them. A fraction-only float is unsigned and starts with a digit:  is a number, ,  and  are strings.
 - **YAML escapes (C-14, DIV-39).** The hex digits of `\xXX`, `\uXXXX` are
   lowercase (`\x1f`, `\uffff`).
 - **Breaking, TOML conflicting tables (C-12, DIV-39, #138).** `[a]` with `b = 1` followed by
