@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.12.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.13.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**494 pass / 0 fail / 28 skip** of 522 vectors (`omnist-spec` v0.34.0-beta
+**703 pass / 0 fail / 28 skip** of 731 vectors (`omnist-spec` v0.35.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -223,6 +223,58 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
+**`v0.13.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new behaviour and new
+rejections. It adopts `omnist-spec` v0.35.0-beta (commit `237ef00`) from
+v0.34.0-beta (`3346b50`) and closes issue #138. Conformance, Track 2: **703 pass
+/ 0 fail / 28 skip of 731** (the 28 skips are the OSD-OML extension, E-20); Track
+1 19/19. Against the new suite before any change it was 644 pass / 59 fail / 28
+skip. What changed:
+
+- **Breaking, Document paths (E-36, DIV-35).** A label that is empty, or holds
+  `.`, `[`, `]`, `"` or `\`, a control character, U+007F, U+0085, U+2028 or U+2029,
+  is written in a Document path as `["label"]` with no dot (`$["a.b"]`,
+  `$.order["a b."].sku`), with the escapes the spec lists and lowercase `\uXXXX`.
+  Every diagnostic path is built through one new exported function,
+  `omnist.PathLabelSegment`, which `Path.String`, the validator, every reader and
+  every writer use. A path that used to read `$.a.b` for the label `a.b` now reads
+  `$["a.b"]`. Schema paths (`Record.label`) are unchanged.
+- **Breaking, time writers (E-37, DIV-36).** `omnist.FormatISOTime` always writes
+  the seconds (`12:00:00`, never `12:00`), so JSON, YAML, TOML and XML all do. TOML
+  no longer writes `12:00` (invalid TOML) and no longer drops the offset of a time
+  with an offset: it writes the double-quoted string `"12:00:00+01:00"` and reports
+  `format.temporal-stringified` at the leaf. YAML writes a datetime as
+  `2024-01-15T12:00:00+01:00` with no `!!timestamp` tag (the tagged form it used to
+  write for a datetime without seconds was not valid YAML 1.1).
+- **Breaking, XML characters (C-15, C-16, DIV-38).** An `encoding=` declaration is
+  ignored: the input is read as UTF-8 whatever it says (`ISO-8859-1`, `UTF-16` and
+  an unknown name used to be `parse.codec-syntax` because the decoder had no
+  charset reader). A numeric character reference that is malformed, or that names
+  a character outside XML 1.0 `Char` (`&#xD800;`, which used to read as U+FFFD, and
+  `&#0;`, `&#xFFFE;`, `&#x110000;`), and a character outside `Char` in a comment or
+  processing instruction, is `parse.codec-syntax` at its position. `&#xE000;` is a
+  valid character and no longer reported as `format.entity-forbidden`.
+- **Breaking, YAML numbers (C-17, DIV-39).** `1e3` and `1.0e3` (no sign on the
+  exponent), `0o17` and `0:5` are strings; `010` is the integer 8; `1:30.5` is the
+  number 90.5, the others as PyYAML's SafeLoader resolves them.
+- **YAML escapes (C-14, DIV-39).** The hex digits of `\xXX`, `\uXXXX` are
+  lowercase (`\x1f`, `\uffff`).
+- **Breaking, TOML conflicting tables (C-12, DIV-39, #138).** `[a]` with `b = 1` followed by
+  `[a.b]`, `a = 1` followed by `[a]`, a repeated `[a]` header, a dotted key
+  followed by a header for the same table, an inline table that is extended, and
+  `[a]`/`[[a]]` for one name are `parse.codec-syntax` at the offending key. The
+  reader stays linear (`TestReadScalesLinearly`).
+- **XML integer digit limit (E-4a, DIV-42).** `xml.ReadWithSchema` refuses a leaf the
+  schema types as `integer` whose value has more digits than `Limits.MaxIntDigits`
+  with `document.limit.int-digits` at the leaf's Document path (`$.r.n`,
+  `$.r.n[1]`), the first in document order. The CLI does not do this: `omnist
+  materialize --from xml` reads with `xml.Read`, which takes no schema, so an XML
+  leaf stays a string and is not checked.
+- **NEL in a label.** A U+0085 in a *label* is reported at the path of the node
+  that holds it, not at the label's own edge (E-34 leaves the label case open); a
+  NEL in a string *value* is reported at the leaf as before.
+
+### Previous: v0.12.0-alpha
+
 **`v0.12.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new behaviour, new
 rejections and three new `format.*` codes. It adopts `omnist-spec` v0.34.0-beta
 (commit `3346b50`) from v0.33.0-beta (`64cbb68`) and closes issues #135 and #136.
@@ -269,9 +321,8 @@ it was 423 pass / 71 fail / 28 skip, and Track 1 19/19. What changed:
 - **Runners.** Track 1 compares a lint finding's `code` exactly (#135, §8.3 is
   mandatory); Track 2 passes `compact` to the OML writer (E-35), and trims the
   outer whitespace of a `write` text before comparing it (E-18).
-- Not done: the digit limit on the schema-directed pretyping of an XML integer
-  leaf (D-28's prose-only rule, no vector). `xml.ReadWithSchema` still pretypes an
-  over-long integer leaf without a digit check.
+- Not done in v0.12.0-alpha, done in v0.13.0-alpha: the digit limit on the
+  schema-directed pretyping of an XML integer leaf.
 
 **`v0.11.0-alpha`**, a minor per `CONTRIBUTING.md` §1: the XML writer refuses a
 value it used to alter (a new write failure), and two CPU-exhaustion paths are
@@ -794,7 +845,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `3346b50` (`v0.34.0-beta`), pinned via the
+`omnist-spec` at commit `237ef00` (`v0.35.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
