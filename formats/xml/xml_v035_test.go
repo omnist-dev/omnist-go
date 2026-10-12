@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	omnist "github.com/omnist-dev/omnist-go"
+	"github.com/omnist-dev/omnist-go/internal/textpos"
 	"github.com/omnist-dev/omnist-go/osd"
 )
 
@@ -127,6 +128,21 @@ root Root
 	} {
 		if _, _, err := ReadWithSchema(src, &schema, limits); err != nil {
 			t.Errorf("%.30q: %v", src, err)
+		}
+	}
+}
+
+// The pre-scan stops quietly at an unterminated opener (the decoder rejects
+// the document) and parses hex digits of either case.
+func TestScanXMLCharactersEdges(t *testing.T) {
+	for _, src := range []string{"<a><?pi", "<a><!-- x", "<a><![CDATA[ x", "<a>&#x4A;&#xbc;</a>"} {
+		if _, err := scanXMLCharacters(src, textpos.NewIndex(src)); err != nil {
+			t.Errorf("%q: %v", src, err)
+		}
+	}
+	for _, src := range []string{"<a>&#6a;</a>", "<a>&#xg;</a>", "<a>&#x4G;</a>"} {
+		if _, err := scanXMLCharacters(src, textpos.NewIndex(src)); err == nil {
+			t.Errorf("%q: want an error", src)
 		}
 	}
 }
