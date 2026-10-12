@@ -23,7 +23,7 @@ func xmlParseErr(t *testing.T, src string) *omnist.ParseError {
 func TestCharacterReferencesAndMarkupCharacters(t *testing.T) {
 	bad := []string{
 		"<a>&#xD800;</a>", "<a>&#55296;</a>", "<a>&#0;</a>", "<a>&#00;</a>",
-		"<a>&#x110000;</a>", "<a>&#x000000000041;</a>0", "<a>&#;</a>", "<a>&#65</a>",
+		"<a>&#x110000;</a>", "<a>&#x1000000000;</a>", "<a>&#;</a>", "<a>&#65</a>",
 		"<a>&#X41;</a>", "<a x=\"&#1;\">y</a>",
 		"<a><!-- p\x01q -->y</a>", "<a><?t p\x01q?>y</a>",
 	}

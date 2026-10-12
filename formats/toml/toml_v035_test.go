@@ -10,20 +10,21 @@ import (
 // as two different things, is rejected.
 func TestConflictingDefinitionsAreRejected(t *testing.T) {
 	bad := []string{
-		"[a]\nb = 1\n[a.b]\n",            // value then table
-		"a = 1\n[a]\n",                   // value then table
-		"[a]\n[a]\n",                     // table twice
-		"[a.b]\n[a]\n[a]\n",              // implicit then explicit twice
-		"a.b = 1\n[a]\n",                 // dotted-defined then header
-		"a = {x = 1}\n[a]\n",             // inline then header
-		"a = {x = 1}\n[a.b]\n",           // inline extended
-		"a = [{x = 1}]\n[[a]]\n",         // static array extended
-		"a = [1]\n[[a]]\n",               // value array as array of tables
-		"[[a]]\n[a]\n",                   // array of tables then table
-		"[a]\n[[a]]\n",                   // table then array of tables
-		"[a.b]\n[[a]]\n",                 // implicit table then array of tables
-		"[x]\n[y]\n[x]\n",                // redefinition after another table
-		"[a]\nb.c = 1\n[a.b]\n",          // dotted-defined inside, then header
+		"[a]\nb = 1\n[a.b]\n",    // value then table
+		"a = 1\n[a]\n",           // value then table
+		"[a]\n[a]\n",             // table twice
+		"[a.b]\n[a]\n[a]\n",      // implicit then explicit twice
+		"a.b = 1\n[a]\n",         // dotted-defined then header
+		"a = {x = 1}\n[a]\n",     // inline then header
+		"a = {x = 1}\n[a.b]\n",   // inline extended
+		"a = [{x = 1}]\n[[a]]\n", // static array extended
+		"a = [1]\n[[a]]\n",       // value array as array of tables
+		"[[a]]\n[a]\n",           // array of tables then table
+		"[a]\n[[a]]\n",           // table then array of tables
+		"[a.b]\n[[a]]\n",         // implicit table then array of tables
+		"[x]\n[y]\n[x]\n",        // redefinition after another table
+		"[a]\nb.c = 1\n[a.b]\n",  // dotted-defined inside, then header
+		"[a.b]\n[a]\nb.c = 1\n",
 		"[t]\na = {x = 1}\n[t.a]\n",      // inline inside a table
 		"[a]\n[b]\n[a.c]\n[b]\n",         // reopen
 		"a.b = 1\na = 2\n",               // key over a dotted table
