@@ -150,7 +150,7 @@ func writeTOMLTopLevel(b *strings.Builder, n *omnist.Node, diags *[]omnist.Diagn
 	}
 	for _, g := range groups {
 		var vb strings.Builder
-		if err := writeTOMLGroupValue(&vb, g, "$."+g.label, diags); err != nil {
+		if err := writeTOMLGroupValue(&vb, g, "$"+omnist.PathLabelSegment(g.label), diags); err != nil {
 			return err
 		}
 		writeTOMLKey(b, g.label)
@@ -208,6 +208,18 @@ func writeTOMLTargetOptional(b *strings.Builder, t omnist.Target, path string, d
 			Severity: omnist.SeverityError,
 		}
 	}
+	if v.Scalar.Kind == omnist.KindTime && v.Scalar.Time.HasOffset {
+		// E-37 rule 4: TOML has no offset time, so the time is written as its
+		// ISO-8601 text in a double-quoted string, offset kept.
+		writeTOMLString(b, omnist.FormatISOTime(v.Scalar.Time))
+		*diags = append(*diags, omnist.Diagnostic{
+			Path:     path,
+			Code:     omnist.CodeFormatTemporalStringified,
+			Message:  "TOML has no time-of-day literal with a UTC offset, so the time is written as its ISO-8601 text and reads back as a string",
+			Severity: omnist.SeverityWarning,
+		})
+		return nil
+	}
 	writeTOMLScalar(b, v.Scalar)
 	return nil
 }
@@ -231,7 +243,7 @@ func writeTOMLInlineTable(b *strings.Builder, n *omnist.Node, path string, diags
 			b.WriteString(", ")
 		}
 		var vb strings.Builder
-		if err := writeTOMLGroupValue(&vb, g, path+"."+g.label, diags); err != nil {
+		if err := writeTOMLGroupValue(&vb, g, path+omnist.PathLabelSegment(g.label), diags); err != nil {
 			return err
 		}
 		writeTOMLKey(b, g.label)
@@ -275,20 +287,9 @@ func writeTOMLScalar(b *strings.Builder, s omnist.Scalar) {
 	case omnist.KindDate:
 		b.WriteString(omnist.FormatISODate(s.Date))
 	case omnist.KindTime:
-		// TOML's local-time literal (partial-time in its grammar) has no
-		// offset field at all — only a full datetime can carry one. No
-		// reader in this package currently ever produces a omnist.KindTime
-		// scalar with HasOffset set (only a omnist.KindDateTime's embedded
-		// omnist.TimeValue carries an offset in practice), but the omnist.Document
-		// model does not forbid the combination at the type level, so
-		// this guards it explicitly rather than emitting a spelling
-		// TOML's own time-literal grammar would reject: the offset is
-		// dropped from a bare omnist.KindTime write (narrow/cosmetic — there is
-		// no TOML spelling of "a bare time of day with a UTC offset" to
-		// preserve it in).
-		t := s.Time
-		t.HasOffset = false
-		b.WriteString(omnist.FormatISOTime(t))
+		// An offset time never reaches here: writeTOMLTargetOptional
+		// stringifies it (E-37 rule 4).
+		b.WriteString(omnist.FormatISOTime(s.Time))
 	default: // omnist.KindDateTime
 		b.WriteString(omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time))
 	}

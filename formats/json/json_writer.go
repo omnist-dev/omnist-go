@@ -109,7 +109,7 @@ func writeJSONNode(b *strings.Builder, n *omnist.Node, path string, diags *[]omn
 		}
 		writeJSONString(b, g.label)
 		b.WriteString(": ")
-		childPath := path + "." + g.label
+		childPath := path + omnist.PathLabelSegment(g.label)
 
 		if len(g.children) == 1 {
 			if err := writeJSONTarget(b, g.children[0], childPath, diags); err != nil {

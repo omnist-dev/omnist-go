@@ -272,18 +272,15 @@ func FormatISODate(d DateValue) string {
 }
 
 // FormatISOTime renders a TimeValue per ISO-8601's time-of-day form.
-// Seconds are emitted only when Second or Nanosecond is nonzero, and the
-// fractional part only when Nanosecond is nonzero. Promoted here (issue
+// Seconds are always emitted (spec E-37 rule 2: 12:00 is written 12:00:00),
+// and the fractional part only when Nanosecond is nonzero. Promoted here (issue
 // #45) alongside FormatISODate, for the same cross-codec reason.
 func FormatISOTime(t TimeValue) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%02d:%02d", t.Hour, t.Minute)
-	if t.Second != 0 || t.Nanosecond != 0 {
-		fmt.Fprintf(&b, ":%02d", t.Second)
-		if t.Nanosecond != 0 {
-			b.WriteByte('.')
-			b.WriteString(FormatISOFraction(t.Nanosecond))
-		}
+	fmt.Fprintf(&b, "%02d:%02d:%02d", t.Hour, t.Minute, t.Second)
+	if t.Nanosecond != 0 {
+		b.WriteByte('.')
+		b.WriteString(FormatISOFraction(t.Nanosecond))
 	}
 	if t.HasOffset {
 		off := t.OffsetSeconds

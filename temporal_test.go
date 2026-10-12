@@ -37,7 +37,7 @@ func TestParseISOTimeNegativeOffset(t *testing.T) {
 // regression issue #43 found on the parse side.
 func TestFormatISOTimeNegativeOffset(t *testing.T) {
 	got := FormatISOTime(TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: -1800})
-	want := "01:02-00:30"
+	want := "01:02:00-00:30"
 	if got != want {
 		t.Errorf("FormatISOTime(...) = %q, want %q", got, want)
 	}

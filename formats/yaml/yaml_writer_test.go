@@ -108,8 +108,8 @@ func TestWriteYAMLTimeForcedToQuotedStringOnWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, `"12:00"`) {
-		t.Errorf("expected the time to be written quoted as \"12:00\", got %q", out)
+	if !strings.Contains(out, `"12:00:00"`) {
+		t.Errorf("expected the time to be written quoted as \"12:00:00\", got %q", out)
 	}
 	// Issue #49: the forced-to-string adjustment is now reported alongside
 	// the successful write (spec §8.5.3).
@@ -127,8 +127,8 @@ func TestWriteYAMLTimeForcedToQuotedStringOnWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, _ := back.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "12:00" {
-		t.Errorf("got %+v, want the string \"12:00\" (proving the quoting prevented sexagesimal misresolution)", v.Scalar)
+	if v.Scalar.Kind != omnist.KindString || v.Scalar.Str != "12:00:00" {
+		t.Errorf("got %+v, want the string \"12:00:00\" (proving the quoting prevented sexagesimal misresolution)", v.Scalar)
 	}
 }
 
@@ -138,10 +138,10 @@ func TestWriteYAMLTimeVariants(t *testing.T) {
 		t    omnist.TimeValue
 		want string
 	}{
-		{"hour-minute", omnist.TimeValue{Hour: 1, Minute: 2}, "01:02"},
+		{"hour-minute", omnist.TimeValue{Hour: 1, Minute: 2}, "01:02:00"},
 		{"with-seconds", omnist.TimeValue{Hour: 1, Minute: 2, Second: 3}, "01:02:03"},
 		{"with-fraction", omnist.TimeValue{Hour: 1, Minute: 2, Second: 3, Nanosecond: 500000000}, "01:02:03.5"},
-		{"with-offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: 3600}, "01:02+01:00"},
+		{"with-offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: 3600}, "01:02:00+01:00"},
 	}
 	for _, c := range cases {
 		d := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(c.t))))
