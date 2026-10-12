@@ -53,7 +53,7 @@ func TestWriteJSONTemporalStringified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteJSON failed: %v", err)
 	}
-	want := `{"d": "2024-01-02", "t": "10:30", "dt": "2024-01-02T10:30:05.25"}`
+	want := `{"d": "2024-01-02", "t": "10:30:00", "dt": "2024-01-02T10:30:05.25"}`
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -103,11 +103,11 @@ func TestWriteJSONTimeVariants(t *testing.T) {
 		tv   omnist.TimeValue
 		want string
 	}{
-		{"no seconds", omnist.TimeValue{Hour: 1, Minute: 2}, "01:02"},
+		{"no seconds", omnist.TimeValue{Hour: 1, Minute: 2}, "01:02:00"},
 		{"with seconds", omnist.TimeValue{Hour: 1, Minute: 2, Second: 3}, "01:02:03"},
 		{"with fraction", omnist.TimeValue{Hour: 1, Minute: 2, Second: 3, Nanosecond: 400000000}, "01:02:03.4"},
-		{"with positive offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: 3600}, "01:02+01:00"},
-		{"with negative offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: -1800}, "01:02-00:30"},
+		{"with positive offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: 3600}, "01:02:00+01:00"},
+		{"with negative offset", omnist.TimeValue{Hour: 1, Minute: 2, HasOffset: true, OffsetSeconds: -1800}, "01:02:00-00:30"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -93,8 +93,8 @@ func TestFormatXMLTimeKeepsZeroSeconds(t *testing.T) {
 		{omnist.TimeValue{Hour: 12, HasOffset: true, OffsetSeconds: 3600}, "12:00:00+01:00"},
 		{omnist.TimeValue{Hour: 1, Nanosecond: 500_000_000}, "01:00:00.5"},
 	} {
-		if got := formatXMLTime(tc.in); got != tc.want {
-			t.Errorf("formatXMLTime(%+v) = %q, want %q", tc.in, got, tc.want)
+		if got := omnist.FormatISOTime(tc.in); got != tc.want {
+			t.Errorf("FormatISOTime(%+v) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

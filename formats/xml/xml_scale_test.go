@@ -51,3 +51,21 @@ func BenchmarkReadFlatElements(b *testing.B) {
 		}
 	}
 }
+
+// The character pre-scan (C-16) is one linear pass even when openers are never
+// closed: each of these used to rescan to the end of the input per match.
+func TestCharacterScanScalesLinearly(t *testing.T) {
+	const n = 40000
+	for name, src := range map[string]string{
+		"unterminated comment then PIs": "<r><!--" + strings.Repeat("<?&#65;", n) + "</r>",
+		"unterminated openers repeated": strings.Repeat("<!--&#xD800;<?&#<![CDATA[", n),
+		"unterminated CDATA then refs":  "<r><![CDATA[" + strings.Repeat("&#65;<?", n) + "</r>",
+		"many valid references":         "<r>" + strings.Repeat("&#65;", n*4) + "</r>",
+	} {
+		start := time.Now()
+		_, _, _ = Read(src, omnist.DefaultLimits())
+		if d := time.Since(start); d > scaleBound {
+			t.Errorf("%s: took %v, want under %v (quadratic pre-scan)", name, d, scaleBound)
+		}
+	}
+}

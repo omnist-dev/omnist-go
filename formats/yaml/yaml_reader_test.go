@@ -337,7 +337,7 @@ func TestYAMLIntegerLiteralForms(t *testing.T) {
 	}{
 		{"0", 0}, {"1", 1}, {"-1", -1},
 		{"0x10", 16},
-		{"0o17", 15}, {"017", 15},
+		{"017", 15},
 		{"0b101", 5},
 		{"1_000", 1000},
 	}
@@ -374,7 +374,7 @@ func TestYAMLFloatLiteralForms(t *testing.T) {
 		text string
 		want float64
 	}{
-		{"1.5", 1.5}, {"-1.5", -1.5}, {"1.5e3", 1500}, {"1_0.5_0", 10.5},
+		{"1.5", 1.5}, {"-1.5", -1.5}, {"1.5e+3", 1500}, {"1_0.5_0", 10.5},
 	}
 	for _, c := range cases {
 		d, err := Read("v: "+c.text+"\n", omnist.DefaultLimits())
@@ -440,7 +440,7 @@ func TestYAMLDateTimeVariants(t *testing.T) {
 // fallback rather than silently clamping to +Inf.
 func TestYAMLFloatOverflowReadsAsInfinity(t *testing.T) {
 	// D-29: a float literal beyond binary64 reads as an infinity, not a string.
-	d, err := Read("v: 1e400\n", omnist.DefaultLimits())
+	d, err := Read("v: 1.0e+400\n", omnist.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -96,7 +96,23 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return string(out), diags, nil
+	return lowerEscapeHex(string(out)), diags, nil
+}
+
+// escapeHexRe matches one backslash sequence of a double-quoted scalar: an
+// escaped backslash (consumed as a pair so a literal backslash followed by
+// "x1F" is not mistaken for an escape), or a \x, \u or \U hexadecimal escape.
+var escapeHexRe = regexp.MustCompile(`\\(?:\\|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)`)
+
+// lowerEscapeHex lowercases the hexadecimal digits of every \xXX, \uXXXX and
+// \UXXXXXXXX escape yaml.v3 emits in uppercase (spec C-14).
+func lowerEscapeHex(s string) string {
+	return escapeHexRe.ReplaceAllStringFunc(s, func(m string) string {
+		if len(m) > 2 {
+			return m[:2] + strings.ToLower(m[2:])
+		}
+		return m
+	})
 }
 
 // yamlGroup mirrors jsonGroup (json_writer.go): one label's worth of
@@ -153,7 +169,7 @@ func buildYAMLNode(n *omnist.Node, path string, diags *[]omnist.Diagnostic) *yam
 		// leaves the path of that report open, and a path cannot quote it.
 		reportNEL(g.label, path, diags)
 		m.Content = append(m.Content, yamlLabelNode(g.label))
-		childPath := path + "." + g.label
+		childPath := path + omnist.PathLabelSegment(g.label)
 		if len(g.children) == 1 {
 			m.Content = append(m.Content, buildYAMLTarget(g.children[0], childPath, diags))
 			continue
@@ -268,7 +284,7 @@ func buildYAMLScalar(s omnist.Scalar, path string, diags *[]omnist.Diagnostic) *
 		})
 		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!str", Style: yamllib.DoubleQuotedStyle, Value: omnist.FormatISOTime(s.Time)}
 	default: // omnist.KindDateTime
-		return &yamllib.Node{Kind: yamllib.ScalarNode, Tag: "!!timestamp", Value: omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)}
+		return &yamllib.Node{Kind: yamllib.ScalarNode, Value: omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)}
 	}
 }
 

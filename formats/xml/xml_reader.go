@@ -137,13 +137,19 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 			Message: "XML: unexpected end of input",
 		}
 	}
+	pos := textpos.NewIndex(src)
+	named, scanErr := scanXMLCharacters(src, pos)
+	if scanErr != nil {
+		return omnist.Document{}, nil, scanErr
+	}
 	dec := encxml.NewDecoder(strings.NewReader(src))
-	sentinel := entitySentinel(src)
+	dec.CharsetReader = anyCharset
+	sentinel := entitySentinel(src, named)
 	dec.Entity = entityMap(src, sentinel)
 	r := &xmlReader{
 		dec:      dec,
 		src:      src,
-		pos:      textpos.NewIndex(src),
+		pos:      pos,
 		checker:  omnist.NewLimitChecker(limits),
 		schema:   schema,
 		sentinel: sentinel,
@@ -170,19 +176,24 @@ func ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits) (om
 	root := omnist.NewNode()
 	diags := r.finishDiags()
 	if isLeaf {
+		sc := omnist.NewStringScalar(leafText)
 		if r.schema != nil {
 			if rootRec := r.schema.Env[r.schema.Root]; rootRec != nil {
 				if f := findField(rootRec, label); f != nil && f.Type.Kind == omnist.TypeScalarKind {
-					if sc, ok := pretypeScalar(leafText, f.Type.ScalarKind); ok {
-						root.AddValue(label, omnist.ScalarValue(sc))
-						return omnist.NodeDocument(root), diags, nil
+					if typed, ok := r.pretype(leafText, f.Type.ScalarKind, &elemInfo{label: label}); ok {
+						sc = typed
 					}
 				}
 			}
 		}
-		root.AddValue(label, omnist.ScalarValue(omnist.NewStringScalar(leafText)))
+		root.AddValue(label, omnist.ScalarValue(sc))
 	} else {
 		root.AddNode(label, node)
+	}
+	// E-4a: an integer leaf over the digit limit is refused at the leaf's
+	// Document path, indexed per E-10 now that every sibling is known.
+	if r.digitAt != nil {
+		return omnist.Document{}, nil, &omnist.ParseError{Path: r.digitAt.path(), Code: r.digitDiag.Code, Message: r.digitDiag.Message}
 	}
 	return omnist.NodeDocument(root), diags, nil
 }
@@ -204,6 +215,10 @@ type xmlReader struct {
 	profile *omnist.ParseError
 	// sentinel is the rune every non-predefined entity reference expands to.
 	sentinel rune
+	// digitAt and digitDiag hold the first schema-typed integer leaf over the
+	// digit limit (E-4a), reported once the whole document has been read.
+	digitAt   *elemInfo
+	digitDiag *omnist.Diagnostic
 }
 
 // entityRef matches a named entity reference. Numeric character references
@@ -222,9 +237,9 @@ func predefinedEntity(name string) bool {
 
 // entitySentinel returns a private-use rune that does not occur in src, so any
 // occurrence of it in decoded text can only be the expansion of an entity.
-func entitySentinel(src string) rune {
+func entitySentinel(src string, named map[rune]bool) rune {
 	r := rune(0xE000)
-	for strings.ContainsRune(src, r) {
+	for strings.ContainsRune(src, r) || named[r] {
 		r++
 	}
 	return r
@@ -434,13 +449,14 @@ func (r *xmlReader) readElementBody(currentRec *omnist.Record, info *elemInfo) (
 			if f != nil && f.Type.Kind == omnist.TypeRefKind && r.schema != nil {
 				childRec = r.schema.Env[f.Type.RefName]
 			}
-			childNode, childIsLeaf, childText, err := r.readChild(childRec, t, info.child(label))
+			childInfo := info.child(label)
+			childNode, childIsLeaf, childText, err := r.readChild(childRec, t, childInfo)
 			if err != nil {
 				return nil, false, "", err
 			}
 			if childIsLeaf {
 				if f != nil && f.Type.Kind == omnist.TypeScalarKind {
-					if sc, ok := pretypeScalar(childText, f.Type.ScalarKind); ok {
+					if sc, ok := r.pretype(childText, f.Type.ScalarKind, childInfo); ok {
 						children.AddValue(label, omnist.ScalarValue(sc))
 						continue
 					}
@@ -489,7 +505,7 @@ func (e *elemInfo) child(label string) *elemInfo {
 // occurs more than once in its node carries its occurrence index, the first
 // included. It is only meaningful once e's parent has been read completely.
 func (e *elemInfo) path() string {
-	seg := "." + e.label
+	seg := omnist.PathLabelSegment(e.label)
 	if e.parent != nil && e.parent.counts[e.label] > 1 {
 		seg += "[" + strconv.Itoa(e.occ) + "]"
 	}
@@ -552,6 +568,42 @@ func findField(rec *omnist.Record, label string) *omnist.Field {
 		}
 	}
 	return nil
+}
+
+// integerDigits is the number of digits in the value of text when it is an
+// integer literal (an optional sign and decimal digits), else 0: leading zeros
+// do not count (D-28).
+func integerDigits(text string) int {
+	digits := strings.TrimLeft(text, "+-")
+	if len(text)-len(digits) > 1 || digits == "" {
+		return 0
+	}
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
+			return 0
+		}
+	}
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		return 1
+	}
+	return len(digits)
+}
+
+// pretype is pretypeScalar for the leaf at, which first applies D-9's integer
+// digit limit (E-4a): a schema-typed integer leaf with too many digits is
+// recorded to be refused, the first in document order, and left a string
+// meanwhile.
+func (r *xmlReader) pretype(text string, kind omnist.ScalarKind, at *elemInfo) (omnist.Scalar, bool) {
+	if kind == omnist.KindInteger {
+		if diag := r.checker.CheckIntDigits("", integerDigits(text)); diag != nil {
+			if r.digitAt == nil {
+				r.digitAt, r.digitDiag = at, diag
+			}
+			return omnist.Scalar{}, false
+		}
+	}
+	return pretypeScalar(text, kind)
 }
 
 func pretypeScalar(text string, kind omnist.ScalarKind) (omnist.Scalar, bool) {

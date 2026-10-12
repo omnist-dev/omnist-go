@@ -251,7 +251,7 @@ func (f *xmlFrame) edgePath(j int) string {
 		}
 	}
 	label := f.node.Edges[j].Label
-	seg := "." + label
+	seg := omnist.PathLabelSegment(label)
 	if f.counts[label] > 1 {
 		seg += "[" + strconv.Itoa(f.occ[j]) + "]"
 	}
@@ -363,22 +363,10 @@ func writeXMLScalarText(s omnist.Scalar) string {
 	case omnist.KindDate:
 		return omnist.FormatISODate(s.Date)
 	case omnist.KindTime:
-		return formatXMLTime(s.Time)
+		return omnist.FormatISOTime(s.Time)
 	default: // omnist.KindDateTime
-		return omnist.FormatISODate(s.DateTime.Date) + "T" + formatXMLTime(s.DateTime.Time)
+		return omnist.FormatISODate(s.DateTime.Date) + "T" + omnist.FormatISOTime(s.DateTime.Time)
 	}
-}
-
-// formatXMLTime is omnist.FormatISOTime with the seconds always written:
-// 12:00:00 stays 12:00:00 in XML, where the shared formatter would shorten it
-// to 12:00 (DIV-31). The leaf is stringified either way; this keeps the text
-// the Document's own value spells out.
-func formatXMLTime(t omnist.TimeValue) string {
-	s := omnist.FormatISOTime(t)
-	if t.Second == 0 && t.Nanosecond == 0 {
-		return s[:5] + ":00" + s[5:]
-	}
-	return s
 }
 
 // writeXMLNumberText renders a omnist.KindNumber leaf as text. Unlike
@@ -460,7 +448,7 @@ func addXMLSegment(err error, node *omnist.Node, i int) error {
 	if !ok {
 		f = &xmlFailure{diag: err.(omnist.Diagnostic)}
 	}
-	seg := "." + node.Edges[i].Label
+	seg := omnist.PathLabelSegment(node.Edges[i].Label)
 	if occ, repeated := omnist.PathIndexInNode(node, i); repeated {
 		seg += "[" + strconv.Itoa(occ) + "]"
 	}

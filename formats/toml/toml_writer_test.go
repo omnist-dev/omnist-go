@@ -310,23 +310,21 @@ func TestWriteTOMLNaNInfinityNativeSpellings(t *testing.T) {
 	}
 }
 
-// --- omnist.KindTime with an (unusual) offset set: dropped, not malformed ---
+// --- a time with an offset has no TOML literal: stringified (E-37 rule 4) ---
 
-func TestWriteTOMLBareTimeWithOffsetDropsOffset(t *testing.T) {
+func TestWriteTOMLTimeWithOffsetIsStringified(t *testing.T) {
 	d := omnist.NodeDocument(omnist.NewNode().AddValue("t", omnist.ScalarValue(omnist.NewTimeScalar(omnist.TimeValue{
 		Hour: 12, Minute: 0, Second: 0, HasOffset: true, OffsetSeconds: 3600,
 	}))))
-	out, _, err := Write(d)
+	out, diags, err := Write(d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, err := Read(out, omnist.DefaultLimits())
-	if err != nil {
-		t.Fatalf("round-trip parse failed on %q: %v", out, err)
+	if want := "\"t\" = \"12:00:00+01:00\"\n"; out != want {
+		t.Errorf("out = %q, want %q", out, want)
 	}
-	v, _ := back.Node.Edges[0].Target.Value()
-	if v.Scalar.Kind != omnist.KindTime || v.Scalar.Time.HasOffset {
-		t.Errorf("got %+v, want a bare local time with no offset", v)
+	if len(diags) != 1 || diags[0].Code != omnist.CodeFormatTemporalStringified || diags[0].Path != "$.t" || diags[0].Severity != omnist.SeverityWarning {
+		t.Errorf("diags = %+v, want one format.temporal-stringified warning at $.t", diags)
 	}
 }
 

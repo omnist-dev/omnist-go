@@ -577,12 +577,16 @@ var (
 	// one or more digits, then one or more ":"-separated groups of 1-2
 	// digits. "12:00:00" is the spec's own named example (three groups:
 	// 12, 0, 0 -> 12*3600 + 0*60 + 0 = 43200).
-	reYAMLSexagesimal = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+$`)
+	reYAMLSexagesimal = regexp.MustCompile(`^[-+]?[1-9][0-9_]*(:[0-5]?[0-9])+$`)
+
+	// reYAMLSexagesimalFloat matches a base-60 float (1:30.5 is 90.5), as
+	// PyYAML's SafeLoader resolves it (C-17).
+	reYAMLSexagesimalFloat = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+\.[0-9_]*$`)
 
 	// reYAMLInt matches YAML 1.1's plain decimal/octal/hex/binary int
 	// forms (http://yaml.org/type/int.html), underscores allowed as
 	// digit-group separators.
-	reYAMLInt = regexp.MustCompile(`^[-+]?(0b[0-1_]+|0x[0-9a-fA-F_]+|0o?[0-7_]+|0|[1-9][0-9_]*)$`)
+	reYAMLInt = regexp.MustCompile(`^[-+]?(0b[0-1_]+|0x[0-9a-fA-F_]+|0[0-7_]+|0|[1-9][0-9_]*)$`)
 
 	// reYAMLFloat matches YAML 1.1's canonical plain float form
 	// (http://yaml.org/type/float.html): optional sign, digits with a
@@ -596,7 +600,7 @@ var (
 	// fall through to reYAMLSexagesimal's non-match and then to the
 	// plain-string fallback below, rather than becoming a omnist.KindNumber),
 	// noted in the issue report rather than treated as load-bearing.
-	reYAMLFloat = regexp.MustCompile(`^[-+]?(\.[0-9_]+|[0-9_]+(\.[0-9_]*)?)([eE][-+]?[0-9]+)?$`)
+	reYAMLFloat = regexp.MustCompile(`^([-+]?[0-9][0-9_]*\.[0-9_]*|\.[0-9][0-9_]*)([eE][-+][0-9]+)?$`)
 
 	// reYAMLDate matches a bare calendar date (docs/formats/yaml.md's
 	// own worked example: "placed: 2024-01-01").
@@ -654,7 +658,10 @@ func resolveYAMLScalar(n *yamllib.Node) omnist.Value {
 	case ".nan", ".NaN", ".NAN":
 		return omnist.ScalarValue(omnist.NewNumberScalar(math.NaN()))
 	}
-	if reYAMLFloat.MatchString(s) && strings.ContainsAny(s, ".eE") {
+	if reYAMLSexagesimalFloat.MatchString(s) {
+		return omnist.ScalarValue(omnist.NewNumberScalar(parseSexagesimalFloat(s)))
+	}
+	if reYAMLFloat.MatchString(s) {
 		// D-29: a literal beyond binary64's range (1.0e+999) is a number, read
 		// as +/-Infinity (ParseFloat reports ErrRange and returns the
 		// infinity); an underflow reads as 0.
@@ -670,6 +677,23 @@ func resolveYAMLScalar(n *yamllib.Node) omnist.Value {
 		return omnist.ScalarValue(omnist.NewDateScalar(omnist.ParseISODate(s)))
 	}
 	return omnist.ScalarValue(omnist.NewStringScalar(s))
+}
+
+// parseSexagesimalFloat computes the value of a base-60 float literal already
+// confirmed to match reYAMLSexagesimalFloat: the groups before the last are
+// whole sexagesimal digits and the last carries the fraction.
+func parseSexagesimalFloat(s string) float64 {
+	neg := s[0] == '-'
+	s = strings.TrimLeft(s, "+-")
+	result := 0.0
+	for _, g := range strings.Split(s, ":") {
+		part, _ := strconv.ParseFloat(strings.ReplaceAll(g, "_", ""), 64)
+		result = result*60 + part
+	}
+	if neg {
+		result = -result
+	}
+	return result
 }
 
 // parseSexagesimalInt computes the big.Int value of a YAML base-60
