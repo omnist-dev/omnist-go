@@ -203,6 +203,49 @@ type tomlReader struct {
 	// resolved from this stack (nodePath).
 	inline []inlineFrame
 	edges  map[*omnist.Node]*edgeIndex // label lookup per navigated node, see lastEdge
+	// kinds records how each table was defined, so a conflicting redefinition
+	// is rejected (TOML 1.0, C-12). A node absent from it is a dotted-key or
+	// otherwise unconstrained table.
+	kinds map[*omnist.Node]tomlTableKind
+}
+
+// tomlTableKind says how a table came to exist.
+type tomlTableKind uint8
+
+const (
+	// kindImplicit: created on the way to a deeper [header]; a later [header]
+	// for it is allowed once.
+	kindImplicit tomlTableKind = iota + 1
+	// kindHeader: defined by a [header]; it cannot be defined again, nor
+	// extended by a dotted key from outside.
+	kindHeader
+	// kindDotted: created by a dotted key; a [header] for it is not allowed.
+	kindDotted
+	// kindInline: an inline table; it is closed, nothing may extend it.
+	kindInline
+	// kindArrayTable: an element of an [[array of tables]].
+	kindArrayTable
+)
+
+// navMode is how navigateOrCreate treats an existing table.
+type navMode uint8
+
+const (
+	navHeaderMid   navMode = iota // a non-final segment of a [header]
+	navHeaderFinal                // the final segment of a [header]
+	navDotted                     // a segment of a dotted key
+)
+
+func (r *tomlReader) setKind(n *omnist.Node, k tomlTableKind) {
+	if r.kinds == nil {
+		r.kinds = make(map[*omnist.Node]tomlTableKind)
+	}
+	r.kinds[n] = k
+}
+
+// conflict is the C-12 rejection of a definition TOML 1.0 forbids.
+func (r *tomlReader) conflict(raw unstable.Range, label string) *omnist.ParseError {
+	return r.errAtRaw(raw, omnist.CodeParseCodecSyntax, "TOML: "+strconv.Quote(label)+" is already defined and cannot be defined again")
 }
 
 // newChildNode allocates a new *omnist.Node at depth childDepth (the parent's own
@@ -240,11 +283,20 @@ func (r *tomlReader) readTopLevel(expr *unstable.Node) error {
 		if err != nil {
 			return err
 		}
+		// An [[array of tables]] header continues an array of tables only: a
+		// table, an inline table or a value with that label is a conflict.
+		if i, ok := r.lastEdge(parent, label); ok {
+			prev, isNode := parent.Edges[i].Target.Node()
+			if !isNode || r.kinds[prev] != kindArrayTable {
+				return r.conflict(expr.Raw, label)
+			}
+		}
 		child, err := r.newChildNode(depth + 1)
 		if err != nil {
 			return err
 		}
 		parent.AddNode(label, child)
+		r.setKind(child, kindArrayTable)
 		r.current, r.currentDepth = child, depth+1
 		return nil
 	default: // unstable.KeyValue
@@ -266,7 +318,7 @@ func (r *tomlReader) readTopLevel(expr *unstable.Node) error {
 // this stops one segment short of resolveParentPathFrom, its
 // arbitrary-starting-point counterpart used for a KeyValue's dotted key.
 func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*omnist.Node, int, string, error) {
-	return r.resolveParentPathFrom(r.root, 1, keys)
+	return r.resolveParentPathFrom(r.root, 1, keys, navHeaderMid)
 }
 
 // resolvePath walks every segment of a Table header's dotted key,
@@ -283,13 +335,19 @@ func (r *tomlReader) resolveParentPath(keys unstable.Iterator) (*omnist.Node, in
 // point docs/formats/toml.md itself contrasts Table and ArrayTable on.
 func (r *tomlReader) resolvePath(start *omnist.Node, startDepth int, keys unstable.Iterator) (*omnist.Node, int, error) {
 	var segs []string
+	var raws []unstable.Range
 	for keys.Next() {
 		segs = append(segs, string(keys.Node().Data))
+		raws = append(raws, keys.Node().Raw)
 	}
 	node, depth := start, startDepth
-	for _, seg := range segs {
+	for i, seg := range segs {
 		var err error
-		node, depth, err = r.navigateOrCreate(node, depth, seg)
+		mode := navHeaderMid
+		if i == len(segs)-1 {
+			mode = navHeaderFinal
+		}
+		node, depth, err = r.navigateOrCreate(node, depth, seg, mode, raws[i])
 		if err != nil {
 			return nil, 0, err
 		}
@@ -317,17 +375,47 @@ func (r *tomlReader) resolvePath(start *omnist.Node, startDepth int, keys unstab
 // a narrow, cosmetic gap (malformed input of exactly this shape produces
 // a omnist.Document that merges the redefinitions rather than an error), noted
 // here rather than treated as load-bearing.
-func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string) (*omnist.Node, int, error) {
+func (r *tomlReader) navigateOrCreate(node *omnist.Node, depth int, seg string, mode navMode, raw unstable.Range) (*omnist.Node, int, error) {
 	if i, ok := r.lastEdge(node, seg); ok {
-		if child, ok := node.Edges[i].Target.Node(); ok {
-			return child, depth + 1, nil
+		child, isNode := node.Edges[i].Target.Node()
+		if !isNode {
+			// a key holding a value (or a static array) cannot also be a table
+			return nil, 0, r.conflict(raw, seg)
 		}
+		kind := r.kinds[child]
+		switch mode {
+		case navHeaderFinal:
+			// [a] after [a], after a dotted key defining a, after an inline
+			// table or after [[a]] redefines a; only a table made implicitly
+			// by a deeper header may be defined once.
+			if kind != kindImplicit {
+				return nil, 0, r.conflict(raw, seg)
+			}
+			r.setKind(child, kindHeader)
+		case navHeaderMid:
+			if kind == kindInline {
+				return nil, 0, r.conflict(raw, seg)
+			}
+		default: // navDotted
+			if kind == kindInline || kind == kindHeader || kind == kindArrayTable {
+				return nil, 0, r.conflict(raw, seg)
+			}
+		}
+		return child, depth + 1, nil
 	}
 	child, err := r.newChildNode(depth + 1)
 	if err != nil {
 		return nil, 0, err
 	}
 	node.AddNode(seg, child)
+	switch mode {
+	case navHeaderFinal:
+		r.setKind(child, kindHeader)
+	case navHeaderMid:
+		r.setKind(child, kindImplicit)
+	default:
+		r.setKind(child, kindDotted)
+	}
 	return child, depth + 1, nil
 }
 
@@ -364,7 +452,7 @@ func (r *tomlReader) lastEdge(node *omnist.Node, label string) (int, bool) {
 // target itself sits at (targetDepth), per the dotted-key resolution
 // navigateOrCreate implements.
 func (r *tomlReader) readKeyValue(target *omnist.Node, targetDepth int, kv *unstable.Node) error {
-	parent, depth, label, err := r.resolveParentPathFrom(target, targetDepth, kv.Key())
+	parent, depth, label, err := r.resolveParentPathFrom(target, targetDepth, kv.Key(), navDotted)
 	if err != nil {
 		return err
 	}
@@ -378,15 +466,17 @@ func (r *tomlReader) readKeyValue(target *omnist.Node, targetDepth int, kv *unst
 // root-relative per TOML's own grammar), while a KeyValue's dotted key
 // (whether top-level or inside an inline table) is relative to whatever
 // table it appears in.
-func (r *tomlReader) resolveParentPathFrom(target *omnist.Node, targetDepth int, keys unstable.Iterator) (*omnist.Node, int, string, error) {
+func (r *tomlReader) resolveParentPathFrom(target *omnist.Node, targetDepth int, keys unstable.Iterator, mode navMode) (*omnist.Node, int, string, error) {
 	var segs []string
+	var raws []unstable.Range
 	for keys.Next() {
 		segs = append(segs, string(keys.Node().Data))
+		raws = append(raws, keys.Node().Raw)
 	}
 	node, depth := target, targetDepth
 	for i := 0; i < len(segs)-1; i++ {
 		var err error
-		node, depth, err = r.navigateOrCreate(node, depth, segs[i])
+		node, depth, err = r.navigateOrCreate(node, depth, segs[i], mode, raws[i])
 		if err != nil {
 			return nil, 0, "", err
 		}
@@ -483,6 +573,7 @@ func (r *tomlReader) buildInlineTable(parentDepth int, tbl *unstable.Node, site 
 	if err != nil {
 		return nil, err
 	}
+	r.setKind(child, kindInline)
 	r.inline = append(r.inline, inlineFrame{node: child, site: site})
 	defer func() { r.inline = r.inline[:len(r.inline)-1] }()
 	it := tbl.Children()

@@ -413,30 +413,13 @@ func TestTOMLQuotedKey(t *testing.T) {
 	}
 }
 
-// TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar exercises
-// navigateOrCreate's "existing edge with a matching label but a scalar
-// (non-node) target" path: this reader does not independently enforce
-// TOML's own "cannot redefine an already-defined key" validity rule (see
-// navigateOrCreate's doc comment) — a dotted key that collides with an
-// earlier plain key of the same label falls through to allocating a
-// fresh node rather than reusing the scalar edge (which it structurally
-// cannot reuse: a scalar has no edges to extend). This is exactly the
-// narrow, documented gap, not a crash or silent data loss.
+// TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar: a dotted key through a
+// key that holds a value redefines it, which TOML 1.0 forbids (C-12).
 func TestTOMLDottedKeyOverALabelAlreadyUsedForAScalar(t *testing.T) {
-	d, err := Read("a = 1\na.b = 2\n", omnist.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(d.Node.Edges) != 2 {
-		t.Fatalf("expected 2 edges labeled a, got %+v", d.Node.Edges)
-	}
-	v, ok := d.Node.Edges[0].Target.Value()
-	if !ok || v.Scalar.Kind != omnist.KindInteger {
-		t.Errorf("first a edge = %+v, want the original scalar", d.Node.Edges[0])
-	}
-	child, ok := d.Node.Edges[1].Target.Node()
-	if !ok || len(child.Edges) != 1 || child.Edges[0].Label != "b" {
-		t.Errorf("second a edge = %+v, want a fresh node holding b", d.Node.Edges[1])
+	_, err := Read("a = 1\na.b = 2\n", omnist.DefaultLimits())
+	pe, ok := err.(*omnist.ParseError)
+	if !ok || pe.Code != omnist.CodeParseCodecSyntax {
+		t.Fatalf("err = %v, want parse.codec-syntax", err)
 	}
 }
 

@@ -142,14 +142,14 @@ func TestDirectivesOutsideTheProlog(t *testing.T) {
 // characters the document really contains.
 func TestEntitySentinelAvoidsCharactersInTheSource(t *testing.T) {
 	src := "<d></d>"
-	if r := entitySentinel(src); r != 0xE002 {
+	if r := entitySentinel(src, nil); r != 0xE002 {
 		t.Errorf("sentinel = %U, want U+E002", r)
 	}
 	if _, _, err := Read(src, omnist.DefaultLimits()); err != nil {
 		t.Errorf("private-use characters in the source are ordinary text: %v", err)
 	}
 	wantRefusal(t, "<d>&nbsp;</d>", omnist.CodeFormatEntityForbidden)
-	if entitySentinel("plain") != 0xE000 {
+	if entitySentinel("plain", nil) != 0xE000 {
 		t.Error("the first free private-use rune should be chosen")
 	}
 }
