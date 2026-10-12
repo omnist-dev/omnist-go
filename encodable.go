@@ -80,7 +80,7 @@ func locateUnencodable(n *Node, path string) (string, bool, bool) {
 		if !utf8.ValidString(e.Label) {
 			return path, true, true
 		}
-		child := path + "." + e.Label
+		child := path + PathLabelSegment(e.Label)
 		if counts[e.Label] > 1 {
 			child += "[" + strconv.Itoa(seen[e.Label]) + "]"
 		}

@@ -1,6 +1,10 @@
 package omnist
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // pathSegment is one label step in a Document path, per spec §8.4.
 type pathSegment struct {
@@ -46,7 +50,7 @@ func (p Path) Child(label string, index int, repeated bool) Path {
 func (p Path) String() string {
 	out := "$"
 	for _, seg := range p.segments {
-		out += "." + seg.label
+		out += PathLabelSegment(seg.label)
 		if seg.hasIndex {
 			out += "[" + strconv.Itoa(seg.index) + "]"
 		}
@@ -78,4 +82,54 @@ func PathIndexInNode(node *Node, edgeIndex int) (occurrence int, repeated bool) 
 		count++
 	}
 	return occurrenceOfTarget, count > 1
+}
+
+// PathLabelSegment renders one label step of a Document path per spec E-36:
+// ".label" when the label is bare, else `["label"]` (no dot) with the escapes
+// \" \\ \n \r \t and lowercase four-digit \u for the other controls. A
+// label needs quoting when it is empty or holds . [ ] " \ , a control
+// character, U+007F, U+0085, U+2028 or U+2029. Every Document path in the
+// library is built through this one function.
+func PathLabelSegment(label string) string {
+	if !pathLabelNeedsQuoting(label) {
+		return "." + label
+	}
+	var b strings.Builder
+	b.WriteString(`["`)
+	for _, r := range label {
+		switch {
+		case r == '"':
+			b.WriteString(`\"`)
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\t':
+			b.WriteString(`\t`)
+		case pathControl(r):
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString(`"]`)
+	return b.String()
+}
+
+func pathControl(r rune) bool {
+	return r < 0x20 || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029
+}
+
+func pathLabelNeedsQuoting(label string) bool {
+	if label == "" {
+		return true
+	}
+	for _, r := range label {
+		if r == '.' || r == '[' || r == ']' || r == '"' || r == '\\' || pathControl(r) {
+			return true
+		}
+	}
+	return false
 }
