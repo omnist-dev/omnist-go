@@ -110,7 +110,6 @@ root Root
 		{"<r><n>" + long + "</n></r>", "$.r.n"},
 		{"<r><n>1</n><n>" + long + "</n><n>" + long + "7</n></r>", "$.r.n[1]"},
 		{"<r><n>-" + long + "</n></r>", "$.r.n"},
-		{"<r><n>+" + long + "</n></r>", "$.r.n"},
 		{"<m>" + long + "</m>", "$.m"},
 	}
 	for _, c := range cases {
@@ -124,7 +123,7 @@ root Root
 	// left to the ordinary fallback (a string).
 	for _, src := range []string{
 		"<r><n>00000" + "12345</n></r>", "<r><n>000000</n></r>", "<r><n>-0</n></r>",
-		"<r><n>" + long + "x</n></r>", "<r><n>+-1</n></r>", "<r><n>+</n></r>", "<r><s>" + long + "</s></r>",
+		"<r><n>" + long + "x</n></r>", "<r><n>+" + long + "</n></r>", "<r><n>+-1</n></r>", "<r><n>+</n></r>", "<r><s>" + long + "</s></r>",
 	} {
 		if _, _, err := ReadWithSchema(src, &schema, limits); err != nil {
 			t.Errorf("%.30q: %v", src, err)
