@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.13.0-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.13.1-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -222,6 +222,43 @@ former 100 MiB refusal did.
 A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all outstanding audit findings: a precision correctness fix for integer-to-number materialization (#70), a patch for CVE GO-2026-6088 via a Go toolchain pin (1.26.6) and scheduled CI `vulncheck` job (#73), strict CI gating for both conformance tracks (#74), two quadratic CPU-exhaustion DoS fixes across validation/materialization/subtyping path indexing (#71, #80) and OML/OSD zero-copy lexer scanning (#72), schema-aware XML pretyping per `omnist-spec#44` (#81), and design/hardening improvements including `Limits.Validate()` (#78), explicit acyclic validity contracts (#77), and CLI input size caps (#76).
 
 ## Versioning
+
+**`v0.13.1-alpha`**, a patch per `CONTRIBUTING.md` §1: bug fixes only, no new
+public API beyond two small helpers. It closes issue #140 and the cross-port
+checks of the bug wave. Same spec pin (v0.35.0-beta, `237ef00`); conformance is
+unchanged (Track 2 703 pass / 0 fail / 28 skip, Track 1 19/19). What changed:
+
+- **Breaking, CLI XML pretyping (E-4a, #140).** `omnist validate` and `omnist
+  materialize` read an XML input with `xml.ReadWithSchema`, so an integer leaf
+  whose value has more digits than the limit is refused at read time with
+  `document.limit.int-digits` at its Document path (`$.r.n`, `$.r.n[1]`), exactly
+  as the library does; before, the CLI used `xml.Read`, the leaf stayed a string
+  and the limit never applied. The schema is now read before the input, so when
+  both are bad the schema error is the one reported (the exit code is the same,
+  2). Non-XML input is unchanged. `parse` takes no `--schema`, so it
+  does not pretype.
+- **Breaking, YAML fractions.** A plain YAML timestamp with a fraction of more
+  than six digits was silently cut to six; it is now `parse.codec-syntax` at the
+  scalar (a quoted scalar is still a string). TOML already refused it; OML
+  refuses it with `parse.trailing-content`.
+- **Breaking, writers.** A time or datetime whose fraction is finer than a
+  microsecond (only a Document built in code can hold one) is no longer cut to
+  six digits. OML, YAML and TOML write it as a string holding the exact ISO-8601
+  text and report `format.temporal-stringified` at the leaf, so the output reads
+  back; JSON and XML, which always stringify, now keep every digit
+  (`omnist.FormatISOFraction` returns up to nine). New helpers
+  `omnist.SubMicrosecond` and `omnist.StringifySubMicrosecond`.
+- **OML quote runs.** The multiline-string scanner counted a whole run of `"`
+  with a quadratic step, repeated per token: 100,000 quotes ran for minutes. It
+  now looks no further than three. A scale test pins it.
+- **Checked, no change.** Offsets are never converted to UTC (YAML, TOML and OML
+  keep `+01:00`, `-08:00`, `+05:30`; `Z` reads as offset 0 and writes as
+  `+00:00`); a 1 to 8 MB XML attribute reads in under a second with the one
+  `format.attribute-dropped` report; a 1,000 to 100,000 deep XML document gives
+  `document.limit.depth` in milliseconds; `TestReadScalesLinearly` and the
+  unterminated-markup test still pass.
+
+### Previous: v0.13.0-alpha
 
 **`v0.13.0-alpha`**, a minor per `CONTRIBUTING.md` §1: new behaviour and new
 rejections. It adopts `omnist-spec` v0.35.0-beta (commit `237ef00`) from

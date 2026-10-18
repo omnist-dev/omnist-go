@@ -518,7 +518,9 @@ func (l *lexer) scanMultilineString() (token, *omnist.ParseError) {
 		r := l.peekRune()
 		if r == '"' {
 			run := 0
-			for l.peekRuneAt(run) == '"' {
+			// Only "three or more" matters, so look no further than three:
+			// counting the whole run made a long run of quotes quadratic.
+			for run < 3 && l.peekRuneAt(run) == '"' {
 				run++
 			}
 			if run >= 3 {

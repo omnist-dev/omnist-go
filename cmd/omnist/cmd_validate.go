@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/osd"
@@ -57,12 +58,18 @@ func cmdValidate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 
-	doc, readDiags, err := reader(text, limitsFor(*maxIn))
+	// The schema is read first so an XML input can be pretyped with it
+	// (spec E-4a: integer leaves are typed, and the digit limit applied,
+	// at read time, exactly as xml.ReadWithSchema does for library callers).
+	schema, err := osd.Read(schemaText)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist validate: %v\n", err)
 		return ExitProblem
 	}
-	schema, err := osd.Read(schemaText)
+	if strings.EqualFold(*from, "xml") {
+		reader = xmlReaderWithSchema(&schema)
+	}
+	doc, readDiags, err := reader(text, limitsFor(*maxIn))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist validate: %v\n", err)
 		return ExitProblem

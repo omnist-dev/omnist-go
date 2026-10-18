@@ -500,6 +500,14 @@ func (r *yamlReader) errAt(n *yamllib.Node, code omnist.Code, msg string) *omnis
 // literal (E-4a), never at a text position: at is where the literal sits,
 // resolved to a path only when a violation is reported.
 func (r *yamlReader) readScalar(n *yamllib.Node, at leafAt) (omnist.Value, error) {
+	// A timestamp whose fraction is longer than six digits cannot be held
+	// exactly (the Document model keeps microseconds), so it is refused rather
+	// than truncated.
+	if n.Style&(yamllib.SingleQuotedStyle|yamllib.DoubleQuotedStyle|yamllib.LiteralStyle|yamllib.FoldedStyle) == 0 {
+		if m := reYAMLDateTime.FindStringSubmatch(n.Value); m != nil && len(m[9]) > 6 {
+			return omnist.Value{}, r.errAt(n, omnist.CodeParseCodecSyntax, "YAML: timestamp fraction longer than six digits cannot be represented exactly")
+		}
+	}
 	v := resolveYAMLScalar(n)
 	if !v.IsNull && v.Scalar.Kind == omnist.KindInteger {
 		digits := len(strings.TrimPrefix(v.Scalar.Int.String(), "-"))

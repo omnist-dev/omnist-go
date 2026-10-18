@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	omnist "github.com/omnist-dev/omnist-go"
 	"github.com/omnist-dev/omnist-go/osd"
@@ -76,12 +77,17 @@ func cmdMaterialize(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		return ExitUsage
 	}
 
-	doc, readDiags, err := reader(text, limitsFor(*maxIn))
+	// Schema first: an XML input is pretyped with it (spec E-4a), as
+	// xml.ReadWithSchema does for library callers.
+	schema, err := osd.Read(schemaText)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem
 	}
-	schema, err := osd.Read(schemaText)
+	if strings.EqualFold(*from, "xml") {
+		reader = xmlReaderWithSchema(&schema)
+	}
+	doc, readDiags, err := reader(text, limitsFor(*maxIn))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "omnist materialize: %v\n", err)
 		return ExitProblem

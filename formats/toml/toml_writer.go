@@ -93,8 +93,10 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	if err := omnist.CheckEncodable(d); err != nil {
 		return "", nil, err
 	}
+	// A time with a fraction finer than six digits has no TOML spelling this
+	// reader accepts back: write it as its exact text, reported.
+	d, diags := omnist.StringifySubMicrosecond(d)
 	var b strings.Builder
-	var diags []omnist.Diagnostic
 	if err := writeTOMLTopLevel(&b, d.Node, &diags); err != nil {
 		return "", nil, err
 	}

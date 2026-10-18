@@ -58,6 +58,9 @@ func Write(d omnist.Document, compact bool) (string, []omnist.Diagnostic, error)
 	if err := omnist.CheckEncodable(d); err != nil {
 		return "", nil, err
 	}
+	// OML's fraction is 1*6DIGIT: a finer one is written as its exact text in a
+	// string, reported, rather than as a literal this reader rejects.
+	d, diags := omnist.StringifySubMicrosecond(d)
 	var b strings.Builder
 	if d.IsNode {
 		if compact {
@@ -74,10 +77,10 @@ func Write(d omnist.Document, compact bool) (string, []omnist.Diagnostic, error)
 				b.WriteByte('\n')
 			}
 		}
-		return b.String(), nil, nil
+		return b.String(), diags, nil
 	}
 	writeOMLValue(&b, d.Value)
-	return b.String(), nil, nil
+	return b.String(), diags, nil
 }
 
 // WriteCompact is a convenience wrapper for Write(d, true).
