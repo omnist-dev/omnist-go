@@ -675,10 +675,7 @@ func pretypeScalar(text string, kind omnist.ScalarKind) (omnist.Scalar, bool) {
 		if !isJSONInteger(text) {
 			return omnist.Scalar{}, false
 		}
-		bi, ok := new(big.Int).SetString(text, 10)
-		if !ok {
-			return omnist.Scalar{}, false
-		}
+		bi, _ := new(big.Int).SetString(text, 10) // text is canonical digits
 		return omnist.NewIntegerScalar(bi), true
 	case omnist.KindNumber:
 		if !isJSONNumber(text) {
