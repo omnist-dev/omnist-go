@@ -294,15 +294,11 @@ func FormatISOTime(t TimeValue) string {
 	return b.String()
 }
 
-// FormatISOFraction converts a Nanosecond field to the shortest 1-6 digit
-// fraction string that reproduces it. Nanosecond is always a product of
-// FracToNanos above, which right-pads to 9 digits, so it is always an
-// exact multiple of 1000, and trimming trailing zeros from its 6-digit
-// microsecond form can never trim down to nothing given the caller's
-// guard that Nanosecond != 0. Promoted here (issue #45) alongside
-// FormatISODate/FormatISOTime, for the same cross-codec reason.
+// FormatISOFraction converts a Nanosecond field to the shortest 1-9 digit
+// fraction string that reproduces it exactly. A value read from text holds at
+// most six digits, but a Document built in code may hold nine, and a writer
+// must not drop the rest (fail, don't invent); the caller's guard is
+// Nanosecond != 0, so trimming trailing zeros never trims to nothing.
 func FormatISOFraction(ns int) string {
-	micros := ns / 1000
-	s := fmt.Sprintf("%06d", micros)
-	return strings.TrimRight(s, "0")
+	return strings.TrimRight(fmt.Sprintf("%09d", ns), "0")
 }

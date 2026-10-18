@@ -81,8 +81,10 @@ func Write(d omnist.Document) (string, []omnist.Diagnostic, error) {
 	if err := omnist.CheckEncodable(d); err != nil {
 		return "", nil, err
 	}
+	// A time with a fraction finer than six digits has no YAML spelling this
+	// reader accepts back: write it as its exact text, reported.
+	d, diags := omnist.StringifySubMicrosecond(d)
 	var root *yamllib.Node
-	var diags []omnist.Diagnostic
 	if d.IsNode {
 		root = buildYAMLNode(d.Node, "$", &diags)
 	} else {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -62,6 +63,23 @@ var formatWriters = map[string]formatWriterFunc{
 	"oml": func(d omnist.Document) (string, []omnist.Diagnostic, error) {
 		return oml.Write(d, false)
 	},
+}
+
+// xmlReaderWithSchema returns the XML reader pretyped with schema, so the
+// CLI applies integer pretyping and the D-9 digit limit exactly as the
+// library's xml.ReadWithSchema does.
+func xmlReaderWithSchema(schema *omnist.Schema) formatReaderFunc {
+	return func(text string, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
+		doc, diags, err := xml.ReadWithSchema(text, schema, limits)
+		// A pretyping refusal carries a Document path (e.g. $.r.n) and no
+		// text position; ParseError.Error() would print it as "0:0", so
+		// report it as the path-first diagnostic it is.
+		var pe *omnist.ParseError
+		if errors.As(err, &pe) && pe.Line == 0 && pe.Path != "" {
+			err = omnist.Diagnostic{Path: pe.Path, Code: pe.Code, Message: pe.Message}
+		}
+		return doc, diags, err
+	}
 }
 
 // knownFormatNames returns the five supported format names, sorted, for

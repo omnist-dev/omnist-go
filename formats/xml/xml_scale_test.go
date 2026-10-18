@@ -69,3 +69,32 @@ func TestCharacterScanScalesLinearly(t *testing.T) {
 		}
 	}
 }
+
+// Hostile inputs give a coded result in linear time, never a crash: an
+// attribute value of 1 to 8 MB (read and reported as dropped, D-3) and a
+// document nested 1,000 to 100,000 deep (document.limit.depth).
+func TestHostileXMLScalesLinearly(t *testing.T) {
+	for _, mb := range []int{1, 2, 4, 8} {
+		src := `<a x="` + strings.Repeat("v", mb<<20) + `"><b>1</b></a>`
+		start := time.Now()
+		_, diags, err := Read(src, omnist.DefaultLimits())
+		if err != nil || len(diags) != 1 || diags[0].Code != omnist.CodeFormatAttributeDropped {
+			t.Errorf("%d MB attribute: err %v diags %+v", mb, err, diags)
+		}
+		if d := time.Since(start); d > scaleBound {
+			t.Errorf("%d MB attribute took %v, want under %v", mb, d, scaleBound)
+		}
+	}
+	for _, depth := range []int{1000, 10000, 100000} {
+		src := strings.Repeat("<a>", depth) + "x" + strings.Repeat("</a>", depth)
+		start := time.Now()
+		_, _, err := Read(src, omnist.DefaultLimits())
+		pe, ok := err.(*omnist.ParseError)
+		if !ok || pe.Code != omnist.CodeDocumentLimitDepth {
+			t.Errorf("depth %d: err = %v, want document.limit.depth", depth, err)
+		}
+		if d := time.Since(start); d > scaleBound {
+			t.Errorf("depth %d took %v, want under %v", depth, d, scaleBound)
+		}
+	}
+}
