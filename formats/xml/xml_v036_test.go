@@ -140,3 +140,22 @@ func TestPretypeScansAreLinear(t *testing.T) {
 		t.Errorf("long leaves took %v", d)
 	}
 }
+
+// Non-canonical text is rejected by the grammar scan before any big-number
+// parse: a megabyte of digits ending in junk must not cost quadratic time.
+func TestPretypeJunkAfterDigitsIsLinear(t *testing.T) {
+	limits := omnist.DefaultLimits()
+	nines := strings.Repeat("9", 8_000_000)
+	start := time.Now()
+	for _, label := range []string{"i", "x"} {
+		for _, text := range []string{nines + "x", "-" + nines + "x", nines + ".", nines + "e", nines + "e+", "+" + nines} {
+			s, err := leafV036(t, label, text, limits)
+			if err != nil || s.Kind != omnist.KindString {
+				t.Fatalf("%s %.8q: kind %v err %v, want a string", label, text, s.Kind, err)
+			}
+		}
+	}
+	if d := time.Since(start); d > 20*time.Second {
+		t.Errorf("junk-tailed leaves took %v", d)
+	}
+}

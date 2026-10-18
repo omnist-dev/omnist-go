@@ -672,8 +672,11 @@ func pretypeScalar(text string, kind omnist.ScalarKind) (omnist.Scalar, bool) {
 		}
 		return omnist.Scalar{}, false
 	case omnist.KindInteger:
+		if !isJSONInteger(text) {
+			return omnist.Scalar{}, false
+		}
 		bi, ok := new(big.Int).SetString(text, 10)
-		if !isJSONInteger(text) || !ok {
+		if !ok {
 			return omnist.Scalar{}, false
 		}
 		return omnist.NewIntegerScalar(bi), true
