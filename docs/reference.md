@@ -451,7 +451,7 @@ Format rules the readers apply (spec C-11 to C-13, D-27, D-29): a JSON object
 that repeats a key keeps the first position and the last value; a YAML mapping or
 TOML table that repeats a key is `parse.codec-syntax`; a YAML `!!omap`,
 `!!pairs` or `!!set` is `format.tag-forbidden` at `$`; a float literal beyond
-binary64 reads as an infinity (an underflow as 0). The XML writer reports
+binary64 reads as an infinity (an underflow as 0, `-0` as `-0.0`). The XML writer reports
 `format.value-stringified` (integer, number, boolean leaves) and
 `format.temporal-stringified` (date, time, datetime leaves) at the leaf's
 indexed Document path, and the YAML writer reports
@@ -535,7 +535,11 @@ fmt.Println(v.Scalar.Kind, v.Scalar.Str)
 
 `xml` also provides **`ReadWithSchema(src string, schema *omnist.Schema, limits omnist.Limits)`**
 to pre-type numeric, boolean, and temporal leaves during ingestion when an OSD schema is
-available (per `omnist-spec#44`):
+available (per `omnist-spec#44`). An `integer` leaf is read only from
+`-?(0|[1-9][0-9]*)` and a `number` leaf only from a JSON number (C-18); any other
+spelling (`+5`, `007`, `1.`, `.5`, `1_000`) stays a string. A `number` past
+binary64 reads as an infinity, with no length limit (D-29), and the integer digit
+limit applies to `integer` leaves only (D-28):
 
 <!-- verified-by: doc_examples_reference_test.go::Example_xmlReadWithSchema -->
 ```go

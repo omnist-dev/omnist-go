@@ -42,7 +42,7 @@ type formatWriterFunc func(d omnist.Document) (string, []omnist.Diagnostic, erro
 func noReadDiagnostics(read func(string, omnist.Limits) (omnist.Document, error)) formatReaderFunc {
 	return func(text string, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
 		doc, err := read(text, limits)
-		return doc, nil, err
+		return doc, nil, documentPathError(err)
 	}
 }
 
@@ -71,15 +71,21 @@ var formatWriters = map[string]formatWriterFunc{
 func xmlReaderWithSchema(schema *omnist.Schema) formatReaderFunc {
 	return func(text string, limits omnist.Limits) (omnist.Document, []omnist.Diagnostic, error) {
 		doc, diags, err := xml.ReadWithSchema(text, schema, limits)
-		// A pretyping refusal carries a Document path (e.g. $.r.n) and no
-		// text position; ParseError.Error() would print it as "0:0", so
-		// report it as the path-first diagnostic it is.
-		var pe *omnist.ParseError
-		if errors.As(err, &pe) && pe.Line == 0 && pe.Path != "" {
-			err = omnist.Diagnostic{Path: pe.Path, Code: pe.Code, Message: pe.Message}
-		}
-		return doc, diags, err
+		return doc, diags, documentPathError(err)
 	}
+}
+
+// documentPathError reports a read refusal that carries a Document path as the
+// path-first diagnostic it is. A document.* code (document.limit.int-digits)
+// is positioned by a Document path (spec §8.4, E-4a), never a line:col, so
+// ParseError.Error() would print the wrong location; a parse.* error keeps its
+// text position.
+func documentPathError(err error) error {
+	var pe *omnist.ParseError
+	if errors.As(err, &pe) && pe.Path != "" && (pe.Line == 0 || strings.HasPrefix(string(pe.Code), "document.")) {
+		return omnist.Diagnostic{Path: pe.Path, Code: pe.Code, Message: pe.Message}
+	}
+	return err
 }
 
 // knownFormatNames returns the five supported format names, sorted, for

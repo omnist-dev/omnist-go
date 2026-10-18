@@ -4,7 +4,6 @@ import (
 	encxml "encoding/xml"
 	"errors"
 	"io"
-	"math"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -36,7 +35,11 @@ func Read(src string, limits omnist.Limits) (omnist.Document, []omnist.Diagnosti
 // If schema is non-nil, text leaves are pre-typed into boolean, integer, number,
 // or temporal scalars when the schema's declared field type calls for it (spec §7.1,
 // omnist-spec#44). Leaves that do not parse value-exactly remain strings and fall
-// through to normal stage-2 diagnostics.
+// through to normal stage-2 diagnostics. An integer leaf is read only from
+// -?(0|[1-9][0-9]*) and a number leaf only from a JSON number (C-18), so +5,
+// 007, 1., .5 and 1_000 stay strings. A number past binary64 reads as an
+// infinity (underflow as zero, -0 as negative zero), with no length limit
+// (D-29); the integer digit limit applies to integer leaves only (D-28).
 //
 // limits configures the safety limits enforced while reading, via the same
 // omnist.LimitChecker every other codec in this package uses (limits.go).
@@ -570,24 +573,76 @@ func findField(rec *omnist.Record, label string) *omnist.Field {
 	return nil
 }
 
-// integerDigits is the number of digits in the value of text when it is an
-// integer literal (an optional sign and decimal digits), else 0: leading zeros
-// do not count (D-28).
-func integerDigits(text string) int {
-	digits := strings.TrimLeft(text, "+-")
-	if len(text)-len(digits) > 1 || digits == "" {
-		return 0
+// isJSONInteger reports whether text matches -?(0|[1-9][0-9]*), the only
+// spelling an integer-typed XML leaf is read from (C-18).
+func isJSONInteger(text string) bool {
+	i := 0
+	if i < len(text) && text[i] == '-' {
+		i++
 	}
-	for i := 0; i < len(digits); i++ {
-		if digits[i] < '0' || digits[i] > '9' {
-			return 0
+	return scanJSONDigits(text, &i) && i == len(text)
+}
+
+// isJSONNumber reports whether text matches the JSON number grammar
+// -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?, the only spelling a
+// number-typed XML leaf is read from (C-18).
+func isJSONNumber(text string) bool {
+	i := 0
+	if i < len(text) && text[i] == '-' {
+		i++
+	}
+	if !scanJSONDigits(text, &i) {
+		return false
+	}
+	if i < len(text) && text[i] == '.' {
+		i++
+		if !scanDigitRun(text, &i) {
+			return false
 		}
 	}
-	digits = strings.TrimLeft(digits, "0")
-	if digits == "" {
-		return 1
+	if i < len(text) && (text[i] == 'e' || text[i] == 'E') {
+		i++
+		if i < len(text) && (text[i] == '+' || text[i] == '-') {
+			i++
+		}
+		if !scanDigitRun(text, &i) {
+			return false
+		}
 	}
-	return len(digits)
+	return i == len(text)
+}
+
+// scanJSONDigits consumes 0 or [1-9][0-9]* at *i.
+func scanJSONDigits(text string, i *int) bool {
+	if *i >= len(text) {
+		return false
+	}
+	if text[*i] == '0' {
+		*i++
+		return true
+	}
+	if text[*i] < '1' || text[*i] > '9' {
+		return false
+	}
+	return scanDigitRun(text, i)
+}
+
+// scanDigitRun consumes one or more decimal digits at *i.
+func scanDigitRun(text string, i *int) bool {
+	start := *i
+	for *i < len(text) && text[*i] >= '0' && text[*i] <= '9' {
+		*i++
+	}
+	return *i > start
+}
+
+// integerDigits is the number of digits in the value of text when it is an
+// integer leaf spelling (C-18), else 0: the sign does not count (D-28).
+func integerDigits(text string) int {
+	if !isJSONInteger(text) {
+		return 0
+	}
+	return len(strings.TrimPrefix(text, "-"))
 }
 
 // pretype is pretypeScalar for the leaf at, which first applies D-9's integer
@@ -617,16 +672,18 @@ func pretypeScalar(text string, kind omnist.ScalarKind) (omnist.Scalar, bool) {
 		}
 		return omnist.Scalar{}, false
 	case omnist.KindInteger:
-		bi, ok := new(big.Int).SetString(text, 10)
-		if !ok {
+		if !isJSONInteger(text) {
 			return omnist.Scalar{}, false
 		}
+		bi, _ := new(big.Int).SetString(text, 10) // text is canonical digits
 		return omnist.NewIntegerScalar(bi), true
 	case omnist.KindNumber:
-		f, err := strconv.ParseFloat(text, 64)
-		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		if !isJSONNumber(text) {
 			return omnist.Scalar{}, false
 		}
+		// D-29: a number past binary64 reads as an infinity (ParseFloat
+		// returns +/-Inf with ErrRange); underflow reads as +/-0.0.
+		f, _ := strconv.ParseFloat(text, 64)
 		return omnist.NewNumberScalar(f), true
 	case omnist.KindDate:
 		if !omnist.MatchesISOKind(text, omnist.TemporalDate) {

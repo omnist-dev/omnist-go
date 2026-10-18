@@ -8,7 +8,7 @@ narrow, after-the-fact tie-breaker on spec gaps that already have a filed
 
 ## Status
 
-**`v0.13.1-alpha`.** Every core operation is implemented: the Document and Schema
+**`v0.14.0-alpha`.** Every core operation is implemented: the Document and Schema
 models, OML and OSD (read and write), `validate`, `materialize`, the full
 schema algebra (`satisfiable_set`, `is_empty`, `prune`, `compatible_with`,
 `equivalent`, `normalize`, `extract`, `lint`, `infer`), all four interchange
@@ -17,7 +17,7 @@ conformance harness, and fuzz tests on every reader (`go test -fuzz`).
 
 Track 2 ([`tools/conformance/`](https://github.com/omnist-dev/omnist-go/tree/main/tools/conformance),
 JSON-vector, run against `omnist-spec`'s `test-suite/`) currently reports
-**703 pass / 0 fail / 28 skip** of 731 vectors (`omnist-spec` v0.35.0-beta
+**765 pass / 0 fail / 28 skip** of 793 vectors (`omnist-spec` v0.36.0-beta
 pin), compared as a set of `(path, code)` per §8.5.2 — not code-agnostically.
 All 28 skips are the OSD-OML extension
 (`parse_schema_oml`/`write_schema_oml`) — not yet implemented in this
@@ -223,6 +223,37 @@ A 12-issue Codex audit cycle (#70–#81) resolved across 4 phases addressed all 
 
 ## Versioning
 
+**`v0.14.0-alpha`**, a minor per `CONTRIBUTING.md` §1: it adopts `omnist-spec`
+v0.36.0-beta (commit `7575727`) from v0.35.0-beta (`237ef00`) and carries three
+breaking changes. Conformance, Track 2: **765 pass / 0 fail / 28 skip of 793**
+(the 28 skips are the OSD-OML extension, E-20); Track 1 19/19. The library
+runner already passed all 793 vectors before any change; the changes below close
+the ledger divergences the vectors cannot reach (DIV-42, DIV-46), and the new
+tests cover the XML-with-schema half. What changed:
+
+- **Breaking, XML pretyping forms (C-18, DIV-42).** `xml.ReadWithSchema` reads an
+  `integer` leaf only from `-?(0|[1-9][0-9]*)` and a `number` leaf only from a
+  JSON number. `+5`, `0n`, `007`, `0x1F`, `1_000` and `5.0` (as an integer) and
+  `1.`, `.5`, `+1.5`, `007`, `1_0.5` (as a number) used to be pretyped; they now
+  stay strings, so `validate` reports them as a type mismatch. Migration: write
+  the canonical spelling in the XML source. Because only a canonical integer is
+  an integer, a long `+999...` or `0999...` leaf is no longer a
+  `document.limit.int-digits` error; it is a string.
+- **Breaking, XML number overflow (D-29, DIV-42).** A `number` leaf past binary64
+  (`1e999`, `-1e999`, or 400 digits) reads as +Infinity or -Infinity instead of
+  staying a string and failing later; underflow reads as 0 and `-0` as `-0.0`.
+  No length limit applies to a `number`, however long its integer part (D-28).
+- **Breaking, CLI integer-digit path (D-28, E-4a, DIV-46).** `omnist parse`,
+  `validate`, `materialize` and `infer` print the Document path for
+  `document.limit.int-digits` on JSON, YAML, TOML and OML input (`$.r.n`), as they
+  already did for XML, instead of a `line:col`. A `parse.*` error keeps its text
+  position.
+- **Checked, no change.** C-19 (JSON `NaN`, `Infinity`, `-Infinity` are
+  `parse.codec-syntax`; YAML `.nan`/`.inf`, TOML and OML `nan`/`inf` are numbers)
+  and E-33 (NaN equality in a runner) already held; the new vectors pass.
+
+### Previous: v0.13.1-alpha
+
 **`v0.13.1-alpha`**, a patch per `CONTRIBUTING.md` §1: bug fixes only, no new
 public API beyond two small helpers. It closes issue #140 and the cross-port
 checks of the bug wave. Same spec pin (v0.35.0-beta, `237ef00`); conformance is
@@ -303,9 +334,8 @@ skip. What changed:
 - **XML integer digit limit (E-4a, DIV-42).** `xml.ReadWithSchema` refuses a leaf the
   schema types as `integer` whose value has more digits than `Limits.MaxIntDigits`
   with `document.limit.int-digits` at the leaf's Document path (`$.r.n`,
-  `$.r.n[1]`), the first in document order. The CLI does not do this: `omnist
-  materialize --from xml` reads with `xml.Read`, which takes no schema, so an XML
-  leaf stays a string and is not checked.
+  `$.r.n[1]`), the first in document order. The CLI does the same for `validate`
+  and `materialize` with `--schema` (v0.13.1-alpha).
 - **NEL in a label.** A U+0085 in a *label* is reported at the path of the node
   that holds it, not at the label's own edge (E-34 leaves the label case open); a
   NEL in a string *value* is reported at the leaf as before.
@@ -882,7 +912,7 @@ gap — see the ledger's Go `Resource caps` row (source-audited clean,
 
 ## Spec version targeted
 
-`omnist-spec` at commit `237ef00` (`v0.35.0-beta`), pinned via the
+`omnist-spec` at commit `7575727` (`v0.36.0-beta`), pinned via the
 `vendor/omnist-spec` git submodule. This repo does
 not track the spec's `main` branch — the pin is bumped deliberately, in
 its own commit. Past `c4141d0` (`v0.7.0-beta`), this pin also carries a
